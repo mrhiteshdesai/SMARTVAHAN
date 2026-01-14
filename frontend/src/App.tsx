@@ -12,6 +12,11 @@ import SettingsPage from "./pages/SettingsPage";
 import { QRGenerationPage } from "./pages/qr/QRGenerationPage";
 import { CertificateGeneratorPage } from "./pages/CertificateGeneratorPage";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
+import MobileSplash from "./mobile/MobileSplash";
+import MobileLogin from "./mobile/MobileLogin";
+import MobileHome from "./mobile/MobileHome";
+import MobileScan from "./mobile/MobileScan";
+import MobileForm from "./mobile/MobileForm";
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { isAuthenticated } = useAuth();
@@ -119,6 +124,34 @@ export default function App() {
                   <CertificateGeneratorPage />
                 </ErrorBoundary>
               </AppShell>
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+      <Routes>
+        <Route path="/app" element={<MobileSplash />} />
+        <Route path="/app/login" element={<MobileLogin />} />
+        <Route
+          path="/app/home"
+          element={
+            <ProtectedRoute>
+              <MobileHome />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/scan"
+          element={
+            <ProtectedRoute>
+              <MobileScan />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/form"
+          element={
+            <ProtectedRoute>
+              <MobileForm />
             </ProtectedRoute>
           }
         />

@@ -20,7 +20,7 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.22",
     "@nestjs/schedule": "^6.1.0",
-    "@nestjs/serve-static": "^5.0.4",
+    "@nestjs/serve-static": "^4.0.0",
     "@prisma/client": "^6.19.1",
     "@types/bcrypt": "^6.0.0",
     "@types/cron": "^2.0.1",

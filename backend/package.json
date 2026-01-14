@@ -6,8 +6,8 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "prisma:generate": "prisma generate",
-    "build": "npm run prisma:generate && nest build",
-    "start:prod": "node dist/main.js",
+    "build": "prisma generate && nest build",
+    "start:prod": "node dist/src/main.js",
     "lint": "echo \"No linter configured yet\"",
     "typecheck": "tsc --noEmit"
   },

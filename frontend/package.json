@@ -1,0 +1,34 @@
+{
+  "name": "smartvahan-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"No linter configured yet\""
+  },
+  "dependencies": {
+    "@react-google-maps/api": "^2.20.8",
+    "@tanstack/react-query": "^5.90.16",
+    "axios": "^1.13.2",
+    "html5-qrcode": "^2.3.8",
+    "lucide-react": "^0.462.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.0",
+    "use-places-autocomplete": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.9",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
+  }
+}

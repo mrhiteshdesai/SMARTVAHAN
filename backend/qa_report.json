@@ -1,0 +1,101 @@
+{
+  "summary": {
+    "total": 15,
+    "passed": 15,
+    "failed": 0,
+    "duration": 2176
+  },
+  "details": [
+    {
+      "module": "Auth",
+      "name": "Super Admin Login",
+      "status": "PASS",
+      "duration": 98
+    },
+    {
+      "module": "Auth",
+      "name": "Invalid Login Handling",
+      "status": "PASS",
+      "duration": 175
+    },
+    {
+      "module": "UserMgmt",
+      "name": "Create State (and State Admin)",
+      "status": "PASS",
+      "duration": 91
+    },
+    {
+      "module": "UserMgmt",
+      "name": "State Admin Login",
+      "status": "PASS",
+      "duration": 84
+    },
+    {
+      "module": "UserMgmt",
+      "name": "Create OEM (and OEM Admin)",
+      "status": "PASS",
+      "duration": 86
+    },
+    {
+      "module": "UserMgmt",
+      "name": "OEM Admin Login",
+      "status": "PASS",
+      "duration": 86
+    },
+    {
+      "module": "UserMgmt",
+      "name": "Create RTO",
+      "status": "PASS",
+      "duration": 6
+    },
+    {
+      "module": "DealerMgmt",
+      "name": "Create Dealer",
+      "status": "PASS",
+      "duration": 92
+    },
+    {
+      "module": "DealerMgmt",
+      "name": "Dealer Login",
+      "status": "PASS",
+      "duration": 85
+    },
+    {
+      "module": "QRMgmt",
+      "name": "Generate QR Batch",
+      "status": "PASS",
+      "duration": 1031
+    },
+    {
+      "module": "CertMgmt",
+      "name": "Validate QR (Scan)",
+      "status": "PASS",
+      "duration": 26
+    },
+    {
+      "module": "CertMgmt",
+      "name": "Generate Certificate (Happy Path)",
+      "status": "PASS",
+      "duration": 84
+    },
+    {
+      "module": "CertMgmt",
+      "name": "Re-use QR (Duplicate Check)",
+      "status": "PASS",
+      "duration": 12
+    },
+    {
+      "module": "RBAC",
+      "name": "Dealer cannot create OEM",
+      "status": "PASS",
+      "duration": 5
+    },
+    {
+      "module": "Consistency",
+      "name": "Verify Certificate in DB",
+      "status": "PASS",
+      "duration": 2
+    }
+  ],
+  "bugs": []
+}

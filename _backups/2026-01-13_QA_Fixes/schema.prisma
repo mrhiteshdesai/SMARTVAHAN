@@ -1,0 +1,182 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  SUPER_ADMIN
+  STATE_ADMIN
+  OEM_ADMIN
+  DEALER_USER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// User (System Users)
+model User {
+  id        String     @id @default(uuid())
+  name      String
+  email     String?    @unique
+  phone     String     @unique
+  password  String
+  role      UserRole
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  stateCode String?
+  state     State?   @relation(fields: [stateCode], references: [code])
+  oemCode   String?
+  oem       OEM?     @relation(fields: [oemCode], references: [code])
+
+  @@map("users")
+}
+
+// State
+model State {
+  code      String   @id // e.g., "MH"
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  rtos      RTO[]
+  dealers   Dealer[]
+  batches   Batch[]
+  users     User[]
+
+  @@map("states")
+}
+
+// RTO
+model RTO {
+  code      String   @id // e.g., "MH01"
+  name      String
+  stateCode String
+  state     State    @relation(fields: [stateCode], references: [code])
+  dealers   Dealer[]
+
+  @@map("rtos")
+}
+
+// OEM
+model OEM {
+  id               String   @id @default(uuid())
+  name             String
+  code             String   @unique
+  
+  // Details
+  logo             String?  // URL or Base64
+  copDocument      String?  // URL or Base64
+  copValidity      DateTime?
+
+  authorizedStates String[] // Array of state codes
+  dealers          Dealer[]
+  batches          Batch[]
+  users            User[]
+
+  @@map("oems")
+}
+
+// Dealer
+model Dealer {
+  id              String     @id @default(uuid())
+  name            String
+  phone           String     @unique // Used as login
+  password        String // Hashed
+  status          UserStatus @default(ACTIVE)
+  
+  // Relations
+  stateCode       String
+  state           State      @relation(fields: [stateCode], references: [code])
+  
+  rtoCode         String?    // Optional now
+  rto             RTO?       @relation(fields: [rtoCode], references: [code])
+  allRTOs         Boolean    @default(false)
+
+  oems            OEM[]      // Many-to-Many
+  
+  // Geolocation
+  locationAddress String?
+  city            String?
+  zip             String?
+  latitude        Float?
+  longitude       Float?
+  radius          Float?     @default(10) // km
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@map("dealers")
+}
+
+// Product
+model Product {
+  code      String   @id // e.g. "C3"
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  batches   Batch[]
+
+  @@map("products")
+}
+
+// Batch
+model Batch {
+  id          String   @id @default(uuid())
+  batchId     String   @unique // 5-digit alphanumeric
+  userId      String?
+  pcBindingId String?
+  
+  stateCode   String
+  state       State    @relation(fields: [stateCode], references: [code])
+  
+  oemCode     String
+  oem         OEM      @relation(fields: [oemCode], references: [code])
+  
+  productCode String
+  product     Product  @relation(fields: [productCode], references: [code])
+  
+  quantity    Int
+  startSerial String?
+  endSerial   String?
+  status      String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  filePath    String?  // Made optional as it might not be set initially
+  
+  createdAt   DateTime @default(now())
+  qrCodes     QRCode[]
+
+  @@map("batches")
+}
+
+// QRCode
+model QRCode {
+  id           String   @id @default(uuid())
+  value        String   @unique // The full QR content {a}{b}{c}
+  fullUrl      String
+  serialNumber Int      // Sequence in the batch (1, 2, 3...)
+  
+  batchId      String
+  batch        Batch    @relation(fields: [batchId], references: [id])
+  
+  createdAt    DateTime @default(now())
+
+  @@map("qr_codes")
+}
+
+// Global Sequence Tracker
+model Sequence {
+  id    String @id // "GLOBAL_QR_ITERATION"
+  value Int
+  
+  @@map("sequences")
+}

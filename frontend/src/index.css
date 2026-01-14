@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Default Primary: #4F46E5 => 79 70 229 */
+  --primary: 79 70 229;
+  --bg: #f7f7fb;
+}
+
+html, body, #root {
+  height: 100%;
+}

@@ -589,11 +589,11 @@ export class CertificatesService {
           try {
               const fsPath = resolveLogoPath(data.systemLogo);
               if (fsPath) {
-                doc.image(fsPath, startX + contentWidth - 150, currentY + 10, { width: 140, height: 140, align: 'center', valign: 'center' });
+                doc.image(fsPath, startX + contentWidth - 120, currentY + 20, { width: 90, align: 'center', valign: 'center' });
               } else {
                 let sysLogoData = data.systemLogo;
                 if (sysLogoData.startsWith('data:')) sysLogoData = sysLogoData.split(',')[1];
-                doc.image(Buffer.from(sysLogoData, 'base64'), startX + contentWidth - 150, currentY + 10, { width: 140, height: 140, align: 'center', valign: 'center' });
+                doc.image(Buffer.from(sysLogoData, 'base64'), startX + contentWidth - 120, currentY + 20, { width: 90, align: 'center', valign: 'center' });
               }
           } catch (e) {
                console.error("System Logo Error", e);
@@ -700,7 +700,7 @@ export class CertificatesService {
       currentY = drawGreyHeader('VEHICLE DETAILS', currentY);
       
       const vY = currentY + 5;
-      const vRowH = 18;
+      const vRowH = 16;
       const vColW = contentWidth / 2;
 
       const vLeft = [
@@ -735,8 +735,7 @@ export class CertificatesService {
       // 4 Photos in a row
       const photoGap = 10;
       const photoW = (contentWidth - (photoGap * 3)) / 4;
-      // Increased photo size by 1.5x height roughly (was 100)
-      const photoH = 150; 
+      const photoH = 100; 
 
       const photos = [
           { img: data.photos.photoFrontLeft, label: 'FRONT LEFT IMAGE' },

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { useRTOs, useVehicleCategories } from "../api/hooks";
 
 type VehicleDetails = {
   vehicleMake: string;
@@ -22,11 +23,33 @@ type OwnerDetails = {
 
 type PhotoKeys = "photoFrontLeft" | "photoBackRight" | "photoNumberPlate" | "photoRc";
 
+const VEHICLE_MAKES = [
+  "Tata Motors",
+  "Ashok Leyland",
+  "Mahindra & Mahindra",
+  "Eicher Motors",
+  "BharatBenz",
+  "Maruti Suzuki",
+  "Hyundai",
+  "Toyota",
+  "Honda",
+  "Kia",
+  "Force Motors",
+  "SML Isuzu",
+];
+
+const FUEL_TYPES = ["Diesel", "Petrol", "CNG", "LPG", "Electric", "Hybrid"];
+
+const YEARS = Array.from({ length: 15 }, (_, i) => (new Date().getFullYear() - i).toString());
+
 export default function MobileForm() {
   const navigate = useNavigate();
   const { state } = useLocation();
   const { user } = useAuth();
   const qrData = state?.qr;
+
+  const { data: rtos = [] } = useRTOs(qrData?.stateCode);
+  const { data: vehicleCategories = [] } = useVehicleCategories();
 
   const [step, setStep] = useState<number>(1);
   const [submitting, setSubmitting] = useState(false);
@@ -89,7 +112,7 @@ export default function MobileForm() {
   }, []);
 
   useEffect(() => {
-    if (step === 3) {
+    if (step === 2) {
       startCamera();
     } else {
       stopCamera();
@@ -148,7 +171,7 @@ export default function MobileForm() {
     if (currentPhotoKeyIndex < captureOrder.length - 1) {
       setCurrentPhotoKeyIndex((i) => i + 1);
     } else {
-      setStep(4);
+      setStep(3);
     }
   };
 
@@ -184,8 +207,9 @@ export default function MobileForm() {
     }
   };
 
-  const canProceedVehicle = Object.values(vehicleDetails).every((v) => String(v || "").trim().length > 0);
-  const canProceedOwner = Object.values(ownerDetails).every((v) => String(v || "").trim().length > 0);
+  const canProceedDetails =
+    Object.values(vehicleDetails).every((v) => String(v || "").trim().length > 0) &&
+    Object.values(ownerDetails).every((v) => String(v || "").trim().length > 0);
   const allPhotosDone = captureOrder.every((k) => !!photos[k]);
 
   const photoLabel = (key: PhotoKeys) => {
@@ -205,42 +229,154 @@ export default function MobileForm() {
 
       <main className="p-4">
         <div className="text-lg font-bold mb-2">Generate Certificate</div>
-        <div className="text-sm text-gray-600 mb-4">QR: {qrData?.serialNumber || qrData?.value}</div>
-
-        {step === 1 && (
-          <div className="space-y-3">
-            <div className="text-md font-semibold mb-2">Vehicle Details</div>
-            <div className="grid grid-cols-1 gap-3">
-              <input className="border rounded-md px-3 py-2" placeholder="Vehicle Make" value={vehicleDetails.vehicleMake} onChange={(e) => setVehicleDetails({ ...vehicleDetails, vehicleMake: e.target.value })} />
-              <input className="border rounded-md px-3 py-2" placeholder="Vehicle Category" value={vehicleDetails.vehicleCategory} onChange={(e) => setVehicleDetails({ ...vehicleDetails, vehicleCategory: e.target.value })} />
-              <input className="border rounded-md px-3 py-2" placeholder="Fuel Type" value={vehicleDetails.fuelType} onChange={(e) => setVehicleDetails({ ...vehicleDetails, fuelType: e.target.value })} />
-              <input className="border rounded-md px-3 py-2" placeholder="Passing RTO" value={vehicleDetails.passingRto} onChange={(e) => setVehicleDetails({ ...vehicleDetails, passingRto: e.target.value })} />
-              <input className="border rounded-md px-3 py-2" placeholder="Registration RTO" value={vehicleDetails.registrationRto} onChange={(e) => setVehicleDetails({ ...vehicleDetails, registrationRto: e.target.value })} />
-              <input className="border rounded-md px-3 py-2" placeholder="Series" value={vehicleDetails.series} onChange={(e) => setVehicleDetails({ ...vehicleDetails, series: e.target.value })} />
-              <input className="border rounded-md px-3 py-2" placeholder="Manufacturing Year" value={vehicleDetails.manufacturingYear} onChange={(e) => setVehicleDetails({ ...vehicleDetails, manufacturingYear: e.target.value })} />
-              <input className="border rounded-md px-3 py-2" placeholder="Chassis No" value={vehicleDetails.chassisNo} onChange={(e) => setVehicleDetails({ ...vehicleDetails, chassisNo: e.target.value })} />
-              <input className="border rounded-md px-3 py-2" placeholder="Engine No" value={vehicleDetails.engineNo} onChange={(e) => setVehicleDetails({ ...vehicleDetails, engineNo: e.target.value })} />
-            </div>
-            <button disabled={!canProceedVehicle} onClick={() => setStep(2)} className="mt-4 w-full bg-blue-600 text-white rounded-md py-2 font-medium">
-              Next
-            </button>
+        <div className="text-sm text-gray-600">
+          QR: {qrData?.serialNumber || qrData?.value}
+        </div>
+        {qrData && (
+          <div className="mt-2 mb-4 border rounded-md p-3 bg-gray-50 text-xs text-gray-700 space-y-1">
+            <div className="font-semibold text-sm mb-1">QR Code Details</div>
+            <div>Serial: {qrData.serialNumber}</div>
+            <div className="break-all">Value: {qrData.value}</div>
+            <div>State: {qrData.state}</div>
+            <div>Brand/OEM: {qrData.oem}</div>
+            <div>Material: {qrData.product}</div>
           </div>
         )}
 
-        {step === 2 && (
-          <div className="space-y-3">
-            <div className="text-md font-semibold mb-2">Owner Details</div>
+        {step === 1 && (
+          <div className="space-y-4">
+            <div className="text-md font-semibold">Vehicle & Owner Details</div>
+            <p className="text-xs text-yellow-700 bg-yellow-50 p-2 rounded">
+              Kindly fill the details as per RC / Form 28-29 / Form 20.
+            </p>
             <div className="grid grid-cols-1 gap-3">
-              <input className="border rounded-md px-3 py-2" placeholder="Owner Name" value={ownerDetails.ownerName} onChange={(e) => setOwnerDetails({ ...ownerDetails, ownerName: e.target.value })} />
-              <input className="border rounded-md px-3 py-2" placeholder="Owner Phone" value={ownerDetails.ownerContact} onChange={(e) => setOwnerDetails({ ...ownerDetails, ownerContact: e.target.value })} />
+              <select
+                className="border rounded-md px-3 py-2"
+                value={vehicleDetails.vehicleMake}
+                onChange={(e) => setVehicleDetails({ ...vehicleDetails, vehicleMake: e.target.value })}
+              >
+                <option value="">Vehicle Make</option>
+                {VEHICLE_MAKES.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="border rounded-md px-3 py-2"
+                value={vehicleDetails.vehicleCategory}
+                onChange={(e) => setVehicleDetails({ ...vehicleDetails, vehicleCategory: e.target.value })}
+              >
+                <option value="">Vehicle Category</option>
+                {vehicleCategories.map((c: any) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="border rounded-md px-3 py-2"
+                value={vehicleDetails.fuelType}
+                onChange={(e) => setVehicleDetails({ ...vehicleDetails, fuelType: e.target.value })}
+              >
+                <option value="">Fuel Type</option>
+                {FUEL_TYPES.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="border rounded-md px-3 py-2"
+                value={vehicleDetails.passingRto}
+                onChange={(e) => setVehicleDetails({ ...vehicleDetails, passingRto: e.target.value })}
+              >
+                <option value="">Passing RTO</option>
+                {[...rtos]
+                  .sort((a: any, b: any) => a.code.localeCompare(b.code))
+                  .map((r: any) => (
+                    <option key={r.code} value={r.code}>
+                      {r.code} - {r.name}
+                    </option>
+                  ))}
+              </select>
+              <select
+                className="border rounded-md px-3 py-2"
+                value={vehicleDetails.registrationRto}
+                onChange={(e) => setVehicleDetails({ ...vehicleDetails, registrationRto: e.target.value })}
+              >
+                <option value="">Registration RTO</option>
+                {[...rtos]
+                  .sort((a: any, b: any) => a.code.localeCompare(b.code))
+                  .map((r: any) => (
+                    <option key={r.code} value={r.code}>
+                      {r.code} - {r.name}
+                    </option>
+                  ))}
+              </select>
+              <input
+                className="border rounded-md px-3 py-2"
+                placeholder="Series"
+                value={vehicleDetails.series}
+                onChange={(e) => setVehicleDetails({ ...vehicleDetails, series: e.target.value })}
+              />
+              <select
+                className="border rounded-md px-3 py-2"
+                value={vehicleDetails.manufacturingYear}
+                onChange={(e) => setVehicleDetails({ ...vehicleDetails, manufacturingYear: e.target.value })}
+              >
+                <option value="">Manufacturing Year</option>
+                {YEARS.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="border rounded-md px-3 py-2"
+                placeholder="Chassis No (Last 5)"
+                maxLength={5}
+                value={vehicleDetails.chassisNo}
+                onChange={(e) => setVehicleDetails({ ...vehicleDetails, chassisNo: e.target.value })}
+              />
+              <input
+                className="border rounded-md px-3 py-2"
+                placeholder="Engine No (Last 5)"
+                maxLength={5}
+                value={vehicleDetails.engineNo}
+                onChange={(e) => setVehicleDetails({ ...vehicleDetails, engineNo: e.target.value })}
+              />
             </div>
-            <button disabled={!canProceedOwner} onClick={() => setStep(3)} className="mt-4 w-full bg-blue-600 text-white rounded-md py-2 font-medium">
+
+            <div className="mt-4 space-y-2">
+              <div className="text-md font-semibold">Owner Details</div>
+              <div className="grid grid-cols-1 gap-3">
+                <input
+                  className="border rounded-md px-3 py-2"
+                  placeholder="Owner Name"
+                  value={ownerDetails.ownerName}
+                  onChange={(e) => setOwnerDetails({ ...ownerDetails, ownerName: e.target.value })}
+                />
+                <input
+                  className="border rounded-md px-3 py-2"
+                  placeholder="Owner Phone"
+                  value={ownerDetails.ownerContact}
+                  onChange={(e) => setOwnerDetails({ ...ownerDetails, ownerContact: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <button
+              disabled={!canProceedDetails}
+              onClick={() => setStep(2)}
+              className="mt-4 w-full bg-blue-600 text-white rounded-md py-2 font-medium"
+            >
               Capture Photos
             </button>
           </div>
         )}
 
-        {step === 3 && (
+        {step === 2 && (
           <div className="space-y-3">
             <div className="text-md font-semibold mb-2">Capture {photoLabel(currentPhotoKey)}</div>
             <div className="rounded-md overflow-hidden bg-black">
@@ -271,9 +407,36 @@ export default function MobileForm() {
           </div>
         )}
 
-        {step === 4 && (
+        {step === 3 && (
           <div className="space-y-3">
             <div className="text-md font-semibold mb-2">Review & Submit</div>
+            {qrData && (
+              <div className="border rounded-md p-3 bg-gray-50 text-xs text-gray-700 space-y-1">
+                <div className="font-semibold text-sm mb-1">QR Code</div>
+                <div>Serial: {qrData.serialNumber}</div>
+                <div className="break-all">Value: {qrData.value}</div>
+                <div>State: {qrData.state}</div>
+                <div>Brand/OEM: {qrData.oem}</div>
+                <div>Material: {qrData.product}</div>
+              </div>
+            )}
+            <div className="border rounded-md p-3 text-xs text-gray-700 space-y-1">
+              <div className="font-semibold text-sm mb-1">Vehicle Details</div>
+              <div>Make: {vehicleDetails.vehicleMake}</div>
+              <div>Category: {vehicleDetails.vehicleCategory}</div>
+              <div>Fuel: {vehicleDetails.fuelType}</div>
+              <div>Passing RTO: {vehicleDetails.passingRto}</div>
+              <div>Registration RTO: {vehicleDetails.registrationRto}</div>
+              <div>Series: {vehicleDetails.series}</div>
+              <div>Year: {vehicleDetails.manufacturingYear}</div>
+              <div>Chassis (Last 5): {vehicleDetails.chassisNo}</div>
+              <div>Engine (Last 5): {vehicleDetails.engineNo}</div>
+            </div>
+            <div className="border rounded-md p-3 text-xs text-gray-700 space-y-1">
+              <div className="font-semibold text-sm mb-1">Owner Details</div>
+              <div>Name: {ownerDetails.ownerName}</div>
+              <div>Phone: {ownerDetails.ownerContact}</div>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               {captureOrder.map((k) => (
                 <div key={k} className="border rounded-md p-1">

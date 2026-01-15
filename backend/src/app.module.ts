@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ScheduleModule } from "@nestjs/schedule";
 import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from './auth/roles.guard';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -23,7 +23,7 @@ import { AppController } from "./app.controller";
   imports: [
     ScheduleModule.forRoot(),
     ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), 'uploads'),
+      rootPath: resolve(process.env.UPLOADS_DIR ?? join(__dirname, '..', '..', 'uploads')),
       serveRoot: '/uploads',
     }),
     AuthModule,

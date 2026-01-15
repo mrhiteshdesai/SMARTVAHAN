@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import AppShell from "./app/AppShell";
 import Login from "./pages/Login";
@@ -20,7 +20,14 @@ import MobileForm from "./mobile/MobileForm";
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { isAuthenticated } = useAuth();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    if (location.pathname.startsWith("/app")) {
+      return <Navigate to="/app/login" replace />;
+    }
+    return <Navigate to="/login" replace />;
+  }
   return children;
 }
 

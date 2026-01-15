@@ -399,7 +399,7 @@ export function CertificateGeneratorPage() {
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <a 
-                    href={`http://localhost:3000${successData.pdfUrl}`} 
+                    href={successData.pdfUrl} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 shadow-sm font-medium w-full sm:w-auto justify-center"
@@ -408,7 +408,7 @@ export function CertificateGeneratorPage() {
                     Open PDF
                 </a>
                 <a 
-                    href={`http://localhost:3000${successData.pdfUrl}`} 
+                    href={successData.pdfUrl} 
                     download
                     className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-md hover:bg-gray-50 shadow-sm font-medium w-full sm:w-auto justify-center"
                 >

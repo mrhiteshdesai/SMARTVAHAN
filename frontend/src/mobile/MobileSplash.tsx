@@ -1,14 +1,21 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
 
 export default function MobileSplash() {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+
   useEffect(() => {
     const timer = setTimeout(() => {
-      navigate("/app/login", { replace: true });
+      if (isAuthenticated) {
+        navigate("/app/home", { replace: true });
+      } else {
+        navigate("/app/login", { replace: true });
+      }
     }, 1200);
     return () => clearTimeout(timer);
-  }, [navigate]);
+  }, [navigate, isAuthenticated]);
   return (
     <div className="min-h-screen bg-white flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">

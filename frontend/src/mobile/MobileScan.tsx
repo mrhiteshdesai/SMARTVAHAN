@@ -3,27 +3,56 @@ import { Html5Qrcode } from "html5-qrcode";
 import api from "../api/client";
 import { useNavigate } from "react-router-dom";
 
+type ZoomState = {
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+};
+
 export default function MobileScan() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [zoomSupported, setZoomSupported] = useState(false);
+  const [zoom, setZoom] = useState<ZoomState | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const trackRef = useRef<MediaStreamTrack | null>(null);
+
+  const applyZoom = async (value: number) => {
+    const track = trackRef.current;
+    if (!track || typeof (track as any).applyConstraints !== "function") {
+      return;
+    }
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: value }] } as any);
+      setZoom((prev) => (prev ? { ...prev, value } : prev));
+    } catch {
+    }
+  };
 
   useEffect(() => {
     const start = async () => {
       try {
+        setError(null);
         setScanning(true);
         const id = "mobile-qr-reader";
+        const cameraConfig: any = {
+          facingMode: "environment",
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        };
         scannerRef.current = new Html5Qrcode(id, true);
         await scannerRef.current.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: 250 },
+          cameraConfig,
+          { fps: 15, qrbox: 260 },
           async (decodedText) => {
             if (scannerRef.current) {
               await scannerRef.current.stop();
               scannerRef.current.clear();
               scannerRef.current = null;
             }
+            trackRef.current = null;
             try {
               const res = await api.post("/certificates/validate-qr", { qrContent: decodedText });
               if (res.data?.success) {
@@ -37,6 +66,26 @@ export default function MobileScan() {
           },
           () => {}
         );
+        const container = document.getElementById(id);
+        const video = container?.getElementsByTagName("video")[0] as HTMLVideoElement | undefined;
+        const stream = (video?.srcObject as MediaStream) || null;
+        const track = stream?.getVideoTracks()[0] || null;
+        if (track && typeof track.getCapabilities === "function") {
+          const capabilities = track.getCapabilities() as any;
+          const zoomCaps = capabilities.zoom;
+          if (zoomCaps && typeof zoomCaps.min === "number" && typeof zoomCaps.max === "number") {
+            trackRef.current = track;
+            const min = zoomCaps.min;
+            const max = zoomCaps.max;
+            const step = zoomCaps.step || 0.1;
+            const value = zoomCaps.default ?? min;
+            setZoom({ min, max, step, value });
+            setZoomSupported(true);
+            if (typeof value === "number") {
+              await applyZoom(value);
+            }
+          }
+        }
       } catch (e: any) {
         setError(e?.message || "Scanner error");
       } finally {
@@ -49,6 +98,7 @@ export default function MobileScan() {
       if (s) {
         s.stop().finally(() => s.clear());
       }
+      trackRef.current = null;
     };
   }, [navigate]);
 
@@ -74,6 +124,22 @@ export default function MobileScan() {
             id="mobile-qr-reader"
             className="w-full h-[320px] bg-slate-900/95 rounded-2xl overflow-hidden"
           />
+          {zoomSupported && zoom && (
+            <div className="mt-3">
+              <input
+                type="range"
+                min={zoom.min}
+                max={zoom.max}
+                step={zoom.step}
+                value={zoom.value}
+                onChange={(e) => applyZoom(Number(e.target.value))}
+                className="w-full"
+              />
+              <div className="mt-1 text-[10px] text-gray-500 text-right">
+                {zoom.value.toFixed(1)}x
+              </div>
+            </div>
+          )}
           {error && <div className="mt-3 text-red-600 text-xs">{error}</div>}
         </div>
       </main>

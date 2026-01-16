@@ -32,40 +32,51 @@ export default function MobileScan() {
   };
 
   useEffect(() => {
-    const start = async () => {
+    const startScanner = async (useHd: boolean) => {
+      const id = "mobile-qr-reader";
+      const config: any = useHd
+        ? {
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        : {
+            facingMode: "environment"
+          };
+
+      scannerRef.current = new Html5Qrcode(id, true);
+      await scannerRef.current.start(
+        config,
+        { fps: 15, qrbox: 260 },
+        async (decodedText) => {
+          if (scannerRef.current) {
+            await scannerRef.current.stop();
+            scannerRef.current.clear();
+            scannerRef.current = null;
+          }
+          trackRef.current = null;
+          try {
+            const res = await api.post("/certificates/validate-qr", { qrContent: decodedText });
+            if (res.data?.success) {
+              navigate("/app/form", { state: { qr: res.data.data } });
+            } else {
+              setError("Invalid QR");
+            }
+          } catch (err: any) {
+            setError(err?.response?.data?.message || "Validation failed");
+          }
+        },
+        () => {}
+      );
+
+      if (!useHd) {
+        setZoomSupported(false);
+        setZoom(null);
+        trackRef.current = null;
+        return;
+      }
+
       try {
-        setError(null);
-        setScanning(true);
-        const id = "mobile-qr-reader";
-        const cameraConfig: any = {
-          facingMode: "environment",
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        };
-        scannerRef.current = new Html5Qrcode(id, true);
-        await scannerRef.current.start(
-          cameraConfig,
-          { fps: 15, qrbox: 260 },
-          async (decodedText) => {
-            if (scannerRef.current) {
-              await scannerRef.current.stop();
-              scannerRef.current.clear();
-              scannerRef.current = null;
-            }
-            trackRef.current = null;
-            try {
-              const res = await api.post("/certificates/validate-qr", { qrContent: decodedText });
-              if (res.data?.success) {
-                navigate("/app/form", { state: { qr: res.data.data } });
-              } else {
-                setError("Invalid QR");
-              }
-            } catch (err: any) {
-              setError(err?.response?.data?.message || "Validation failed");
-            }
-          },
-          () => {}
-        );
         const container = document.getElementById(id);
         const video = container?.getElementsByTagName("video")[0] as HTMLVideoElement | undefined;
         const stream = (video?.srcObject as MediaStream) || null;
@@ -86,12 +97,31 @@ export default function MobileScan() {
             }
           }
         }
-      } catch (e: any) {
-        setError(e?.message || "Scanner error");
+      } catch {
+        setZoomSupported(false);
+        setZoom(null);
+        trackRef.current = null;
+      }
+    };
+
+    const start = async () => {
+      try {
+        setError(null);
+        setScanning(true);
+        try {
+          await startScanner(true);
+        } catch (e) {
+          try {
+            await startScanner(false);
+          } catch (fallbackError: any) {
+            setError(fallbackError?.message || "Scanner error");
+          }
+        }
       } finally {
         setScanning(false);
       }
     };
+
     start();
     return () => {
       const s = scannerRef.current;

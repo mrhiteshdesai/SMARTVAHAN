@@ -32,7 +32,7 @@ export default function MobileScan() {
   };
 
   useEffect(() => {
-    const startScanner = async (useHd: boolean) => {
+    const startScanner = async (useHd: boolean, boxSize: number) => {
       const id = "mobile-qr-reader";
       const config: any = useHd
         ? {
@@ -47,7 +47,7 @@ export default function MobileScan() {
       scannerRef.current = new Html5Qrcode(id, true);
       await scannerRef.current.start(
         config,
-        { fps: 15, qrbox: 260 },
+        { fps: 15, qrbox: boxSize },
         async (decodedText) => {
           if (scannerRef.current) {
             await scannerRef.current.stop();
@@ -108,11 +108,13 @@ export default function MobileScan() {
       try {
         setError(null);
         setScanning(true);
+        const width = typeof window !== "undefined" ? window.innerWidth || 360 : 360;
+        const size = Math.max(220, Math.min(width * 0.8, 360));
         try {
-          await startScanner(true);
+          await startScanner(true, size);
         } catch (e) {
           try {
-            await startScanner(false);
+            await startScanner(false, size);
           } catch (fallbackError: any) {
             setError(fallbackError?.message || "Scanner error");
           }

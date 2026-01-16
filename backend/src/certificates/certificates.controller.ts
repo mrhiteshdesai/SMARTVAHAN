@@ -1,7 +1,8 @@
-import { Controller, Post, Body, BadRequestException, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException, UseGuards, Req, Get, Query } from '@nestjs/common';
 import { CertificatesService } from './certificates.service';
 import { CreateCertificateDto } from './dto/create-certificate.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Public } from '../auth/public.decorator';
 
 @Controller('api/certificates')
 export class CertificatesController {
@@ -28,5 +29,17 @@ export class CertificatesController {
       (body as any).dealerId = req.user.userId;
     }
     return this.certificatesService.createCertificate(body);
+  }
+
+  @Get('public-verify')
+  @Public()
+  async publicVerify(
+    @Query('url') url?: string,
+    @Query('state') state?: string,
+    @Query('oem') oem?: string,
+    @Query('product') product?: string,
+    @Query('value') value?: string
+  ) {
+    return this.certificatesService.publicVerify({ url, state, oem, product, value });
   }
 }

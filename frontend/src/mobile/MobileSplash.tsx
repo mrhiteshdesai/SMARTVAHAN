@@ -17,11 +17,11 @@ export default function MobileSplash() {
     return () => clearTimeout(timer);
   }, [navigate, isAuthenticated]);
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center">
+    <div className="min-h-screen bg-gradient-to-b from-indigo-600 to-slate-900 flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">
-        <div className="w-20 h-20 bg-blue-600 rounded-xl"></div>
-        <div className="text-xl font-bold">SMARTVAHAN</div>
-        <div className="text-sm text-gray-500">Dealer Certificate App</div>
+        <div className="w-20 h-20 bg-white/10 rounded-3xl border border-white/20 shadow-lg"></div>
+        <div className="text-xl font-semibold text-white tracking-wide">SMARTVAHAN</div>
+        <div className="text-sm text-indigo-100">Dealer Certificate App</div>
       </div>
     </div>
   );

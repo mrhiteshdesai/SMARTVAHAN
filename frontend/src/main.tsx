@@ -6,6 +6,16 @@ import App from "./App";
 import "./index.css";
 import api from "./api/client";
 
+// Handle QR Code Legacy URL Redirection
+// Pattern: /{STATE}/{OEM}/{PRODUCT}/qr={VALUE}
+// We redirect this to /#/verify?url={FULL_URL} so HashRouter can handle it
+const path = window.location.pathname;
+if (path.includes("/qr=") && !path.includes("/verify")) {
+  const fullUrl = window.location.href;
+  // Redirect to base path with hash
+  window.location.replace(`/#/verify?url=${encodeURIComponent(fullUrl)}`);
+}
+
 function hexToRgb(hex: string) {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result

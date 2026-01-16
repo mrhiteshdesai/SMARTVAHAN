@@ -17,6 +17,7 @@ import MobileLogin from "./mobile/MobileLogin";
 import MobileHome from "./mobile/MobileHome";
 import MobileScan from "./mobile/MobileScan";
 import MobileForm from "./mobile/MobileForm";
+import PublicVerifyPage from "./pages/PublicVerifyPage";
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { isAuthenticated } = useAuth();
@@ -35,6 +36,7 @@ export default function App() {
   return (
     <AuthProvider>
       <Routes>
+        <Route path="/verify" element={<PublicVerifyPage />} />
         <Route path="/login" element={<Login />} />
         <Route
           path="/"

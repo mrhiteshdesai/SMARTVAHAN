@@ -9,6 +9,119 @@ import * as QRCode from 'qrcode';
 export class CertificatesService {
   constructor(private prisma: PrismaService) {}
 
+  async publicVerify(params: { url?: string; state?: string; oem?: string; product?: string; value?: string }) {
+    let qrState = params.state || null;
+    let qrOem = params.oem || null;
+    let qrProduct = params.product || null;
+    let qrValue = params.value || null;
+    if (params.url) {
+      let parsed: URL;
+      try {
+        parsed = new URL(params.url);
+      } catch {
+        throw new BadRequestException('Invalid QR Code Format: Not a valid URL');
+      }
+      const allowedDomains = ['smartvahan.com', 'www.smartvahan.com', 'smartvahan.net', 'www.smartvahan.net', 'localhost', '127.0.0.1'];
+      if (process.env.BASE_DOMAIN) allowedDomains.push(process.env.BASE_DOMAIN);
+      const isDomainValid = allowedDomains.some(d => parsed.hostname.includes(d));
+      if (!isDomainValid) throw new BadRequestException('Invalid QR Code: Unauthorized Domain');
+      const parts = parsed.pathname.split('/').filter(p => p.length > 0);
+      if (parts.length < 4) throw new BadRequestException('Invalid QR Code Format: URL structure mismatch');
+      const last = parts[parts.length - 1];
+      if (!last.startsWith('qr=')) throw new BadRequestException('Invalid QR Code Format: Missing qr param');
+      qrValue = last.split('=')[1];
+      qrProduct = parts[parts.length - 2];
+      qrOem = parts[parts.length - 3];
+      qrState = parts[parts.length - 4];
+    } else {
+      if (!qrState || !qrOem || !qrProduct || !qrValue) {
+        throw new BadRequestException('Invalid QR Code Format: Missing State/OEM/Product/Value');
+      }
+    }
+    const qrCode = await this.prisma.qRCode.findUnique({
+      where: { value: qrValue! },
+      include: { batch: { include: { oem: true, state: true, product: true } } }
+    });
+    if (!qrCode) throw new BadRequestException('Invalid QR Code');
+    if (qrCode.batch.state.code !== qrState || qrCode.batch.oem.code !== qrOem || qrCode.batch.product.code !== qrProduct) {
+      throw new BadRequestException('Security Alert: QR metadata mismatch');
+    }
+    if (qrCode.status === 0) {
+      return {
+        success: true,
+        status: 'UNUSED',
+        data: {
+          id: qrCode.id,
+          serialNumber: qrCode.serialNumber,
+          value: qrCode.value,
+          stateCode: qrCode.batch.state.code,
+          oemCode: qrCode.batch.oem.code,
+          productCode: qrCode.batch.product.code,
+          batchId: qrCode.batch.batchId
+        }
+      };
+    }
+    const certificate = await this.prisma.certificate.findUnique({
+      where: { qrCodeId: qrCode.id }
+    });
+    if (!certificate) {
+      return {
+        success: true,
+        status: 'UNUSED',
+        data: {
+          id: qrCode.id,
+          serialNumber: qrCode.serialNumber,
+          value: qrCode.value,
+          stateCode: qrCode.batch.state.code,
+          oemCode: qrCode.batch.oem.code,
+          productCode: qrCode.batch.product.code,
+          batchId: qrCode.batch.batchId
+        }
+      };
+    }
+    let pdfUrl: string | null = null;
+    if (certificate.pdfPath) {
+      const idx = certificate.pdfPath.indexOf('uploads');
+      if (idx >= 0) {
+        pdfUrl = '/' + certificate.pdfPath.substring(idx).replace(/\\/g, '/');
+      }
+    }
+    return {
+      success: true,
+      status: 'VALID',
+      data: {
+        certificateNumber: certificate.certificateNumber,
+        vehicleMake: certificate.vehicleMake,
+        vehicleCategory: certificate.vehicleCategory,
+        fuelType: certificate.fuelType,
+        passingRto: certificate.passingRto,
+        registrationRto: certificate.registrationRto,
+        series: certificate.series,
+        manufacturingYear: certificate.manufacturingYear,
+        chassisNumber: certificate.chassisNumber,
+        engineNumber: certificate.engineNumber,
+        ownerName: certificate.ownerName,
+        ownerContact: certificate.ownerContact,
+        photoFrontLeft: certificate.photoFrontLeft,
+        photoBackRight: certificate.photoBackRight,
+        photoNumberPlate: certificate.photoNumberPlate,
+        photoRc: certificate.photoRc,
+        pdfUrl,
+        vehicleNumber: certificate.vehicleNumber,
+        generatedAt: certificate.generatedAt,
+        locationText: certificate.locationText,
+        qr: {
+          serialNumber: qrCode.serialNumber,
+          value: qrCode.value,
+          stateCode: qrCode.batch.state.code,
+          oemCode: qrCode.batch.oem.code,
+          productCode: qrCode.batch.product.code,
+          batchId: qrCode.batch.batchId
+        }
+      }
+    };
+  }
+
   async validateQr(qrContent: string, user: any) {
     // Fetch full user/dealer details for authorization
     let dbUser: any = null;
@@ -563,11 +676,11 @@ export class CertificatesService {
               const logo = data.qrCode.batch.oem.logo;
               const fsPath = resolveLogoPath(logo);
               if (fsPath) {
-                   doc.image(fsPath, startX + 10, currentY + 10, { fit: [140, 140], align: 'center', valign: 'center' });
+                   doc.image(fsPath, startX + 10, currentY + 25, { width: 60, align: 'center', valign: 'center' });
               } else {
                   let logoData = logo;
                   if (logoData.startsWith('data:')) logoData = logoData.split(',')[1];
-                  doc.image(Buffer.from(logoData, 'base64'), startX + 10, currentY + 10, { fit: [140, 140], align: 'center', valign: 'center' });
+                  doc.image(Buffer.from(logoData, 'base64'), startX + 10, currentY + 25, { width: 60, align: 'center', valign: 'center' });
               }
           } catch (e) {
                console.error("OEM Logo Error", e);
@@ -589,11 +702,11 @@ export class CertificatesService {
           try {
               const fsPath = resolveLogoPath(data.systemLogo);
               if (fsPath) {
-                doc.image(fsPath, startX + contentWidth - 120, currentY + 20, { width: 90, align: 'center', valign: 'center' });
+                doc.image(fsPath, startX + contentWidth - 120, currentY + 25, { width: 60, align: 'center', valign: 'center' });
               } else {
                 let sysLogoData = data.systemLogo;
                 if (sysLogoData.startsWith('data:')) sysLogoData = sysLogoData.split(',')[1];
-                doc.image(Buffer.from(sysLogoData, 'base64'), startX + contentWidth - 120, currentY + 20, { width: 90, align: 'center', valign: 'center' });
+                doc.image(Buffer.from(sysLogoData, 'base64'), startX + contentWidth - 120, currentY + 25, { width: 60, align: 'center', valign: 'center' });
               }
           } catch (e) {
                console.error("System Logo Error", e);

@@ -53,13 +53,30 @@ export default function MobileScan() {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-white p-4">
-      <div className="text-lg font-bold mb-2">Scan QR</div>
-      <div id="mobile-qr-reader" className="w-full h-[320px] bg-gray-100 rounded-md" />
-      {error && <div className="mt-3 text-red-600 text-sm">{error}</div>}
-      <button onClick={() => navigate("/app/home")} className="mt-6 w-full border rounded-md py-2">
-        Back
-      </button>
+    <div className="min-h-screen bg-gradient-to-b from-indigo-600 to-slate-900 flex flex-col">
+      <header className="flex items-center justify-between px-4 pt-10 pb-4">
+        <button
+          onClick={() => navigate("/app/home")}
+          className="text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white border border-white/20 active:scale-[0.97]"
+        >
+          Back
+        </button>
+        <div className="flex flex-col items-center">
+          <div className="text-xs tracking-[0.25em] text-indigo-100">SMARTVAHAN</div>
+          <div className="text-sm font-semibold text-white">Scan QR</div>
+        </div>
+        <div className="w-[90px]" />
+      </header>
+      <main className="flex-1 px-4 pb-5">
+        <div className="bg-white rounded-2xl shadow-lg p-4">
+          <div className="text-sm font-semibold text-gray-900 mb-3">Align QR inside the frame</div>
+          <div
+            id="mobile-qr-reader"
+            className="w-full h-[320px] bg-slate-900/95 rounded-2xl overflow-hidden"
+          />
+          {error && <div className="mt-3 text-red-600 text-xs">{error}</div>}
+        </div>
+      </main>
     </div>
   );
 }

@@ -12,7 +12,7 @@ export class StatsController {
 
   @Get('dashboard')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN', 'STATE_ADMIN', 'OEM_ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN')
   async getDashboardStats(
     @Query('stateCode') stateCode?: string,
     @Query('oemCode') oemCode?: string,

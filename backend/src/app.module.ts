@@ -19,6 +19,7 @@ import { VehicleCategoriesModule } from "./vehicle-categories/vehicle-categories
 import { VehicleManufacturersModule } from "./vehicle-manufacturers/vehicle-manufacturers.module";
 import { SettingsModule } from "./settings/settings.module";
 import { StatsModule } from "./stats/stats.module";
+import { S3Module } from "./s3/s3.module";
 import { AppController } from "./app.controller";
 
 @Module({
@@ -28,6 +29,7 @@ import { AppController } from "./app.controller";
       rootPath: resolve(process.env.UPLOADS_DIR ?? join(__dirname, '..', '..', 'uploads')),
       serveRoot: '/uploads',
     }),
+    S3Module,
     AuthModule,
     UsersModule,
     StatesModule,

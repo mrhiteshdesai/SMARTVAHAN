@@ -10,6 +10,7 @@ import DealersPage from "./pages/dealers/DealersPage";
 import SystemUsersPage from "./pages/users/SystemUsersPage";
 import SettingsPage from "./pages/SettingsPage";
 import { QRGenerationPage } from "./pages/qr/QRGenerationPage";
+import ActivateQrPage from "./pages/ActivateQrPage";
 import { CertificateGeneratorPage } from "./pages/CertificateGeneratorPage";
 import SearchQrPage from "./pages/SearchQrPage";
 import SearchCertPage from "./pages/SearchCertPage";
@@ -122,6 +123,18 @@ export default function App() {
               <AppShell>
                 <ErrorBoundary>
                   <QRGenerationPage />
+                </ErrorBoundary>
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/activate-qr"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <ErrorBoundary>
+                  <ActivateQrPage />
                 </ErrorBoundary>
               </AppShell>
             </ProtectedRoute>

@@ -53,6 +53,8 @@ export class OemsController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   @UseInterceptors(FileInterceptor('logo', {
     storage: diskStorage({
       destination: './uploads/oems',
@@ -80,6 +82,8 @@ export class OemsController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   remove(@Param('id') id: string) {
     return this.oemsService.remove(id);
   }

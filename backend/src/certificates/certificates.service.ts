@@ -1,5 +1,7 @@
-import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException, UnauthorizedException, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma.service';
+import { S3Service } from '../s3/s3.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as PDFDocument from 'pdfkit';
@@ -7,7 +9,68 @@ import * as QRCode from 'qrcode';
 
 @Injectable()
 export class CertificatesService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(CertificatesService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private s3Service: S3Service
+  ) {}
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async handleImageCleanup() {
+    // 1. Define threshold (10 minutes ago)
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+    // 2. Find certificates that have not been cleaned up yet
+    // We use a pragmatic check: if photoFrontLeft is not 'DELETED'
+    const certificates = await this.prisma.certificate.findMany({
+      where: {
+        generatedAt: { lt: tenMinutesAgo },
+        photoFrontLeft: { not: 'DELETED' }
+      },
+      take: 50 // Process in batches
+    });
+
+    if (certificates.length === 0) return;
+
+    this.logger.log(`[Image Cleanup] Found ${certificates.length} certificates to clean up.`);
+
+    for (const cert of certificates) {
+      const filesToDelete = [
+        cert.photoFrontLeft,
+        cert.photoBackRight,
+        cert.photoNumberPlate,
+        cert.photoRc
+      ];
+
+      for (const filepath of filesToDelete) {
+        // Only delete if it looks like a valid path (not 'DELETED') and exists
+        if (filepath && filepath !== 'DELETED') {
+           try {
+             // Handle both relative and absolute paths if needed, but usually they are stored relative to root or absolute
+             const fullPath = filepath.startsWith('/') ? path.join(process.cwd(), filepath) : path.resolve(filepath);
+             
+             if (fs.existsSync(fullPath)) {
+               fs.unlinkSync(fullPath);
+             }
+           } catch (err) {
+             this.logger.error(`[Image Cleanup] Failed to delete ${filepath}:`, err);
+           }
+        }
+      }
+
+      // 3. Update DB to mark as DELETED
+      await this.prisma.certificate.update({
+        where: { id: cert.id },
+        data: {
+          photoFrontLeft: 'DELETED',
+          photoBackRight: 'DELETED',
+          photoNumberPlate: 'DELETED',
+          photoRc: 'DELETED'
+        }
+      });
+    }
+  }
 
   async publicVerify(params: { url?: string; state?: string; oem?: string; product?: string; value?: string }) {
     let qrState = params.state || null;
@@ -81,9 +144,13 @@ export class CertificatesService {
     }
     let pdfUrl: string | null = null;
     if (certificate.pdfPath) {
-      const idx = certificate.pdfPath.indexOf('uploads');
-      if (idx >= 0) {
-        pdfUrl = '/' + certificate.pdfPath.substring(idx).replace(/\\/g, '/');
+      if (certificate.pdfPath.startsWith('http')) {
+        pdfUrl = certificate.pdfPath;
+      } else {
+        const idx = certificate.pdfPath.indexOf('uploads');
+        if (idx >= 0) {
+          pdfUrl = '/' + certificate.pdfPath.substring(idx).replace(/\\/g, '/');
+        }
       }
     }
     return {
@@ -462,14 +529,19 @@ export class CertificatesService {
       data: certificates.map((c) => {
         let pdfUrl: string | null = null;
         if (c.pdfPath) {
-          const idx = c.pdfPath.indexOf('uploads');
-          if (idx >= 0) {
-            pdfUrl = '/' + c.pdfPath.substring(idx).replace(/\\/g, '/');
+          if (c.pdfPath.startsWith('http')) {
+            pdfUrl = c.pdfPath;
+          } else {
+            const idx = c.pdfPath.indexOf('uploads');
+            if (idx >= 0) {
+              pdfUrl = '/' + c.pdfPath.substring(idx).replace(/\\/g, '/');
+            }
           }
         }
         return {
           id: c.id,
           generationDate: c.generatedAt,
+          state: c.qrCode.batch.state?.name || c.qrCode.batch.stateCode,
           oem: c.qrCode.batch.oem?.name || c.qrCode.batch.oemCode,
           product: c.qrCode.batch.product?.name || c.qrCode.batch.productCode,
           qrSerial: c.qrCode.serialNumber,
@@ -927,6 +999,22 @@ export class CertificatesService {
                 : ''
         });
 
+        // S3 Upload Logic
+        let finalPdfPath = pdfPath;
+        const s3Key = `certificates/${stateCode}/${oemCode}/${productCode}/${pdfFilename}`;
+        const s3Url = await this.s3Service.uploadFile(pdfPath, s3Key);
+        if (s3Url) {
+            finalPdfPath = s3Url;
+            // Optionally delete local file if S3 upload successful to save space
+            try {
+                if (fs.existsSync(pdfPath)) {
+                    fs.unlinkSync(pdfPath);
+                }
+            } catch (e) {
+                console.error("Failed to delete local PDF after S3 upload", e);
+            }
+        }
+
         // 6. Save to DB
         const vehicleNumber = `${vehicleDetails.registrationRto}${vehicleDetails.series}`;
         
@@ -1280,4 +1368,6 @@ export class CertificatesService {
       stream.on('error', reject);
     });
   }
+
+
 }

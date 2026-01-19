@@ -957,7 +957,6 @@ class _FormScreenState extends State<FormScreen> {
   String? _lookupError;
   bool _locationRequested = false;
   String? _locationError;
-  Timer? _saveTimer;
   bool _initializing = false;
 
   final Map<String, String?> _photos = {
@@ -995,7 +994,6 @@ class _FormScreenState extends State<FormScreen> {
 
           _qrArgs = args != null ? Map<String, dynamic>.from(args) : {};
           await _saveActiveSession();
-          await _restoreDraft();
 
           if (!mounted) return;
           await _checkLostData();
@@ -1009,27 +1007,6 @@ class _FormScreenState extends State<FormScreen> {
           }
         }
       }
-    });
-
-    _vehicleMakeController.addListener(_onFieldChanged);
-    _vehicleCategoryController.addListener(_onFieldChanged);
-    _fuelTypeController.addListener(_onFieldChanged);
-    _passingRtoController.addListener(_onFieldChanged);
-    _registrationRtoController.addListener(_onFieldChanged);
-    _seriesController.addListener(_onFieldChanged);
-    _manufacturingYearController.addListener(_onFieldChanged);
-    _chassisNoController.addListener(_onFieldChanged);
-    _engineNoController.addListener(_onFieldChanged);
-    _ownerNameController.addListener(_onFieldChanged);
-    _ownerContactController.addListener(_onFieldChanged);
-    _locationController.addListener(_onFieldChanged);
-  }
-
-  void _onFieldChanged() {
-    if (_initializing) return;
-    if (_saveTimer?.isActive ?? false) _saveTimer!.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 500), () {
-      _saveDraft();
     });
   }
 
@@ -1070,72 +1047,12 @@ class _FormScreenState extends State<FormScreen> {
               setState(() {
                 _photos[key] = dataUrl;
               });
-              _saveDraft();
             }
           }
           await prefs.remove('pending_photo_key');
         }
       }
     } catch (_) {}
-  }
-
-  Future<void> _saveDraft() async {
-    if (_initializing) return;
-    final qrValue = _qrArgs?['value']?.toString();
-    if (qrValue == null) return;
-    await LookupService.saveDraft(qrValue, {
-      'vehicleMake': _vehicleMakeController.text,
-      'vehicleCategory': _vehicleCategoryController.text,
-      'fuelType': _fuelTypeController.text,
-      'passingRto': _passingRtoController.text,
-      'registrationRto': _registrationRtoController.text,
-      'series': _seriesController.text,
-      'manufacturingYear': _manufacturingYearController.text,
-      'chassisNo': _chassisNoController.text,
-      'engineNo': _engineNoController.text,
-      'ownerName': _ownerNameController.text,
-      'ownerContact': _ownerContactController.text,
-      'location': _locationController.text,
-      'photos': Map<String, String?>.from(_photos),
-    });
-  }
-
-  Future<void> _restoreDraft() async {
-    final qrValue = _qrArgs?['value']?.toString();
-    if (qrValue == null) return;
-    final draft = await LookupService.getDraft(qrValue);
-    if (!mounted) return;
-    if (draft != null) {
-      setState(() {
-        if (draft['vehicleMake'] != null)
-          _vehicleMakeController.text = draft['vehicleMake'];
-        if (draft['vehicleCategory'] != null)
-          _vehicleCategoryController.text = draft['vehicleCategory'];
-        if (draft['fuelType'] != null)
-          _fuelTypeController.text = draft['fuelType'];
-        if (draft['passingRto'] != null)
-          _passingRtoController.text = draft['passingRto'];
-        if (draft['registrationRto'] != null)
-          _registrationRtoController.text = draft['registrationRto'];
-        if (draft['series'] != null) _seriesController.text = draft['series'];
-        if (draft['manufacturingYear'] != null)
-          _manufacturingYearController.text = draft['manufacturingYear'];
-        if (draft['chassisNo'] != null)
-          _chassisNoController.text = draft['chassisNo'];
-        if (draft['engineNo'] != null)
-          _engineNoController.text = draft['engineNo'];
-        if (draft['ownerName'] != null)
-          _ownerNameController.text = draft['ownerName'];
-        if (draft['ownerContact'] != null)
-          _ownerContactController.text = draft['ownerContact'];
-        if (draft['location'] != null)
-          _locationController.text = draft['location'];
-        if (draft['photos'] != null) {
-          final savedPhotos = Map<String, String?>.from(draft['photos']);
-          _photos.addAll(savedPhotos);
-        }
-      });
-    }
   }
 
   Future<void> _autoFillLocation() async {
@@ -1285,7 +1202,6 @@ class _FormScreenState extends State<FormScreen> {
 
   @override
   void dispose() {
-    _saveTimer?.cancel();
     _vehicleMakeController.dispose();
     _vehicleCategoryController.dispose();
     _fuelTypeController.dispose();
@@ -1307,6 +1223,8 @@ class _FormScreenState extends State<FormScreen> {
 
     final XFile? file = await _imagePicker.pickImage(
       source: ImageSource.camera,
+      maxWidth: 480,
+      imageQuality: 80,
     );
 
     if (file == null) {
@@ -1335,7 +1253,6 @@ class _FormScreenState extends State<FormScreen> {
     setState(() {
       _photos[key] = dataUrl;
     });
-    _saveDraft();
   }
 
   Future<void> _submitForm() async {
@@ -2252,6 +2169,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   DateTime? _toDate;
   final TextEditingController _searchController = TextEditingController();
   bool _loading = false;
+  bool _hasLoadedOnce = false;
   String? _error;
   List<_HistoryItem> _items = [];
   List<_HistoryItem> _filteredItems = [];
@@ -2267,7 +2185,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _filteredItems = _filterItems(_items);
       });
     });
-    _loadHistory();
   }
 
   @override
@@ -2343,6 +2260,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _hasLoadedOnce = true;
     });
     try {
       final params = <String, dynamic>{};
@@ -2541,10 +2459,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _filteredItems.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
-                      'No certificates found.',
-                      style: TextStyle(fontSize: 14),
+                      _hasLoadedOnce
+                          ? 'No certificates found.'
+                          : 'Select a date range and click Apply.',
+                      style: const TextStyle(fontSize: 14),
                     ),
                   )
                 : ListView.builder(

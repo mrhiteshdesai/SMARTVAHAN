@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 type DownloadRow = {
   id: string;
   generationDate: string;
+  state: string | null;
   oem: string | null;
   product: string | null;
   qrSerial: number;
@@ -68,6 +69,7 @@ export default function DownloadPage() {
     if (!rows.length) return;
     const data = rows.map((r) => ({
       "Generation Date": new Date(r.generationDate).toLocaleString(),
+      State: r.state || "",
       OEM: r.oem || "",
       Product: r.product || "",
       "QR Serial": r.qrSerial,
@@ -212,6 +214,7 @@ export default function DownloadPage() {
                   <td className="px-4 py-2">
                     {new Date(row.generationDate).toLocaleString()}
                   </td>
+                  <td className="px-4 py-2">{row.state || "-"}</td>
                   <td className="px-4 py-2">{row.oem || "-"}</td>
                   <td className="px-4 py-2">{row.product || "-"}</td>
                   <td className="px-4 py-2">{row.qrSerial}</td>

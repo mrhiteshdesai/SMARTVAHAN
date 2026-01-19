@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { S3Service } from '../s3/s3.service';
 import * as PDFDocument from 'pdfkit';
 import * as QRCode from 'qrcode';
 import * as fs from 'fs';
@@ -10,7 +11,10 @@ import * as crypto from 'crypto';
 export class QrService {
   private readonly logger = new Logger(QrService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private s3Service: S3Service
+  ) {}
 
   async generateBatch(data: any, userId: string, baseUrl: string) {
     try {
@@ -241,6 +245,23 @@ export class QrService {
           writeStream.on('error', reject);
       });
 
+      // S3 Upload Logic
+      let finalFilePath = filePath;
+      const s3Key = `qr-batches/${stateCode}/${oemCode}/${pdfName}`;
+      const s3Url = await this.s3Service.uploadFile(filePath, s3Key);
+      
+      if (s3Url) {
+          finalFilePath = s3Url;
+          // Delete local file to save space
+          try {
+              if (fs.existsSync(filePath)) {
+                  fs.unlinkSync(filePath);
+              }
+          } catch (e) {
+              this.logger.error("Failed to delete local QR Batch PDF after S3 upload", e);
+          }
+      }
+
       // Update Batch Record with Completion Details
       await this.prisma.batch.update({
           where: { id: dbId },
@@ -248,7 +269,7 @@ export class QrService {
               status: 'COMPLETED',
               startSerial: startSerialStr,
               endSerial: endSerialStr,
-              filePath: filePath,
+              filePath: finalFilePath,
               qrCodes: {
                   create: qrRecords
               }
@@ -271,14 +292,70 @@ export class QrService {
           throw new BadRequestException('Batch is not ready for download');
       }
 
+      if (batch.filePath && batch.filePath.startsWith('http')) {
+           return {
+               path: batch.filePath,
+               filename: `${batchId}.pdf`,
+               isUrl: true
+           };
+      }
+
       if (!batch.filePath || !fs.existsSync(batch.filePath)) {
           throw new NotFoundException('File not found on server');
       }
       
       return {
           path: batch.filePath,
-          filename: path.basename(batch.filePath)
+          filename: path.basename(batch.filePath),
+          isUrl: false
       };
+  }
+
+  async reactivateQr(data: { stateCode: string; oemCode: string; serialNumber: number }) {
+    const { stateCode, oemCode, serialNumber } = data;
+    
+    // 1. Find the QR Code by Serial + State + OEM
+    // The serial number is unique within the context of a Batch, 
+    // but the global uniqueness comes from sequence logic.
+    // However, here we just want to find a QR code that matches these 3 criteria.
+    const qr = await this.prisma.qRCode.findFirst({
+      where: { 
+        serialNumber: serialNumber,
+        batch: {
+            stateCode: stateCode,
+            oemCode: oemCode
+        }
+      },
+      include: {
+        batch: true,
+        certificate: true
+      }
+    });
+
+    if (!qr) {
+      throw new NotFoundException(`QR Code with Serial '${serialNumber}' not found for State '${stateCode}' and OEM '${oemCode}'`);
+    }
+
+    // 2. Perform Reactivation Transaction
+    // - Delete Certificate if exists
+    // - Reset QR Status to 0
+    
+    await this.prisma.$transaction(async (tx) => {
+        if (qr.certificate) {
+            await tx.certificate.delete({
+                where: { id: qr.certificate.id }
+            });
+        }
+        
+        await tx.qRCode.update({
+            where: { id: qr.id },
+            data: { 
+                status: 0,
+            }
+        });
+    });
+
+    return { success: true, message: 'QR Code reactivated successfully' };
   }
 
   private generateBatchId() {

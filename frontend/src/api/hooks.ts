@@ -406,6 +406,8 @@ export type DashboardStats = {
     };
     row4: Record<string, { issued: number; used: number }>;
     barData: Array<{ date: string; [key: string]: any }>;
+    oemBarData: Array<{ date: string; [key: string]: any }>;
+    oemPerformance: Array<{ oem: string; count: number }>;
     rtoDensity: Array<{ rto: string; count: number }>;
     heatmapData: Array<{ lat: number; lng: number; weight: number }>;
 };

@@ -167,13 +167,15 @@ export const QRGenerationPage = () => {
             <h1 className="text-2xl font-bold text-gray-900">QR Code Generation</h1>
             <p className="text-gray-500 text-sm mt-1">Manage and generate QR code batches</p>
         </div>
-        <button
-          onClick={() => setIsGenerateModalOpen(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium shadow-sm"
-        >
-          <Plus size={18} />
-          Generate QR Code
-        </button>
+        {user?.role !== 'ADMIN' && (
+          <button
+            onClick={() => setIsGenerateModalOpen(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium shadow-sm"
+          >
+            <Plus size={18} />
+            Generate QR Code
+          </button>
+        )}
       </div>
 
       {/* Search and Filters */}
@@ -271,8 +273,9 @@ export const QRGenerationPage = () => {
                             {batch.status || 'COMPLETED'}
                         </span>
                     </td>
+                    {user?.role !== 'ADMIN' && (
                     <td className="px-6 py-4">
-                        {batch.status === 'COMPLETED' || !batch.status ? (
+                        {(batch.status === 'COMPLETED' || !batch.status) ? (
                             <button 
                                 onClick={() => handleDownload(batch)}
                                 className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-xs font-medium border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded bg-blue-50 hover:bg-blue-100 transition-all"
@@ -288,6 +291,7 @@ export const QRGenerationPage = () => {
                             </div>
                         )}
                     </td>
+                    )}
                   </tr>
                 ))
               )}

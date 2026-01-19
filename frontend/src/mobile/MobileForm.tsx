@@ -194,6 +194,7 @@ export default function MobileForm() {
       const res = await api.post("/certificates/create", payload);
       const data = res.data;
       if (data?.success && data?.pdfUrl) {
+        sessionStorage.removeItem("mobile_form_qr");
         const url = data.pdfUrl.startsWith("http") ? data.pdfUrl : data.pdfUrl;
         window.open(url, "_blank");
         navigate("/app/home", { replace: true });

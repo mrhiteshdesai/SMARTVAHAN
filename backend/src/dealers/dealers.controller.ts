@@ -1,31 +1,41 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
 import { DealersService } from './dealers.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { UserRole } from '@prisma/client';
 
 @Controller('api/dealers')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class DealersController {
   constructor(private readonly dealersService: DealersService) {}
 
   @Post()
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN)
   create(@Body() createDealerDto: any) {
     return this.dealersService.create(createDealerDto);
   }
 
   @Get()
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN)
   findAll() {
     return this.dealersService.findAll();
   }
 
   @Get(':id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN)
   findOne(@Param('id') id: string) {
     return this.dealersService.findOne(id);
   }
 
   @Patch(':id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN)
   update(@Param('id') id: string, @Body() updateDealerDto: any) {
     return this.dealersService.update(id, updateDealerDto);
   }
 
   @Delete(':id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   remove(@Param('id') id: string) {
     return this.dealersService.remove(id);
   }

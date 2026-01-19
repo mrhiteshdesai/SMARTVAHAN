@@ -167,7 +167,10 @@ function DashboardContent() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Certificates Today" value={stats.row2.today} icon={<LayoutDashboard className="w-5 h-5 text-green-500" />} />
         <StatCard title="Certificates Yesterday" value={stats.row2.yesterday} icon={<LayoutDashboard className="w-5 h-5 text-gray-500" />} />
-        <StatCard title="Certificates This Week" value={stats.row2.thisWeek} icon={<LayoutDashboard className="w-5 h-5 text-purple-500" />} />
+        {/* Placeholder for future stat */}
+        <div className="bg-gray-50 rounded-xl border border-dashed border-gray-300 p-6 flex items-center justify-center text-gray-400">
+            <span className="text-sm font-medium">Space Available</span>
+        </div>
         <div className="bg-gray-50 rounded-xl border border-dashed border-gray-300 p-6 flex items-center justify-center text-gray-400">
             <span className="text-sm font-medium">Space Available</span>
         </div>
@@ -205,11 +208,11 @@ function DashboardContent() {
         ))}
       </div>
 
-      {/* Row 5: Charts (Bar Chart & RTO Table) */}
+      {/* Row 5: Charts (Product Trends & OEM Trends) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left: Bar Chart */}
+        {/* Left: Product Bar Chart */}
         <div className="bg-white p-6 rounded-xl border shadow-sm flex flex-col h-[400px]">
-            <h3 className="text-lg font-semibold mb-6">Certificate Trends (Last 7 Days)</h3>
+            <h3 className="text-lg font-semibold mb-6">Certificate Trends (Product)</h3>
             <div className="flex-1 min-h-0">
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={stats.barData}>
@@ -227,6 +230,61 @@ function DashboardContent() {
             </div>
         </div>
         
+        {/* Right: OEM Bar Chart */}
+        <div className="bg-white p-6 rounded-xl border shadow-sm flex flex-col h-[400px]">
+            <h3 className="text-lg font-semibold mb-6">Certificate Trends (OEM)</h3>
+            <div className="flex-1 min-h-0">
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stats.oemBarData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="date" tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { weekday: 'short' })} />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        {(() => {
+                            const keys = new Set<string>();
+                            stats.oemBarData?.forEach(d => Object.keys(d).forEach(k => k !== 'date' && keys.add(k)));
+                            const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+                            return Array.from(keys).map((key, index) => (
+                                <Bar key={key} dataKey={key} stackId="a" fill={colors[index % colors.length]} />
+                            ));
+                        })()}
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
+      </div>
+
+      {/* Row 6: Tables (Top OEMs & Top RTOs) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+         {/* Left: Top Performing OEMs */}
+         <div className="bg-white p-6 rounded-xl border shadow-sm flex flex-col h-[400px]">
+            <h3 className="text-lg font-semibold mb-4">Top Performing OEMs</h3>
+            <div className="overflow-y-auto flex-1">
+                <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                        <tr>
+                            <th className="px-4 py-3">OEM</th>
+                            <th className="px-4 py-3 text-right">Certs</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {stats.oemPerformance?.slice(0, 10).map((r: any, i: number) => (
+                            <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
+                                <td className="px-4 py-3 font-medium">{r.name || r.code || 'N/A'}</td>
+                                <td className="px-4 py-3 text-right">{r.count}</td>
+                            </tr>
+                        ))}
+                        {(!stats.oemPerformance || stats.oemPerformance.length === 0) && (
+                            <tr>
+                                <td colSpan={2} className="px-4 py-3 text-center text-gray-500">No data available</td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         {/* Right: Top 10 RTOs Table */}
         <div className="bg-white p-6 rounded-xl border shadow-sm flex flex-col h-[400px]">
             <h3 className="text-lg font-semibold mb-4">Top 10 RTOs</h3>
@@ -256,7 +314,7 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* Row 6: Heatmap (Full Width) */}
+      {/* Row 7: Heatmap (Full Width) */}
       <div className="h-[500px] bg-white p-6 rounded-xl border shadow-sm flex flex-col">
           <h3 className="text-lg font-semibold mb-4">Certificate Generation Heatmap</h3>
           <div className="flex-1 rounded-lg overflow-hidden relative">

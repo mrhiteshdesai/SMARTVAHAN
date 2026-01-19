@@ -73,24 +73,19 @@ export class StatsService {
         }
     });
 
-    // Get Monday of current week
-    const day = today.getDay();
-    const diff = today.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-    const startOfWeek = new Date(today.setDate(diff));
-    startOfWeek.setHours(0,0,0,0);
-    
-    // Reset today for correct bar chart logic later if mutated
+    // Get Sunday of current week (Start of Week)
     const todayForWeek = new Date();
     todayForWeek.setHours(0,0,0,0);
-    const startOfWeekActual = new Date(todayForWeek);
     const dayOfWeek = todayForWeek.getDay(); // 0 (Sun) to 6 (Sat)
-    const diff2 = todayForWeek.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-    startOfWeekActual.setDate(diff2);
+    const diff = todayForWeek.getDate() - dayOfWeek; // Adjust to Sunday
+    
+    const startOfWeek = new Date(todayForWeek);
+    startOfWeek.setDate(diff);
 
     const weekCertsCount = await this.prisma.certificate.count({
         where: {
             generatedAt: {
-                gte: startOfWeekActual
+                gte: startOfWeek
             },
             qrCode: { batch: whereBatch }
         }
@@ -163,9 +158,14 @@ export class StatsService {
 
     // --- Charts: Bar Graph (Last 7 Days + Today) ---
     const barData: any[] = [];
+    const oemBarData: any[] = []; // New: OEM Bar Data
     const todayRef = new Date();
     todayRef.setHours(0,0,0,0);
     
+    // Fetch all OEMs for keys
+    const allOems = await this.prisma.oEM.findMany({ select: { code: true } });
+    const oemCodes = allOems.map(o => o.code);
+
     for (let i = 6; i >= 0; i--) {
         const d = new Date(todayRef);
         d.setDate(d.getDate() - i);
@@ -183,14 +183,66 @@ export class StatsService {
             include: { qrCode: { include: { batch: true } } }
         });
 
+        // Product Bar Data
         const dayStat: any = { date: d.toISOString().split('T')[0] };
         products.forEach(p => dayStat[p] = 0);
+        
+        // OEM Bar Data
+        const oemDayStat: any = { date: d.toISOString().split('T')[0] };
+        oemCodes.forEach(code => oemDayStat[code] = 0);
+
         dayCerts.forEach(c => {
+            // Product
             const p = c.qrCode.batch.productCode;
             if (dayStat[p] !== undefined) dayStat[p]++;
+
+            // OEM
+            const o = c.qrCode.batch.oemCode;
+            // Initialize if not present (dynamic OEMs)
+            if (oemDayStat[o] === undefined) oemDayStat[o] = 0;
+            oemDayStat[o]++;
         });
+        
         barData.push(dayStat);
+        oemBarData.push(oemDayStat);
     }
+
+    // --- Top Performing OEMs (Based on filtered period) ---
+    // Aggregate certificates by OEM Code
+    const certsForOemPerf = await this.prisma.certificate.findMany({
+        where: {
+            ...dateFilter,
+            qrCode: { batch: whereBatch }
+        },
+        select: {
+            qrCode: {
+                select: {
+                    batch: {
+                        select: { oemCode: true }
+                    }
+                }
+            }
+        }
+    });
+
+    const oemPerfMap = new Map<string, number>();
+    certsForOemPerf.forEach(c => {
+        const code = c.qrCode.batch.oemCode;
+        oemPerfMap.set(code, (oemPerfMap.get(code) || 0) + 1);
+    });
+
+    // Fetch OEM names for display
+    const usedOemCodes = Array.from(oemPerfMap.keys());
+    const usedOems = await this.prisma.oEM.findMany({
+        where: { code: { in: usedOemCodes } },
+        select: { code: true, name: true }
+    });
+
+    const oemPerformance = usedOems.map(oem => ({
+        name: oem.name,
+        code: oem.code,
+        count: oemPerfMap.get(oem.code) || 0
+    })).sort((a, b) => b.count - a.count); // Sort descending
 
     // --- Charts: Heatmap (Density by RTO) ---
     const rtoGroups = await this.prisma.certificate.groupBy({
@@ -271,6 +323,6 @@ export class StatsService {
         };
     });
 
-    return { row1, row2, row3, row4, barData, rtoDensity, heatmapData };
+    return { row1, row2, row3, row4, barData, oemBarData, oemPerformance, rtoDensity, heatmapData };
   }
 }

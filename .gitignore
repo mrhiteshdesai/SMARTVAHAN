@@ -37,3 +37,6 @@ logs/
 # Environment files (root)
 .env
 .env.*
+
+# Backups
+_backups/

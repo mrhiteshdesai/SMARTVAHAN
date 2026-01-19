@@ -4,7 +4,7 @@ import api from "../api/client";
 type User = {
   id: string;
   name: string;
-  role: "SUPER_ADMIN" | "STATE_ADMIN" | "OEM_ADMIN" | "DEALER_USER";
+  role: "SUPER_ADMIN" | "STATE_ADMIN" | "OEM_ADMIN" | "DEALER_USER" | "ADMIN";
   phone: string;
 };
 

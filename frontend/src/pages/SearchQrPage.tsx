@@ -75,8 +75,9 @@ export default function SearchQrPage() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    canvas.width = 250;
-    canvas.height = 380;
+    // Double dimensions
+    canvas.width = 500;
+    canvas.height = 760;
 
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -85,20 +86,29 @@ export default function SearchQrPage() {
 
     ctx.fillStyle = "#000000";
     ctx.textAlign = "center";
-    ctx.font = "bold 18px Arial";
-    ctx.fillText(header, canvas.width / 2, 60);
+    // Scale font 2x (18px -> 36px)
+    ctx.font = "bold 36px Arial";
+    ctx.fillText(header, canvas.width / 2, 120);
 
-    const badgeWidth = 70;
-    const badgeHeight = 22;
-    const badgeX = canvas.width - badgeWidth - 10;
-    const badgeY = 10;
+    // Badge logic with padding
+    const badgeText = "REPLACEMENT";
+    ctx.font = "bold 20px Arial"; // Scale font 2x (10px -> 20px)
+    const textMetrics = ctx.measureText(badgeText);
+    const textWidth = textMetrics.width;
+    
+    const paddingX = 20; // Padding on left and right
+    const badgeWidth = textWidth + (paddingX * 2);
+    const badgeHeight = 44; // Scale height 2x (22px -> 44px)
+    const badgeX = canvas.width - badgeWidth - 20; // 20px margin from right
+    const badgeY = 20; // 20px margin from top
 
     ctx.fillStyle = "#dc2626";
     ctx.fillRect(badgeX, badgeY, badgeWidth, badgeHeight);
     ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 10px Arial";
     ctx.textAlign = "center";
-    ctx.fillText("REPLACEMENT", badgeX + badgeWidth / 2, badgeY + 14);
+    ctx.textBaseline = "middle";
+    ctx.fillText(badgeText, badgeX + badgeWidth / 2, badgeY + (badgeHeight / 2));
+    ctx.textBaseline = "alphabetic"; // Reset baseline
 
     const img = new Image();
     img.src = result.data.qrImageDataUrl;
@@ -107,27 +117,30 @@ export default function SearchQrPage() {
       img.onerror = () => reject();
     });
 
-    const qrSize = 150;
+    // Scale QR size 2x (150 -> 300)
+    const qrSize = 300;
     const qrX = (canvas.width - qrSize) / 2;
-    const qrY = 90;
+    const qrY = 180; // Scaled Y position
     ctx.drawImage(img, qrX, qrY, qrSize, qrSize);
 
     ctx.fillStyle = "#000000";
-    ctx.font = "bold 32px Arial";
+    // Scale font 2x (32px -> 64px)
+    ctx.font = "bold 64px Arial";
     ctx.textAlign = "center";
-    ctx.fillText(String(result.data.serialNumber), canvas.width / 2, qrY + qrSize + 50);
+    ctx.fillText(String(result.data.serialNumber), canvas.width / 2, qrY + qrSize + 100);
 
-    ctx.font = "11px Arial";
+    // Footer
+    ctx.font = "22px Arial"; // Scale 2x (11px -> 22px)
     const today = new Date();
     const y = today.getFullYear();
     const m = String(today.getMonth() + 1).padStart(2, "0");
     const d = String(today.getDate()).padStart(2, "0");
     const ymd = `${y}${m}${d}`;
     const footerLine1 = `${ymd}-${result.data.batchId}-(1/1)`;
-    ctx.fillText(footerLine1, canvas.width / 2, canvas.height - 40);
+    ctx.fillText(footerLine1, canvas.width / 2, canvas.height - 80);
 
-    ctx.font = "bold 11px Arial";
-    ctx.fillText("SADAK SURAKSHA JEEVAN RAKSHA", canvas.width / 2, canvas.height - 20);
+    ctx.font = "bold 22px Arial";
+    ctx.fillText("SADAK SURAKSHA JEEVAN RAKSHA", canvas.width / 2, canvas.height - 40);
 
     canvas.toBlob((blob) => {
       if (!blob) return;

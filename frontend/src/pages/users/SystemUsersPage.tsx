@@ -3,7 +3,7 @@ import { Plus, Search, Edit, Trash2 } from "lucide-react";
 import Modal from "../../ui/Modal";
 import { useSystemUsers, useCreateSystemUser, useUpdateSystemUser, useDeleteSystemUser, SystemUser } from "../../api/hooks";
 
-type UserRole = "SUPER_ADMIN" | "STATE_ADMIN" | "OEM_ADMIN";
+type UserRole = "SUPER_ADMIN" | "STATE_ADMIN" | "OEM_ADMIN" | "ADMIN";
 type UserStatus = "ACTIVE" | "INACTIVE";
 
 export default function SystemUsersPage() {
@@ -263,6 +263,7 @@ export default function SystemUsersPage() {
               className="w-full border rounded px-3 py-2"
             >
               <option value="SUPER_ADMIN">Super Admin</option>
+              <option value="ADMIN">Admin</option>
               <option value="STATE_ADMIN">State Admin</option>
               <option value="OEM_ADMIN">OEM Admin</option>
             </select>

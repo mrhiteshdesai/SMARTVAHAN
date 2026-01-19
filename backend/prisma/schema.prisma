@@ -13,6 +13,7 @@ datasource db {
 // Enums
 enum UserRole {
   SUPER_ADMIN
+  ADMIN
   STATE_ADMIN
   OEM_ADMIN
   DEALER_USER
@@ -195,7 +196,7 @@ model QRCode {
   count        Int      @default(1)
   
   batchId      String
-  batch        Batch    @relation(fields: [batchId], references: [id])
+  batch        Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
   
   createdAt    DateTime @default(now())
 

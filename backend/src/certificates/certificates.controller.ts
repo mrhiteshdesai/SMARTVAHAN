@@ -83,8 +83,9 @@ export class CertificatesController {
     @Query('state') state?: string,
     @Query('oem') oem?: string,
     @Query('from') from?: string,
-    @Query('to') to?: string
+    @Query('to') to?: string,
+    @Req() req?: any
   ) {
-    return this.certificatesService.listCertificatesForDownload({ state, oem, from, to });
+    return this.certificatesService.listCertificatesForDownload({ state, oem, from, to, user: req?.user });
   }
 }

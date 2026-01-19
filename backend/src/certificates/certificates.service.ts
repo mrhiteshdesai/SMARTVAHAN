@@ -389,8 +389,13 @@ export class CertificatesService {
     };
   }
 
-  async listCertificatesForDownload(params: { state?: string; oem?: string; from?: string; to?: string }) {
+  async listCertificatesForDownload(params: { state?: string; oem?: string; from?: string; to?: string; user?: any }) {
     const where: any = {};
+    const user = params.user;
+
+    if (user && (user.role === 'DEALER' || user.role === 'DEALER_USER')) {
+      where.dealerId = user.userId;
+    }
 
     if (params.from || params.to) {
       where.generatedAt = {};

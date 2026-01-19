@@ -1,203 +1,302 @@
-export default function Dashboard() {
+import React, { useState, useMemo } from "react";
+import { useDashboardStats, useStates, useOEMs, useSystemSettings } from "../api/hooks";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LayoutDashboard, Users, CheckCircle2, QrCode, AlertTriangle } from "lucide-react";
+import { GoogleMap, HeatmapLayerF, useJsApiLoader } from '@react-google-maps/api';
+
+class DashboardErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 text-red-600 bg-red-50 rounded-xl border border-red-200">
+          <h2 className="text-lg font-bold mb-2 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5" />
+            Dashboard Error
+          </h2>
+          <p className="text-sm">{this.state.error?.message}</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const libraries: ("visualization" | "places" | "drawing" | "geometry" | "localContext")[] = ["visualization"];
+
+function DashboardMap({ apiKey, data }: { apiKey: string, data: any[] }) {
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: apiKey,
+    libraries,
+    preventGoogleFontsLoading: true
+  });
+
+  const heatmapData = useMemo(() => {
+    try {
+        if (!isLoaded || !window.google || !data) return [];
+        return data
+            .filter((d: any) => d.lat && d.lng) // Filter invalid coordinates
+            .map((d: any) => ({
+                location: new google.maps.LatLng(d.lat, d.lng),
+                weight: d.weight
+            }));
+    } catch (e) {
+        console.error("Failed to generate heatmap data", e);
+        return [];
+    }
+  }, [isLoaded, data]);
+
+  if (loadError) {
+      return (
+          <div className="w-full h-full bg-red-50 flex flex-col items-center justify-center text-red-500 p-4 text-center">
+              <p>Map Error</p>
+              <p className="text-xs mt-1">{loadError.message}</p>
+          </div>
+      );
+  }
+
+  if (!isLoaded) {
+      return (
+          <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-500">
+              Loading Map...
+          </div>
+      );
+  }
+
+  return (
+      <GoogleMap
+          mapContainerStyle={{ width: '100%', height: '100%' }}
+          center={{ lat: 20.5937, lng: 78.9629 }}
+          zoom={5}
+      >
+          {heatmapData.length > 0 && (
+              <HeatmapLayerF
+                  data={heatmapData}
+                  options={{
+                      radius: 30,
+                      opacity: 0.6
+                  }}
+              />
+          )}
+      </GoogleMap>
+  );
+}
+
+function DashboardContent() {
+  const [stateCode, setStateCode] = useState("");
+  const [oemCode, setOemCode] = useState("");
+  const [dateRange, setDateRange] = useState({ start: "", end: "" });
+
+  const { data: stats, isLoading, error: apiError } = useDashboardStats({
+    stateCode: stateCode || undefined,
+    oemCode: oemCode || undefined,
+    startDate: dateRange.start || undefined,
+    endDate: dateRange.end || undefined,
+  });
+
+  const { data: states } = useStates();
+  const { data: oems } = useOEMs();
+  const { data: settings } = useSystemSettings();
+
+  if (isLoading) return <div className="p-6">Loading dashboard data...</div>;
+  if (apiError) return <div className="p-6 text-red-500">Failed to load dashboard data: {(apiError as any).message}</div>;
+  if (!stats) return <div className="p-6">No dashboard data available</div>;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header & Filters */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-gray-600">Overview of system health and activity</p>
+          <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+          <p className="text-sm text-gray-500">System overview and statistics</p>
         </div>
-        <div className="flex items-center gap-2">
-          <input type="date" className="rounded-md border px-2 py-1 text-sm" aria-label="Filter by date" />
-          <button className="rounded-md bg-primary text-white px-3 py-2 text-sm hover:bg-indigo-600">Export</button>
+        <div className="flex flex-wrap gap-2">
+          <select 
+            className="rounded-md border px-3 py-2 text-sm bg-white"
+            value={stateCode}
+            onChange={(e) => setStateCode(e.target.value)}
+          >
+            <option value="">All States</option>
+            {states?.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
+          </select>
+          <select 
+            className="rounded-md border px-3 py-2 text-sm bg-white"
+            value={oemCode}
+            onChange={(e) => setOemCode(e.target.value)}
+          >
+            <option value="">All OEMs</option>
+            {oems?.map(o => <option key={o.code} value={o.code}>{o.name}</option>)}
+          </select>
+          <input 
+            type="date" 
+            className="rounded-md border px-2 py-2 text-sm bg-white"
+            value={dateRange.start}
+            onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+          />
+          <input 
+            type="date" 
+            className="rounded-md border px-2 py-2 text-sm bg-white"
+            value={dateRange.end}
+            onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+          />
         </div>
       </div>
 
-      <section className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <KPI title="Bounce Rate" value="32.53%" trend="-0.55%" trendType="down" />
-        <KPI title="Page Views" value="7,682" trend="+0.11%" trendType="up" />
-        <KPI title="New Sessions" value="68.8" trend="-68.8" trendType="down" />
-        <KPI title="Avg. Time on Site" value="2m:35s" trend="+0.8%" trendType="up" />
-        <KPI title="New Sessions" value="68.8" trend="-68.8" trendType="down" />
-        <KPI title="Avg. Time on Site" value="2m:35s" trend="+0.8%" trendType="up" />
-      </section>
-
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card title="Market Overview" subtitle="This month" actions={["Share", "Print"]} className="lg:col-span-2">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <div className="text-sm text-gray-500">Total Value</div>
-              <div className="text-2xl font-semibold">$36,2531.00</div>
-              <div className="text-xs text-green-600 font-medium">(+1.37%)</div>
-            </div>
-            <div className="md:col-span-2">
-              <MiniBarChart />
-            </div>
-          </div>
-        </Card>
-        <Card title="Todo List" subtitle="Today" actions={["Add"]}>
-          <ul className="space-y-3 text-sm">
-            <li className="flex items-center justify-between">
-              <span>Verify dealer KYC</span>
-              <span className="px-2 py-1 rounded bg-amber-100 text-amber-700 text-xs">Due tomorrow</span>
-            </li>
-            <li className="flex items-center justify-between">
-              <span>Monthly report export</span>
-              <span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs">Done</span>
-            </li>
-            <li className="flex items-center justify-between">
-              <span>Audit log review</span>
-              <span className="px-2 py-1 rounded bg-red-100 text-red-700 text-xs">Expired</span>
-            </li>
-          </ul>
-        </Card>
-      </section>
-
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Recent Sales" subtitle="Today">
-          <TablePlaceholder
-            headers={["#", "Dealer", "Description", "Amount", "Status"]}
-            rows={[
-              ["#2457", "Brandon Jacob", "Certificate print", "$64", "Approved"],
-              ["#2147", "Bridie Kessler", "QR reissue", "$47", "Pending"],
-              ["#2049", "Ashleigh Langosh", "Bulk download", "$147", "Approved"],
-              ["#2644", "Angus Grady", "Certificate cancel", "$67", "Rejected"],
-              ["#2644", "Raheem Lehner", "New registration", "$165", "Approved"]
-            ]}
-          />
-        </Card>
-        <Card title="Top Selling" subtitle="Today">
-          <TablePlaceholder
-            headers={["Preview", "Product", "Price", "Sold", "Revenue"]}
-            rows={[
-              ["—", "Premium Certificate Kit", "$64", "124", "$5,828"],
-              ["—", "Dealer QR Pack", "$46", "98", "$4,508"],
-              ["—", "Secure Hologram", "$59", "74", "$4,366"],
-              ["—", "Tamper-evident Label", "$32", "63", "$2,016"],
-              ["—", "Archival Sleeve", "$79", "41", "$3,239"]
-            ]}
-          />
-        </Card>
-      </section>
-
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card title="Budget Report" subtitle="This Month" className="lg:col-span-2">
-          <div className="h-48 bg-gray-50 rounded-md grid place-items-center text-gray-400 text-sm">Chart placeholder</div>
-        </Card>
-        <Card title="Website Traffic" subtitle="Today">
-          <div className="h-48 bg-gray-50 rounded-md grid place-items-center text-gray-400 text-sm">Chart placeholder</div>
-        </Card>
-      </section>
-
-      <section>
-        <Card title="News & Updates" subtitle="Today">
-          <ul className="space-y-3 text-sm">
-            <li>
-              <div className="font-medium">System maintenance completed</div>
-              <div className="text-gray-600">All services operational.</div>
-            </li>
-            <li>
-              <div className="font-medium">New dealer onboarding guide</div>
-              <div className="text-gray-600">Updated documentation released.</div>
-            </li>
-          </ul>
-        </Card>
-      </section>
-    </div>
-  );
-}
-
-function KPI({
-  title,
-  value,
-  trend,
-  trendType
-}: {
-  title: string;
-  value: string;
-  trend: string;
-  trendType: "up" | "down";
-}) {
-  const trendColor = trendType === "up" ? "text-green-600" : "text-red-600";
-  return (
-    <div className="p-4 bg-white rounded-lg border">
-      <div className="text-xs text-gray-500">{title}</div>
-      <div className="text-xl font-semibold mt-1">{value}</div>
-      <div className={`text-xs ${trendColor}`}>{trend}</div>
-    </div>
-  );
-}
-
-function Card({
-  title,
-  subtitle,
-  actions,
-  className,
-  children
-}: {
-  title: string;
-  subtitle?: string;
-  actions?: string[];
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={`rounded-lg border bg-white ${className ?? ""}`}>
-      <div className="p-4 border-b flex items-center justify-between">
-        <div>
-          <div className="font-medium">{title}</div>
-          {subtitle && <div className="text-xs text-gray-500">{subtitle}</div>}
-        </div>
-        {actions && actions.length > 0 && (
-          <div className="flex items-center gap-2">
-            {actions.map((a) => (
-              <button key={a} className="px-2 py-1 text-xs rounded-md border hover:bg-gray-50">
-                {a}
-              </button>
-            ))}
-          </div>
-        )}
+      {/* Row 1: Today's Certs by Product */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {['C3', 'C4', 'CT', 'CTAUTO'].map(p => (
+            <StatCard 
+                key={p}
+                title={`${p} Generated Today`}
+                value={stats.row1[p] || 0}
+                icon={<CheckCircle2 className="w-5 h-5 text-blue-500" />}
+            />
+        ))}
       </div>
-      <div className="p-4">{children}</div>
+
+      {/* Row 2: Certs Counts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Certificates Today" value={stats.row2.today} icon={<LayoutDashboard className="w-5 h-5 text-green-500" />} />
+        <StatCard title="Certificates Yesterday" value={stats.row2.yesterday} icon={<LayoutDashboard className="w-5 h-5 text-gray-500" />} />
+        <StatCard title="Certificates This Week" value={stats.row2.thisWeek} icon={<LayoutDashboard className="w-5 h-5 text-purple-500" />} />
+        <div className="bg-gray-50 rounded-xl border border-dashed border-gray-300 p-6 flex items-center justify-center text-gray-400">
+            <span className="text-sm font-medium">Space Available</span>
+        </div>
+      </div>
+
+      {/* Row 3: Totals */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Total QR Issued" value={stats.row3.totalQrIssued} icon={<QrCode className="w-5 h-5 text-indigo-500" />} />
+        <StatCard title="Total QR Used" value={stats.row3.totalQrUsed} icon={<QrCode className="w-5 h-5 text-emerald-500" />} />
+        <StatCard title="Total Certs Generated" value={stats.row3.totalCerts} icon={<CheckCircle2 className="w-5 h-5 text-orange-500" />} />
+        <StatCard title="Total Active Dealers" value={stats.row3.totalActiveDealers} icon={<Users className="w-5 h-5 text-blue-500" />} />
+      </div>
+
+      {/* Row 4: QR Metrics by Product */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {['C3', 'C4', 'CT', 'CTAUTO'].map(p => (
+             <div key={p} className="bg-white p-6 rounded-xl border shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-gray-500 text-sm font-medium">{p} Overview</h3>
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                        <QrCode className="w-4 h-4 text-gray-600" />
+                    </div>
+                </div>
+                <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Issued</span>
+                        <span className="font-semibold">{stats.row4[p]?.issued || 0}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Used</span>
+                        <span className="font-semibold">{stats.row4[p]?.used || 0}</span>
+                    </div>
+                </div>
+            </div>
+        ))}
+      </div>
+
+      {/* Row 5: Charts (Bar Chart & RTO Table) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left: Bar Chart */}
+        <div className="bg-white p-6 rounded-xl border shadow-sm flex flex-col h-[400px]">
+            <h3 className="text-lg font-semibold mb-6">Certificate Trends (Last 7 Days)</h3>
+            <div className="flex-1 min-h-0">
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stats.barData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="date" tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { weekday: 'short' })} />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="C3" stackId="a" fill="#3B82F6" />
+                        <Bar dataKey="C4" stackId="a" fill="#10B981" />
+                        <Bar dataKey="CT" stackId="a" fill="#F59E0B" />
+                        <Bar dataKey="CTAUTO" stackId="a" fill="#EF4444" />
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
+        
+        {/* Right: Top 10 RTOs Table */}
+        <div className="bg-white p-6 rounded-xl border shadow-sm flex flex-col h-[400px]">
+            <h3 className="text-lg font-semibold mb-4">Top 10 RTOs</h3>
+            <div className="overflow-y-auto flex-1">
+                <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                        <tr>
+                            <th className="px-4 py-3">RTO</th>
+                            <th className="px-4 py-3 text-right">Certs</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {stats.rtoDensity?.slice(0, 10).map((r: any, i: number) => (
+                            <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
+                                <td className="px-4 py-3 font-medium">{r.rto || 'N/A'}</td>
+                                <td className="px-4 py-3 text-right">{r.count}</td>
+                            </tr>
+                        ))}
+                        {(!stats.rtoDensity || stats.rtoDensity.length === 0) && (
+                            <tr>
+                                <td colSpan={2} className="px-4 py-3 text-center text-gray-500">No data available</td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      </div>
+
+      {/* Row 6: Heatmap (Full Width) */}
+      <div className="h-[500px] bg-white p-6 rounded-xl border shadow-sm flex flex-col">
+          <h3 className="text-lg font-semibold mb-4">Certificate Generation Heatmap</h3>
+          <div className="flex-1 rounded-lg overflow-hidden relative">
+            {settings?.googlePlacesKey ? (
+                <DashboardMap 
+                    apiKey={settings.googlePlacesKey} 
+                    data={stats?.heatmapData || []} 
+                />
+            ) : (
+                <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-500">
+                    {settings ? "Map Unavailable: Google Maps API Key not configured" : "Loading Map Configuration..."}
+                </div>
+            )}
+          </div>
+      </div>
+
     </div>
   );
 }
 
-function TablePlaceholder({ headers, rows }: { headers: string[]; rows: string[][] }) {
+function StatCard({ title, value, icon }: { title: string; value: string | number; icon: React.ReactNode }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-sm">
-        <thead>
-          <tr className="text-left text-gray-500">
-            {headers.map((h) => (
-              <th key={h} className="px-3 py-2 border-b">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, idx) => (
-            <tr key={idx} className="hover:bg-gray-50">
-              {r.map((c, i) => (
-                <td key={i} className="px-3 py-2 border-b">
-                  {c}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="bg-white p-6 rounded-xl border shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-gray-500 text-sm font-medium">{title}</h3>
+        <div className="p-2 bg-gray-50 rounded-lg">
+          {icon}
+        </div>
+      </div>
+      <div className="text-2xl font-bold text-gray-900">
+        {value.toLocaleString()}
+      </div>
     </div>
   );
 }
 
-function MiniBarChart() {
-  const values = [30, 40, 35, 45, 50, 60, 55, 65, 70, 60, 75, 80];
+export default function Dashboard() {
   return (
-    <div className="flex items-end gap-1 h-24 bg-gray-50 rounded-md p-2">
-      {values.map((v, i) => (
-        <div key={i} className="w-3 bg-primary/70 rounded-sm" style={{ height: `${v}%` }}></div>
-      ))}
-    </div>
+    <DashboardErrorBoundary>
+      <DashboardContent />
+    </DashboardErrorBoundary>
   );
 }

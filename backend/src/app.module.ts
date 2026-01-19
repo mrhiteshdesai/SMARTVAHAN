@@ -18,6 +18,7 @@ import { CertificatesModule } from "./certificates/certificates.module";
 import { VehicleCategoriesModule } from "./vehicle-categories/vehicle-categories.module";
 import { VehicleManufacturersModule } from "./vehicle-manufacturers/vehicle-manufacturers.module";
 import { SettingsModule } from "./settings/settings.module";
+import { StatsModule } from "./stats/stats.module";
 import { AppController } from "./app.controller";
 
 @Module({
@@ -39,7 +40,8 @@ import { AppController } from "./app.controller";
     CertificatesModule,
     VehicleCategoriesModule,
     VehicleManufacturersModule,
-    SettingsModule
+    SettingsModule,
+    StatsModule
   ],
   controllers: [AppController],
   providers: [

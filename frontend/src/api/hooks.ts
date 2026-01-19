@@ -389,3 +389,43 @@ export function useVehicleCategories() {
     },
   });
 }
+
+// --- Dashboard Stats ---
+export type DashboardStats = {
+    row1: Record<string, number>;
+    row2: {
+        today: number;
+        yesterday: number;
+        thisWeek: number;
+    };
+    row3: {
+        totalQrIssued: number;
+        totalQrUsed: number;
+        totalCerts: number;
+        totalActiveDealers: number;
+    };
+    row4: Record<string, { issued: number; used: number }>;
+    barData: Array<{ date: string; [key: string]: any }>;
+    rtoDensity: Array<{ rto: string; count: number }>;
+    heatmapData: Array<{ lat: number; lng: number; weight: number }>;
+};
+
+export function useDashboardStats(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string }) {
+    return useQuery({
+        queryKey: ["dashboardStats", filters],
+        queryFn: async () => {
+            const res = await api.get<DashboardStats>("/stats/dashboard", { params: filters });
+            return res.data;
+        }
+    });
+}
+
+export function useSystemSettings() {
+    return useQuery({
+        queryKey: ["systemSettings"],
+        queryFn: async () => {
+            const res = await api.get("/settings");
+            return res.data;
+        }
+    });
+}

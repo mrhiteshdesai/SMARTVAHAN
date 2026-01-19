@@ -210,11 +210,11 @@ model Certificate {
   
   // QR Relation
   qrCodeId          String   @unique
-  qrCode            QRCode   @relation(fields: [qrCodeId], references: [id])
+  qrCode            QRCode   @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
 
   // Dealer Relation (optional)
   dealerId          String?
-  dealer            Dealer?  @relation(fields: [dealerId], references: [id])
+  dealer            Dealer?  @relation(fields: [dealerId], references: [id], onDelete: SetNull)
 
   // Vehicle Details
   vehicleMake       String

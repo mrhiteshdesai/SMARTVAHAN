@@ -19,6 +19,70 @@ void main() {
   runApp(const SmartvahanApp());
 }
 
+class LookupService {
+  static List<dynamic>? vehicleCategories;
+  static final Map<String, List<dynamic>> _rtosCache = {};
+
+  static List<dynamic>? getRtos(String? stateCode) {
+    if (stateCode == null || stateCode.isEmpty) return [];
+    return _rtosCache[stateCode];
+  }
+
+  static void cacheRtos(String? stateCode, List<dynamic> data) {
+    if (stateCode != null && stateCode.isNotEmpty) {
+      _rtosCache[stateCode] = data;
+    }
+  }
+
+  static const _draftPrefix = 'draft_';
+  static const _keyActiveSession = 'active_session_qr';
+
+  static Future<void> saveDraft(
+    String qrValue,
+    Map<String, dynamic> data,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_draftPrefix$qrValue', jsonEncode(data));
+  }
+
+  static Future<Map<String, dynamic>?> getDraft(String qrValue) async {
+    final prefs = await SharedPreferences.getInstance();
+    final str = prefs.getString('$_draftPrefix$qrValue');
+    if (str == null) return null;
+    try {
+      return jsonDecode(str) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> clearDraft(String qrValue) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$_draftPrefix$qrValue');
+  }
+
+  static Future<void> saveActiveSession(Map<String, dynamic> qrArgs) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyActiveSession, jsonEncode(qrArgs));
+  }
+
+  static Future<Map<String, dynamic>?> getActiveSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final str = prefs.getString(_keyActiveSession);
+    if (str == null) return null;
+    try {
+      return jsonDecode(str) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> clearActiveSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyActiveSession);
+  }
+}
+
 class ApiSession {
   static String? token;
   static Map<String, dynamic>? user;
@@ -163,12 +227,19 @@ class _SplashScreenState extends State<SplashScreen> {
     setState(() {
       _checkingSession = false;
     });
-    _timer = Timer(const Duration(seconds: 1), () {
+    _timer = Timer(const Duration(seconds: 1), () async {
       if (!mounted) {
         return;
       }
       if (hasSession) {
-        Navigator.of(context).pushReplacementNamed('/home');
+        final activeSession = await LookupService.getActiveSession();
+        if (!mounted) return;
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil('/home', (Route<dynamic> route) => false);
+        if (activeSession != null) {
+          Navigator.of(context).pushNamed('/form', arguments: activeSession);
+        }
       } else {
         Navigator.of(context).pushReplacementNamed('/login');
       }
@@ -545,8 +616,6 @@ class HomeScreen extends StatelessWidget {
                 Navigator.of(context).pushNamed('/history');
               },
             ),
-            const Spacer(),
-            const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Logout'),
@@ -888,6 +957,8 @@ class _FormScreenState extends State<FormScreen> {
   String? _lookupError;
   bool _locationRequested = false;
   String? _locationError;
+  Timer? _saveTimer;
+  bool _initializing = false;
 
   final Map<String, String?> _photos = {
     'photoFrontLeft': null,
@@ -897,27 +968,178 @@ class _FormScreenState extends State<FormScreen> {
   };
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_qrArgs == null) {
-      final args =
-          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-      if (args != null) {
-        _qrArgs = Map<String, dynamic>.from(args);
-      } else {
-        _qrArgs = {};
+  void initState() {
+    super.initState();
+    _years = List<String>.generate(
+      15,
+      (index) => (DateTime.now().year - index).toString(),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      if (_qrArgs == null) {
+        setState(() {
+          _initializing = true;
+        });
+        try {
+          var args =
+              ModalRoute.of(context)?.settings.arguments
+                  as Map<String, dynamic>?;
+
+          // Fallback: Try to recover session if arguments are lost (e.g. Android Activity recreation)
+          if (args == null || args.isEmpty) {
+            final session = await LookupService.getActiveSession();
+            if (session != null) {
+              args = session;
+            }
+          }
+
+          _qrArgs = args != null ? Map<String, dynamic>.from(args) : {};
+          await _saveActiveSession();
+          await _restoreDraft();
+
+          if (!mounted) return;
+          await _checkLostData();
+          _loadLookups();
+          _autoFillLocation();
+        } finally {
+          if (mounted) {
+            setState(() {
+              _initializing = false;
+            });
+          }
+        }
       }
-      _years = List<String>.generate(
-        15,
-        (index) => (DateTime.now().year - index).toString(),
-      );
-      _loadLookups();
-      _autoFillLocation();
+    });
+
+    _vehicleMakeController.addListener(_onFieldChanged);
+    _vehicleCategoryController.addListener(_onFieldChanged);
+    _fuelTypeController.addListener(_onFieldChanged);
+    _passingRtoController.addListener(_onFieldChanged);
+    _registrationRtoController.addListener(_onFieldChanged);
+    _seriesController.addListener(_onFieldChanged);
+    _manufacturingYearController.addListener(_onFieldChanged);
+    _chassisNoController.addListener(_onFieldChanged);
+    _engineNoController.addListener(_onFieldChanged);
+    _ownerNameController.addListener(_onFieldChanged);
+    _ownerContactController.addListener(_onFieldChanged);
+    _locationController.addListener(_onFieldChanged);
+  }
+
+  void _onFieldChanged() {
+    if (_initializing) return;
+    if (_saveTimer?.isActive ?? false) _saveTimer!.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 500), () {
+      _saveDraft();
+    });
+  }
+
+  Future<void> _saveActiveSession() async {
+    if (_qrArgs != null) {
+      await LookupService.saveActiveSession(_qrArgs!);
+    }
+  }
+
+  Future<void> _checkLostData() async {
+    try {
+      final response = await _imagePicker.retrieveLostData();
+      if (response.isEmpty) return;
+      final file = response.file;
+      if (file != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final key = prefs.getString('pending_photo_key');
+        if (key != null && _photos.containsKey(key)) {
+          final originalBytes = await file.readAsBytes();
+          img.Image? decoded = img.decodeImage(originalBytes);
+          if (decoded != null) {
+            if (decoded.width > 480) {
+              decoded = img.copyResize(decoded, width: 480);
+            }
+            int quality = 80;
+            List<int> compressedBytes = img.encodeJpg(
+              decoded,
+              quality: quality,
+            );
+            while (compressedBytes.length > 50000 && quality > 30) {
+              quality -= 10;
+              compressedBytes = img.encodeJpg(decoded, quality: quality);
+            }
+            final base64Str = base64Encode(compressedBytes);
+            const mime = 'image/jpeg';
+            final dataUrl = 'data:$mime;base64,$base64Str';
+            if (mounted) {
+              setState(() {
+                _photos[key] = dataUrl;
+              });
+              _saveDraft();
+            }
+          }
+          await prefs.remove('pending_photo_key');
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveDraft() async {
+    if (_initializing) return;
+    final qrValue = _qrArgs?['value']?.toString();
+    if (qrValue == null) return;
+    await LookupService.saveDraft(qrValue, {
+      'vehicleMake': _vehicleMakeController.text,
+      'vehicleCategory': _vehicleCategoryController.text,
+      'fuelType': _fuelTypeController.text,
+      'passingRto': _passingRtoController.text,
+      'registrationRto': _registrationRtoController.text,
+      'series': _seriesController.text,
+      'manufacturingYear': _manufacturingYearController.text,
+      'chassisNo': _chassisNoController.text,
+      'engineNo': _engineNoController.text,
+      'ownerName': _ownerNameController.text,
+      'ownerContact': _ownerContactController.text,
+      'location': _locationController.text,
+      'photos': Map<String, String?>.from(_photos),
+    });
+  }
+
+  Future<void> _restoreDraft() async {
+    final qrValue = _qrArgs?['value']?.toString();
+    if (qrValue == null) return;
+    final draft = await LookupService.getDraft(qrValue);
+    if (!mounted) return;
+    if (draft != null) {
+      setState(() {
+        if (draft['vehicleMake'] != null)
+          _vehicleMakeController.text = draft['vehicleMake'];
+        if (draft['vehicleCategory'] != null)
+          _vehicleCategoryController.text = draft['vehicleCategory'];
+        if (draft['fuelType'] != null)
+          _fuelTypeController.text = draft['fuelType'];
+        if (draft['passingRto'] != null)
+          _passingRtoController.text = draft['passingRto'];
+        if (draft['registrationRto'] != null)
+          _registrationRtoController.text = draft['registrationRto'];
+        if (draft['series'] != null) _seriesController.text = draft['series'];
+        if (draft['manufacturingYear'] != null)
+          _manufacturingYearController.text = draft['manufacturingYear'];
+        if (draft['chassisNo'] != null)
+          _chassisNoController.text = draft['chassisNo'];
+        if (draft['engineNo'] != null)
+          _engineNoController.text = draft['engineNo'];
+        if (draft['ownerName'] != null)
+          _ownerNameController.text = draft['ownerName'];
+        if (draft['ownerContact'] != null)
+          _ownerContactController.text = draft['ownerContact'];
+        if (draft['location'] != null)
+          _locationController.text = draft['location'];
+        if (draft['photos'] != null) {
+          final savedPhotos = Map<String, String?>.from(draft['photos']);
+          _photos.addAll(savedPhotos);
+        }
+      });
     }
   }
 
   Future<void> _autoFillLocation() async {
-    if (_locationRequested) return;
+    if (_locationRequested || _locationController.text.isNotEmpty) return;
     _locationRequested = true;
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -969,43 +1191,73 @@ class _FormScreenState extends State<FormScreen> {
       } catch (_) {}
       locationText ??=
           '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
-      setState(() {
+      if (!mounted) return;
+      if (_locationController.text.isEmpty) {
         _locationController.text = locationText!;
-        _locationError = null;
-      });
+      }
+      _locationError = null;
+      setState(() {});
     } catch (_) {
-      setState(() {
-        _locationError = 'Failed to detect location';
-      });
+      if (!mounted) return;
+      _locationError = 'Failed to detect location';
+      setState(() {});
     }
   }
 
   Future<void> _loadLookups() async {
     if (_lookupsLoaded) return;
+
+    final stateCode = _qrArgs?['stateCode']?.toString();
+
+    // Check if we have everything we need in cache
+    final needCats = LookupService.vehicleCategories == null;
+    final needRtos =
+        (stateCode != null && stateCode.isNotEmpty) &&
+        LookupService.getRtos(stateCode) == null;
+
+    if (!needCats && !needRtos) {
+      if (!mounted) return;
+      setState(() {
+        _vehicleCategories = LookupService.vehicleCategories!;
+        _rtos = LookupService.getRtos(stateCode) ?? [];
+        _lookupsLoaded = true;
+        _loadingLookups = false;
+      });
+      return;
+    }
+
     setState(() {
       _loadingLookups = true;
       _lookupError = null;
     });
+
     try {
-      final stateCode = _qrArgs?['stateCode']?.toString();
-      List<dynamic> rtos = [];
-      if (stateCode != null && stateCode.isNotEmpty) {
+      if (needRtos && stateCode != null) {
         final rtoRes = await api.get(
           '/rtos',
           queryParameters: {'stateCode': stateCode},
         );
         if (rtoRes.data is List) {
-          rtos = List<dynamic>.from(rtoRes.data as List);
+          LookupService.cacheRtos(
+            stateCode,
+            List<dynamic>.from(rtoRes.data as List),
+          );
         }
       }
-      final catRes = await api.get('/vehicle-categories');
-      List<dynamic> categories = [];
-      if (catRes.data is List) {
-        categories = List<dynamic>.from(catRes.data as List);
+
+      if (needCats) {
+        final catRes = await api.get('/vehicle-categories');
+        if (catRes.data is List) {
+          LookupService.vehicleCategories = List<dynamic>.from(
+            catRes.data as List,
+          );
+        }
       }
+
+      if (!mounted) return;
       setState(() {
-        _rtos = rtos;
-        _vehicleCategories = categories;
+        _vehicleCategories = LookupService.vehicleCategories ?? [];
+        _rtos = LookupService.getRtos(stateCode) ?? [];
         _loadingLookups = false;
         _lookupsLoaded = true;
       });
@@ -1015,20 +1267,25 @@ class _FormScreenState extends State<FormScreen> {
       if (resp != null && resp.data is Map && resp.data['message'] != null) {
         message = resp.data['message'].toString();
       }
-      setState(() {
-        _loadingLookups = false;
-        _lookupError = message;
-      });
+      if (mounted) {
+        setState(() {
+          _loadingLookups = false;
+          _lookupError = message;
+        });
+      }
     } catch (_) {
-      setState(() {
-        _loadingLookups = false;
-        _lookupError = 'Network error while loading options';
-      });
+      if (mounted) {
+        setState(() {
+          _loadingLookups = false;
+          _lookupError = 'Network error while loading options';
+        });
+      }
     }
   }
 
   @override
   void dispose() {
+    _saveTimer?.cancel();
     _vehicleMakeController.dispose();
     _vehicleCategoryController.dispose();
     _fuelTypeController.dispose();
@@ -1045,10 +1302,20 @@ class _FormScreenState extends State<FormScreen> {
   }
 
   Future<void> _capturePhoto(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('pending_photo_key', key);
+
     final XFile? file = await _imagePicker.pickImage(
       source: ImageSource.camera,
     );
-    if (file == null) return;
+
+    if (file == null) {
+      await prefs.remove('pending_photo_key');
+      return;
+    }
+
+    await prefs.remove('pending_photo_key');
+
     final originalBytes = await file.readAsBytes();
     img.Image? decoded = img.decodeImage(originalBytes);
     if (decoded == null) return;
@@ -1064,9 +1331,11 @@ class _FormScreenState extends State<FormScreen> {
     final base64Str = base64Encode(compressedBytes);
     const mime = 'image/jpeg';
     final dataUrl = 'data:$mime;base64,$base64Str';
+    if (!mounted) return;
     setState(() {
       _photos[key] = dataUrl;
     });
+    _saveDraft();
   }
 
   Future<void> _submitForm() async {
@@ -1155,6 +1424,14 @@ class _FormScreenState extends State<FormScreen> {
         setState(() {
           _submitting = false;
         });
+
+        final qrValue = _qrArgs?['value']?.toString();
+        if (qrValue != null) {
+          await LookupService.clearDraft(qrValue);
+        }
+        await LookupService.clearActiveSession();
+
+        if (!mounted) return;
         Navigator.of(context).pushReplacementNamed(
           '/success',
           arguments: {
@@ -1207,6 +1484,8 @@ class _FormScreenState extends State<FormScreen> {
 
     return WillPopScope(
       onWillPop: () async {
+        await LookupService.clearActiveSession();
+        if (!mounted) return false;
         Navigator.of(
           context,
         ).pushNamedAndRemoveUntil('/home', (Route<dynamic> route) => false);
@@ -1219,7 +1498,9 @@ class _FormScreenState extends State<FormScreen> {
           title: const Text('Fitment Form'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: () {
+            onPressed: () async {
+              await LookupService.clearActiveSession();
+              if (!mounted) return;
               Navigator.of(context).pushNamedAndRemoveUntil(
                 '/home',
                 (Route<dynamic> route) => false,
@@ -1236,482 +1517,505 @@ class _FormScreenState extends State<FormScreen> {
             ),
           ),
           child: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (qrSerial != null)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.white24),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'QR Details',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Serial: $qrSerial',
-                                  style: const TextStyle(color: Colors.white70),
-                                ),
-                                if (qrValue != null)
-                                  Text(
-                                    'QR Value: $qrValue',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                if (oemName != null)
-                                  Text(
-                                    'OEM: $oemName',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                if (stateCode != null)
-                                  Text(
-                                    'State: $stateCode',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                if (product != null)
-                                  Text(
-                                    'Product: $product',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                if (batchId != null)
-                                  Text(
-                                    'Batch: $batchId',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                      ),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
+            child: _initializing
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Form(
+                      key: _formKey,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const Text(
-                            'Vehicle Details',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue: _vehicleMakeController.text.isEmpty
-                                ? null
-                                : _vehicleMakeController.text,
-                            items: _vehicleMakes
-                                .map(
-                                  (m) => DropdownMenuItem<String>(
-                                    value: m,
-                                    child: Text(m),
+                          if (qrSerial != null)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.white24),
                                   ),
-                                )
-                                .toList(),
-                            decoration: const InputDecoration(
-                              labelText: 'Vehicle Make',
-                            ),
-                            onChanged: (value) {
-                              setState(() {
-                                _vehicleMakeController.text = value ?? '';
-                              });
-                            },
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Select vehicle make'
-                                : null,
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue:
-                                _vehicleCategoryController.text.isEmpty
-                                ? null
-                                : _vehicleCategoryController.text,
-                            items: _vehicleCategories
-                                .map(
-                                  (c) => DropdownMenuItem<String>(
-                                    value: c['name']?.toString() ?? '',
-                                    child: Text(c['name']?.toString() ?? ''),
-                                  ),
-                                )
-                                .toList(),
-                            decoration: InputDecoration(
-                              labelText: 'Vehicle Category',
-                              suffixIcon: _loadingLookups
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: Padding(
-                                        padding: EdgeInsets.all(8),
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'QR Details',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
-                                    )
-                                  : null,
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Serial: $qrSerial',
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                      if (qrValue != null)
+                                        Text(
+                                          'QR Value: $qrValue',
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                      if (oemName != null)
+                                        Text(
+                                          'OEM: $oemName',
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                      if (stateCode != null)
+                                        Text(
+                                          'State: $stateCode',
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                      if (product != null)
+                                        Text(
+                                          'Product: $product',
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                      if (batchId != null)
+                                        Text(
+                                          'Batch: $batchId',
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
                             ),
-                            onChanged: _loadingLookups
-                                ? null
-                                : (value) {
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Text(
+                                  'Vehicle Details',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  initialValue:
+                                      _vehicleMakeController.text.isEmpty
+                                      ? null
+                                      : _vehicleMakeController.text,
+                                  items: _vehicleMakes
+                                      .map(
+                                        (m) => DropdownMenuItem<String>(
+                                          value: m,
+                                          child: Text(m),
+                                        ),
+                                      )
+                                      .toList(),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Vehicle Make',
+                                  ),
+                                  onChanged: (value) {
                                     setState(() {
-                                      _vehicleCategoryController.text =
+                                      _vehicleMakeController.text = value ?? '';
+                                    });
+                                  },
+                                  validator: (v) =>
+                                      v == null || v.trim().isEmpty
+                                      ? 'Select vehicle make'
+                                      : null,
+                                ),
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  initialValue:
+                                      _vehicleCategoryController.text.isEmpty
+                                      ? null
+                                      : _vehicleCategoryController.text,
+                                  items: _vehicleCategories
+                                      .map(
+                                        (c) => DropdownMenuItem<String>(
+                                          value: c['name']?.toString() ?? '',
+                                          child: Text(
+                                            c['name']?.toString() ?? '',
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                  decoration: InputDecoration(
+                                    labelText: 'Vehicle Category',
+                                    suffixIcon: _loadingLookups
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: Padding(
+                                              padding: EdgeInsets.all(8),
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                  onChanged: _loadingLookups
+                                      ? null
+                                      : (value) {
+                                          setState(() {
+                                            _vehicleCategoryController.text =
+                                                value ?? '';
+                                          });
+                                        },
+                                  validator: (v) =>
+                                      v == null || v.trim().isEmpty
+                                      ? 'Select vehicle category'
+                                      : null,
+                                ),
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  initialValue: _fuelTypeController.text.isEmpty
+                                      ? null
+                                      : _fuelTypeController.text,
+                                  items: _fuelTypes
+                                      .map(
+                                        (f) => DropdownMenuItem<String>(
+                                          value: f,
+                                          child: Text(f),
+                                        ),
+                                      )
+                                      .toList(),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Fuel Type',
+                                  ),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _fuelTypeController.text = value ?? '';
+                                    });
+                                  },
+                                  validator: (v) =>
+                                      v == null || v.trim().isEmpty
+                                      ? 'Select fuel type'
+                                      : null,
+                                ),
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  initialValue:
+                                      _passingRtoController.text.isEmpty
+                                      ? null
+                                      : _passingRtoController.text,
+                                  items: _rtos
+                                      .map(
+                                        (r) => DropdownMenuItem<String>(
+                                          value: r['code']?.toString() ?? '',
+                                          child: Text(
+                                            '${r['code'] ?? ''} - ${r['name'] ?? ''}',
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                  decoration: InputDecoration(
+                                    labelText: 'Passing RTO',
+                                    suffixIcon: _loadingLookups
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: Padding(
+                                              padding: EdgeInsets.all(8),
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                  onChanged: _loadingLookups
+                                      ? null
+                                      : (value) {
+                                          setState(() {
+                                            _passingRtoController.text =
+                                                value ?? '';
+                                          });
+                                        },
+                                  validator: (v) =>
+                                      v == null || v.trim().isEmpty
+                                      ? 'Select passing RTO'
+                                      : null,
+                                ),
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  initialValue:
+                                      _registrationRtoController.text.isEmpty
+                                      ? null
+                                      : _registrationRtoController.text,
+                                  items: _rtos
+                                      .map(
+                                        (r) => DropdownMenuItem<String>(
+                                          value: r['code']?.toString() ?? '',
+                                          child: Text(
+                                            '${r['code'] ?? ''} - ${r['name'] ?? ''}',
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                  decoration: InputDecoration(
+                                    labelText: 'Registration RTO',
+                                    suffixIcon: _loadingLookups
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: Padding(
+                                              padding: EdgeInsets.all(8),
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                  onChanged: _loadingLookups
+                                      ? null
+                                      : (value) {
+                                          setState(() {
+                                            _registrationRtoController.text =
+                                                value ?? '';
+                                          });
+                                        },
+                                  validator: (v) =>
+                                      v == null || v.trim().isEmpty
+                                      ? 'Select registration RTO'
+                                      : null,
+                                ),
+                                if (_lookupError != null) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _lookupError!,
+                                    style: const TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 8),
+                                TextFormField(
+                                  controller: _seriesController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Series',
+                                  ),
+                                  validator: (v) =>
+                                      v == null || v.trim().isEmpty
+                                      ? 'Enter series'
+                                      : null,
+                                ),
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  initialValue:
+                                      _manufacturingYearController.text.isEmpty
+                                      ? null
+                                      : _manufacturingYearController.text,
+                                  items: _years
+                                      .map(
+                                        (y) => DropdownMenuItem<String>(
+                                          value: y,
+                                          child: Text(y),
+                                        ),
+                                      )
+                                      .toList(),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Manufacturing Year',
+                                  ),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _manufacturingYearController.text =
                                           value ?? '';
                                     });
                                   },
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Select vehicle category'
-                                : null,
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue: _fuelTypeController.text.isEmpty
-                                ? null
-                                : _fuelTypeController.text,
-                            items: _fuelTypes
-                                .map(
-                                  (f) => DropdownMenuItem<String>(
-                                    value: f,
-                                    child: Text(f),
-                                  ),
-                                )
-                                .toList(),
-                            decoration: const InputDecoration(
-                              labelText: 'Fuel Type',
-                            ),
-                            onChanged: (value) {
-                              setState(() {
-                                _fuelTypeController.text = value ?? '';
-                              });
-                            },
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Select fuel type'
-                                : null,
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue: _passingRtoController.text.isEmpty
-                                ? null
-                                : _passingRtoController.text,
-                            items: _rtos
-                                .map(
-                                  (r) => DropdownMenuItem<String>(
-                                    value: r['code']?.toString() ?? '',
-                                    child: Text(
-                                      '${r['code'] ?? ''} - ${r['name'] ?? ''}',
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            decoration: InputDecoration(
-                              labelText: 'Passing RTO',
-                              suffixIcon: _loadingLookups
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: Padding(
-                                        padding: EdgeInsets.all(8),
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-                                    )
-                                  : null,
-                            ),
-                            onChanged: _loadingLookups
-                                ? null
-                                : (value) {
-                                    setState(() {
-                                      _passingRtoController.text = value ?? '';
-                                    });
-                                  },
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Select passing RTO'
-                                : null,
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue:
-                                _registrationRtoController.text.isEmpty
-                                ? null
-                                : _registrationRtoController.text,
-                            items: _rtos
-                                .map(
-                                  (r) => DropdownMenuItem<String>(
-                                    value: r['code']?.toString() ?? '',
-                                    child: Text(
-                                      '${r['code'] ?? ''} - ${r['name'] ?? ''}',
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            decoration: InputDecoration(
-                              labelText: 'Registration RTO',
-                              suffixIcon: _loadingLookups
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: Padding(
-                                        padding: EdgeInsets.all(8),
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-                                    )
-                                  : null,
-                            ),
-                            onChanged: _loadingLookups
-                                ? null
-                                : (value) {
-                                    setState(() {
-                                      _registrationRtoController.text =
-                                          value ?? '';
-                                    });
-                                  },
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Select registration RTO'
-                                : null,
-                          ),
-                          if (_lookupError != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              _lookupError!,
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _seriesController,
-                            decoration: const InputDecoration(
-                              labelText: 'Series',
-                            ),
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Enter series'
-                                : null,
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue:
-                                _manufacturingYearController.text.isEmpty
-                                ? null
-                                : _manufacturingYearController.text,
-                            items: _years
-                                .map(
-                                  (y) => DropdownMenuItem<String>(
-                                    value: y,
-                                    child: Text(y),
-                                  ),
-                                )
-                                .toList(),
-                            decoration: const InputDecoration(
-                              labelText: 'Manufacturing Year',
-                            ),
-                            onChanged: (value) {
-                              setState(() {
-                                _manufacturingYearController.text = value ?? '';
-                              });
-                            },
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Select year'
-                                : null,
-                          ),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _chassisNoController,
-                            maxLength: 5,
-                            decoration: const InputDecoration(
-                              labelText: 'Chassis No (Last 5)',
-                              counterText: '',
-                            ),
-                            validator: (v) => v == null || v.trim().length != 5
-                                ? 'Enter last 5 digits'
-                                : null,
-                          ),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _engineNoController,
-                            maxLength: 5,
-                            decoration: const InputDecoration(
-                              labelText: 'Engine No (Last 5)',
-                              counterText: '',
-                            ),
-                            validator: (v) => v == null || v.trim().length != 5
-                                ? 'Enter last 5 digits'
-                                : null,
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Fitment Photos',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Column(
-                            children: [
-                              _PhotoCaptureRow(
-                                label: 'Front Left',
-                                imageData: _photos['photoFrontLeft'],
-                                onCapture: () =>
-                                    _capturePhoto('photoFrontLeft'),
-                              ),
-                              const SizedBox(height: 8),
-                              _PhotoCaptureRow(
-                                label: 'Back Right',
-                                imageData: _photos['photoBackRight'],
-                                onCapture: () =>
-                                    _capturePhoto('photoBackRight'),
-                              ),
-                              const SizedBox(height: 8),
-                              _PhotoCaptureRow(
-                                label: 'Number Plate',
-                                imageData: _photos['photoNumberPlate'],
-                                onCapture: () =>
-                                    _capturePhoto('photoNumberPlate'),
-                              ),
-                              const SizedBox(height: 8),
-                              _PhotoCaptureRow(
-                                label: 'RC / Document',
-                                imageData: _photos['photoRc'],
-                                onCapture: () => _capturePhoto('photoRc'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Owner Details',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _ownerNameController,
-                            decoration: const InputDecoration(
-                              labelText: 'Owner Name',
-                            ),
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Enter owner name'
-                                : null,
-                          ),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _ownerContactController,
-                            keyboardType: TextInputType.phone,
-                            maxLength: 10,
-                            decoration: const InputDecoration(
-                              labelText: 'Owner Phone',
-                              counterText: '',
-                            ),
-                            validator: (v) {
-                              final value = v?.trim() ?? '';
-                              if (value.isEmpty) {
-                                return 'Enter owner phone';
-                              }
-                              if (value.length != 10) {
-                                return 'Enter 10 digit phone';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _locationController,
-                            decoration: InputDecoration(
-                              labelText: 'Location (optional)',
-                              suffixIcon: _locationError != null
-                                  ? const Icon(
-                                      Icons.location_off,
-                                      size: 18,
-                                      color: Colors.redAccent,
-                                    )
-                                  : const Icon(
-                                      Icons.my_location,
-                                      size: 18,
-                                      color: Color(0xFF12314D),
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          if (_error != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Text(
-                                _error!,
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 12,
+                                  validator: (v) =>
+                                      v == null || v.trim().isEmpty
+                                      ? 'Select year'
+                                      : null,
                                 ),
-                              ),
-                            ),
-                          if (_success != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Text(
-                                _success!,
-                                style: const TextStyle(
-                                  color: Colors.green,
-                                  fontSize: 12,
+                                const SizedBox(height: 8),
+                                TextFormField(
+                                  controller: _chassisNoController,
+                                  maxLength: 5,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Chassis No (Last 5)',
+                                    counterText: '',
+                                  ),
+                                  validator: (v) =>
+                                      v == null || v.trim().length != 5
+                                      ? 'Enter last 5 digits'
+                                      : null,
                                 ),
-                              ),
-                            ),
-                          ElevatedButton(
-                            onPressed: _submitting ? null : _submitForm,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFF13546),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                            ),
-                            child: Text(
-                              _submitting
-                                  ? 'Generating...'
-                                  : 'Generate Certificate',
+                                const SizedBox(height: 8),
+                                TextFormField(
+                                  controller: _engineNoController,
+                                  maxLength: 5,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Engine No (Last 5)',
+                                    counterText: '',
+                                  ),
+                                  validator: (v) =>
+                                      v == null || v.trim().length != 5
+                                      ? 'Enter last 5 digits'
+                                      : null,
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'Fitment Photos',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Column(
+                                  children: [
+                                    _PhotoCaptureRow(
+                                      label: 'Front Left',
+                                      imageData: _photos['photoFrontLeft'],
+                                      onCapture: () =>
+                                          _capturePhoto('photoFrontLeft'),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _PhotoCaptureRow(
+                                      label: 'Back Right',
+                                      imageData: _photos['photoBackRight'],
+                                      onCapture: () =>
+                                          _capturePhoto('photoBackRight'),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _PhotoCaptureRow(
+                                      label: 'Number Plate',
+                                      imageData: _photos['photoNumberPlate'],
+                                      onCapture: () =>
+                                          _capturePhoto('photoNumberPlate'),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _PhotoCaptureRow(
+                                      label: 'RC / Document',
+                                      imageData: _photos['photoRc'],
+                                      onCapture: () => _capturePhoto('photoRc'),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'Owner Details',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                TextFormField(
+                                  controller: _ownerNameController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Owner Name',
+                                  ),
+                                  validator: (v) =>
+                                      v == null || v.trim().isEmpty
+                                      ? 'Enter owner name'
+                                      : null,
+                                ),
+                                const SizedBox(height: 8),
+                                TextFormField(
+                                  controller: _ownerContactController,
+                                  keyboardType: TextInputType.phone,
+                                  maxLength: 10,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Owner Phone',
+                                    counterText: '',
+                                  ),
+                                  validator: (v) {
+                                    final value = v?.trim() ?? '';
+                                    if (value.isEmpty) {
+                                      return 'Enter owner phone';
+                                    }
+                                    if (value.length != 10) {
+                                      return 'Enter 10 digit phone';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                TextFormField(
+                                  controller: _locationController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Location (optional)',
+                                    suffixIcon: _locationError != null
+                                        ? const Icon(
+                                            Icons.location_off,
+                                            size: 18,
+                                            color: Colors.redAccent,
+                                          )
+                                        : const Icon(
+                                            Icons.my_location,
+                                            size: 18,
+                                            color: Color(0xFF12314D),
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                if (_error != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: Text(
+                                      _error!,
+                                      style: const TextStyle(
+                                        color: Colors.red,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                if (_success != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: Text(
+                                      _success!,
+                                      style: const TextStyle(
+                                        color: Colors.green,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ElevatedButton(
+                                  onPressed: _submitting ? null : _submitForm,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFF13546),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(24),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _submitting
+                                        ? 'Generating...'
+                                        : 'Generate Certificate',
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
+                  ),
           ),
         ),
       ),

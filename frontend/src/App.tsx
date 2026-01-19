@@ -11,6 +11,9 @@ import SystemUsersPage from "./pages/users/SystemUsersPage";
 import SettingsPage from "./pages/SettingsPage";
 import { QRGenerationPage } from "./pages/qr/QRGenerationPage";
 import { CertificateGeneratorPage } from "./pages/CertificateGeneratorPage";
+import SearchQrPage from "./pages/SearchQrPage";
+import SearchCertPage from "./pages/SearchCertPage";
+import DownloadPage from "./pages/DownloadPage";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import MobileSplash from "./mobile/MobileSplash";
 import MobileLogin from "./mobile/MobileLogin";
@@ -125,6 +128,36 @@ export default function App() {
           }
         />
         <Route
+          path="/search-qr"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <SearchQrPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/search-cert"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <SearchCertPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/download"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <DownloadPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/certificate"
           element={
             <ProtectedRoute>
@@ -152,7 +185,9 @@ export default function App() {
           path="/app/scan"
           element={
             <ProtectedRoute>
-              <MobileScan />
+              <ErrorBoundary>
+                <MobileScan />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />

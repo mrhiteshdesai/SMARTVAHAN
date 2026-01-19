@@ -7,6 +7,7 @@ import {
   useProducts,
   useBatches,
   useGenerateBatch,
+  Batch,
 } from "../../api/hooks";
 import { useAuth } from "../../auth/AuthContext";
 import api from "../../api/client";
@@ -120,9 +121,9 @@ export const QRGenerationPage = () => {
     }
   };
 
-  const handleDownload = async (batchId: string) => {
+  const handleDownload = async (batch: Batch) => {
     try {
-      const response = await api.get(`/qr/download/${batchId}`, {
+      const response = await api.get(`/qr/download/${batch.batchId}`, {
         responseType: "blob",
       });
       const blob = new Blob([response.data], {
@@ -131,12 +132,17 @@ export const QRGenerationPage = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      const contentDisposition = response.headers["content-disposition"] as string | undefined;
-      let filename = `qr-batch-${batchId}.pdf`;
-      if (contentDisposition && contentDisposition.includes("filename=")) {
-        const match = contentDisposition.split("filename=")[1];
-        if (match) {
-          filename = match.replace(/["']/g, "").trim();
+      const created = new Date(batch.createdAt);
+      const dd = String(created.getDate()).padStart(2, "0");
+      const mm = String(created.getMonth() + 1).padStart(2, "0");
+      const yyyy = created.getFullYear();
+      const dateDMY = `${dd}${mm}${yyyy}`;
+      let filename = `${batch.stateCode}-${batch.oemCode}-${batch.productCode}-${dateDMY}-${batch.batchId}.pdf`;
+      if (batch.filePath) {
+        const parts = batch.filePath.split(/[\\/]/);
+        const nameFromPath = parts[parts.length - 1];
+        if (nameFromPath) {
+          filename = nameFromPath;
         }
       }
       link.download = filename;
@@ -268,7 +274,7 @@ export const QRGenerationPage = () => {
                     <td className="px-6 py-4">
                         {batch.status === 'COMPLETED' || !batch.status ? (
                             <button 
-                                onClick={() => handleDownload(batch.batchId)}
+                                onClick={() => handleDownload(batch)}
                                 className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-xs font-medium border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded bg-blue-50 hover:bg-blue-100 transition-all"
                             >
                                 <FileDown size={14} /> Download

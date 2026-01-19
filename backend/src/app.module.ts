@@ -16,6 +16,7 @@ import { QrModule } from "./qr/qr.module";
 import { ManufacturingYearModule } from "./manufacturing-year/manufacturing-year.module";
 import { CertificatesModule } from "./certificates/certificates.module";
 import { VehicleCategoriesModule } from "./vehicle-categories/vehicle-categories.module";
+import { VehicleManufacturersModule } from "./vehicle-manufacturers/vehicle-manufacturers.module";
 import { SettingsModule } from "./settings/settings.module";
 import { AppController } from "./app.controller";
 
@@ -37,6 +38,7 @@ import { AppController } from "./app.controller";
     ManufacturingYearModule,
     CertificatesModule,
     VehicleCategoriesModule,
+    VehicleManufacturersModule,
     SettingsModule
   ],
   controllers: [AppController],

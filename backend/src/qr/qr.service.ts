@@ -131,7 +131,7 @@ export class QrService {
       const dateYMD = dateObj.toISOString().split('T')[0].replace(/-/g, ''); // YYYYMMDD
       const dateDMY = this.formatDateDDMMYYYY(dateObj); // DDMMYYYY
       
-      const pdfName = `${stateCode}-${oemCode}-${productCode}-${dateDMY}-${batchId}.pdf`;
+      const pdfName = `${stateCode}-${oemCode}-${productCode}-${quantity}-${dateDMY}-${batchId}.pdf`;
       
       // Directory: uploads/QR/{STATE}/{BRAND}
       const baseDir = path.join(process.cwd(), 'uploads', 'QR', stateCode, oemCode);

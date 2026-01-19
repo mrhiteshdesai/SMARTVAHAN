@@ -42,4 +42,49 @@ export class CertificatesController {
   ) {
     return this.certificatesService.publicVerify({ url, state, oem, product, value });
   }
+
+  @Get('search-qr')
+  @UseGuards(JwtAuthGuard)
+  async searchQr(
+    @Query('state') state: string,
+    @Query('oem') oem: string,
+    @Query('serial') serial: string,
+    @Req() req: any
+  ) {
+    const baseUrl = req.get('origin') || process.env.BASE_URL || 'https://smartvahan.com';
+    return this.certificatesService.searchQrBySerial({ state, oem, serial, baseUrl });
+  }
+
+  @Get('search-cert')
+  @UseGuards(JwtAuthGuard)
+  async searchCertificate(
+    @Query('state') state: string,
+    @Query('oem') oem: string,
+    @Query('by') by: 'QR_SERIAL' | 'VEHICLE' | 'CERTIFICATE',
+    @Query('serial') serial?: string,
+    @Query('registrationRto') registrationRto?: string,
+    @Query('series') series?: string,
+    @Query('certificateNumber') certificateNumber?: string
+  ) {
+    return this.certificatesService.searchCertificate({
+      state,
+      oem,
+      by,
+      serial,
+      registrationRto,
+      series,
+      certificateNumber
+    });
+  }
+
+  @Get('download-list')
+  @UseGuards(JwtAuthGuard)
+  async downloadList(
+    @Query('state') state?: string,
+    @Query('oem') oem?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string
+  ) {
+    return this.certificatesService.listCertificatesForDownload({ state, oem, from, to });
+  }
 }

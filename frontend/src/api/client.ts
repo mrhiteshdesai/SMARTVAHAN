@@ -1,7 +1,8 @@
 import axios from 'axios';
 
+const isDev = import.meta.env.DEV;
 const api = axios.create({
-  baseURL: '/api', // Proxied by Vite to http://localhost:3000
+  baseURL: isDev ? 'http://localhost:3000/api' : '/api',
 });
 
 api.interceptors.request.use(

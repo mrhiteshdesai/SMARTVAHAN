@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import client from "../api/client";
 
-export default function TopBar() {
+export default function TopBar({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
   const { user, signOut } = useAuth();
   const [logo, setLogo] = useState("");
 
@@ -60,16 +60,32 @@ export default function TopBar() {
     <header className="sticky top-0 z-10 bg-white border-b">
       <div className="mx-auto max-w-full px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3">
+          {onToggleSidebar && (
+            <button
+              type="button"
+              onClick={onToggleSidebar}
+              className="md:hidden rounded-md border px-2 py-1 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              aria-label="Open navigation menu"
+            >
+              <span className="block w-4 h-[2px] bg-gray-700 mb-0.5" />
+              <span className="block w-4 h-[2px] bg-gray-700 mb-0.5" />
+              <span className="block w-4 h-[2px] bg-gray-700" />
+            </button>
+          )}
           {logo ? (
             <img src={logo} alt="Logo" className="h-8 w-auto object-contain" />
           ) : (
             <div className="w-8 h-8 bg-primary rounded-sm"></div>
           )}
-          <div className="font-semibold">SMARTVAHAN</div>
+          <div className="font-semibold hidden sm:block">SMARTVAHAN</div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-600">{user?.name ?? "User"}</span>
-          <button onClick={signOut} className="text-sm px-3 py-1 rounded-md bg-gray-100 hover:bg-gray-200">
+          <span className="text-sm text-gray-600 hidden sm:inline">{user?.name ?? "User"}</span>
+          <button
+            type="button"
+            onClick={signOut}
+            className="text-sm px-3 py-1 rounded-md bg-gray-100 hover:bg-gray-200"
+          >
             Sign Out
           </button>
         </div>

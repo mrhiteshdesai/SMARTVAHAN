@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Html5Qrcode } from "html5-qrcode";
 import api from "../api/client";
 import { useNavigate } from "react-router-dom";
 
@@ -16,7 +15,7 @@ export default function MobileScan() {
   const [scanning, setScanning] = useState(false);
   const [zoomSupported, setZoomSupported] = useState(false);
   const [zoom, setZoom] = useState<ZoomState | null>(null);
-  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerRef = useRef<any | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
 
   const applyZoom = async (value: number) => {
@@ -33,6 +32,11 @@ export default function MobileScan() {
 
   useEffect(() => {
     const startScanner = async (useHd: boolean, boxSize: number) => {
+      const module = await import("html5-qrcode");
+      const Html5Qrcode = module.Html5Qrcode;
+      if (!Html5Qrcode) {
+        throw new Error("QR scanner not available");
+      }
       const id = "mobile-qr-reader";
       const config: any = useHd
         ? {
@@ -48,7 +52,7 @@ export default function MobileScan() {
       await scannerRef.current.start(
         config,
         { fps: 15, qrbox: boxSize },
-        async (decodedText) => {
+        async (decodedText: string) => {
           if (scannerRef.current) {
             await scannerRef.current.stop();
             scannerRef.current.clear();

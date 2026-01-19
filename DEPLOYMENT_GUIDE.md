@@ -1,88 +1,76 @@
 # SmartVahan V2 Deployment Guide (EC2 / Windows Server)
 
-This guide covers the steps to deploy the latest code to your live server, including automated backups.
+## 🚀 Quick Reference: Manual Deployment Steps
 
-## Prerequisites
-- **PowerShell** (Run as Administrator recommended)
-- **Node.js & npm** installed
-- **Git** installed
-- **PostgreSQL** installed (and `pg_dump` accessible)
-- **PM2** installed globally (`npm install -g pm2`)
+Run these commands in **PowerShell (Admin)** on the server.
 
----
-
-## Quick Deployment (Recommended)
-
-We have provided a PowerShell script `server_backup_and_deploy.ps1` that handles:
-1.  **Backup**: Database, Uploads, and Code.
-2.  **Update**: Git pull.
-3.  **Build**: Backend and Frontend.
-4.  **Deploy**: Database migrations and PM2 restart.
-
-### How to use:
-
-1.  **First Time Setup**:
-    Open `server_backup_and_deploy.ps1` in a text editor and update the **CONFIGURATION** section at the top:
-    ```powershell
-    $ProjectRoot = "C:\path\to\SMARTVAHAN_V2"
-    $BackupRoot  = "C:\Backups\SmartVahan"
-    $DbUser      = "postgres"
-    ```
-
-2.  **Run Deployment**:
-    Open PowerShell, navigate to your project folder, and run:
-    ```powershell
-    .\server_backup_and_deploy.ps1
-    ```
-
----
-
-## Manual Deployment Steps
-
-If you prefer to run commands manually, follow these steps.
-
-### 1. Pre-Deployment Backup
-
-**Backup Database:**
+### 1. Variables & Setup
 ```powershell
-pg_dump -U postgres -d smartvahan_db -f "C:\Backups\db_backup_$(Get-Date -Format 'yyyyMMdd').sql"
+# Define Paths
+$RepoPath   = "C:\smartvahan-src\SMARTVAHAN"
+$BackupPath = "C:\smartvahan_backups\$(Get-Date -Format 'yyyy-MM-dd_HH-mm')"
+$IISPath    = "C:\inetpub\wwwroot\SMARTVAHAN"
+
+# Create Backup Directory
+New-Item -ItemType Directory -Force -Path $BackupPath
 ```
 
-**Backup Critical Files (Uploads):**
+### 2. Backup Database & Files
 ```powershell
-Robocopy "C:\path\to\project\backend\uploads" "C:\Backups\uploads_backup" /E
+# 1. Database Dump
+$env:PGPASSWORD = "@002550641646Hitesh"
+pg_dump -U smartvahan -d smartvahan -f "$BackupPath\smartvahan.sql"
+$env:PGPASSWORD = $null
+
+# 2. Backup Uploads (Critical Data)
+Robocopy "$RepoPath\backend\uploads" "$BackupPath\uploads" /E
+
+# 3. Backup Current IIS Site (Safety)
+Robocopy $IISPath "$BackupPath\iis_site_backup" /E
 ```
 
-### 2. Pull Latest Code
+### 3. Update Code
 ```powershell
-cd C:\path\to\SMARTVAHAN_V2
+Set-Location $RepoPath
 git pull origin main
 ```
 
-### 3. Backend Deployment
+### 4. Backend Deployment
 ```powershell
-cd backend
+Set-Location "$RepoPath\backend"
+
+# 1. Install & Build
 npm install
 npm run build
+
+# 2. Write Production .env (If needed)
+$EnvContent = @"
+DATABASE_URL="postgresql://smartvahan:@002550641646Hitesh@localhost:5432/smartvahan?schema=public"
+BASE_URL="https://smartvahan.net"
+JWT_SECRET="c3889fdaba32e2f877b1f7e82685e8c2"
+PORT=3000
+"@
+$EnvContent | Out-File -FilePath ".env" -Encoding UTF8 -Force
+
+# 3. Database Migrations
 npx prisma migrate deploy
+
+# 4. Restart Backend Service
 pm2 restart backend
 ```
 
-### 4. Frontend Deployment
+### 5. Frontend Deployment
 ```powershell
-cd ../frontend
+Set-Location "$RepoPath\frontend"
+
+# 1. Install & Build
 npm install
 npm run build
+
+# 2. Deploy to IIS
+Robocopy "$RepoPath\frontend\dist" $IISPath /E
 ```
-*The build output is in `frontend/dist`. Ensure IIS points to this folder.*
 
 ---
-
-## Troubleshooting
-
--   **Database Password**: If `pg_dump` fails due to password, set the environment variable before running the script:
-    ```powershell
-    $env:PGPASSWORD='your_db_password'
-    .\server_backup_and_deploy.ps1
-    ```
--   **PM2 Not Found**: Ensure PM2 is in your system PATH. If not, use the full path to `pm2.cmd`.
+**Deployment Complete.** 
+Verify at: https://smartvahan.net

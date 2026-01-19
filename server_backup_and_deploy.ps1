@@ -6,25 +6,34 @@
 .DESCRIPTION
     1. Creates a timestamped backup of DB, Backend Code, Frontend Build, and Uploads.
     2. Pulls latest code from Git.
-    3. Installs dependencies and builds Backend & Frontend.
-    4. Runs Database Migrations.
-    5. Restarts Backend Service (PM2).
-
-.NOTES
-    - Ensure 'pg_dump' is in your system PATH or update $PgDumpPath.
-    - Ensure you have Git, Node.js, and PM2 installed.
+    3. Writes production .env file.
+    4. Installs dependencies and builds Backend & Frontend.
+    5. Runs Database Migrations.
+    6. Restarts Backend Service (PM2).
+    7. Copies Frontend build to IIS Site directory.
 #>
 
 # ---------------------------------------------------------------------------
-# CONFIGURATION - ADJUST THESE PATHS FOR YOUR SERVER
+# CONFIGURATION
 # ---------------------------------------------------------------------------
-$ProjectRoot = "C:\Users\Administrator\Documents\SMARTVAHAN_V2"  # <--- UPDATE THIS
-$BackupRoot  = "C:\Backups\SmartVahan"                           # <--- UPDATE THIS
-$DbName      = "smartvahan_db"                                   # <--- UPDATE THIS
-$DbUser      = "postgres"                                        # <--- UPDATE THIS
-# If pg_dump is not in PATH, specify full path (e.g., "C:\Program Files\PostgreSQL\15\bin\pg_dump.exe")
-$PgDumpPath  = "pg_dump" 
+$ProjectRoot    = "C:\smartvahan-src\SMARTVAHAN"
+$IISSitePath    = "C:\inetpub\wwwroot\SMARTVAHAN"  # Assumed 'wwwroot' based on standard IIS paths
+$BackupRoot     = "C:\smartvahan_backups"
+
+# Database Config
+$DbName         = "smartvahan"
+$DbUser         = "smartvahan"
+$DbPassword     = "@002550641646Hitesh"
+$PgDumpPath     = "pg_dump"  # Ensure this is in PATH or provide full path
 $Pm2ServiceName = "backend"
+
+# Environment Variables Content
+$EnvContent = @"
+DATABASE_URL="postgresql://smartvahan:@002550641646Hitesh@localhost:5432/smartvahan?schema=public"
+BASE_URL="https://smartvahan.net"
+JWT_SECRET="c3889fdaba32e2f877b1f7e82685e8c2"
+PORT=3000
+"@
 
 # ---------------------------------------------------------------------------
 # SETUP
@@ -37,12 +46,13 @@ Write-Host " SMARTVAHAN V2 - BACKUP & DEPLOYMENT" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Timestamp: $DateStamp"
 Write-Host "Project:   $ProjectRoot"
+Write-Host "IIS Site:  $IISSitePath"
 Write-Host "Backup To: $CurrentBackupDir"
 Write-Host ""
 
 # Check if Project Dir exists
 if (-not (Test-Path $ProjectRoot)) {
-    Write-Error "Project directory not found at $ProjectRoot. Please update the script configuration."
+    Write-Error "Project directory not found at $ProjectRoot. Please clone the repo first."
     exit 1
 }
 
@@ -53,11 +63,13 @@ Write-Host "[+] Created backup directory" -ForegroundColor Green
 # ---------------------------------------------------------------------------
 # STEP 1: DATABASE BACKUP
 # ---------------------------------------------------------------------------
-Write-Host "`n[1/5] Backing up Database ($DbName)..." -ForegroundColor Yellow
+Write-Host "`n[1/6] Backing up Database ($DbName)..." -ForegroundColor Yellow
 $DbBackupFile = Join-Path $CurrentBackupDir "$DbName.sql"
+
+# Set PGPASSWORD environment variable for this session
+$env:PGPASSWORD = $DbPassword
+
 try {
-    # Note: If password prompt appears, set PGPASSWORD env var before running script
-    # $env:PGPASSWORD='your_password'
     & $PgDumpPath -U $DbUser -d $DbName -f $DbBackupFile
     if ($LASTEXITCODE -eq 0) {
         Write-Host "    Success: Database dumped to $DbBackupFile" -ForegroundColor Green
@@ -67,11 +79,13 @@ try {
 } catch {
     Write-Warning "    Error running pg_dump. Is PostgreSQL installed and in PATH?"
 }
+# Clear password from env
+$env:PGPASSWORD = $null
 
 # ---------------------------------------------------------------------------
 # STEP 2: FILE BACKUP
 # ---------------------------------------------------------------------------
-Write-Host "`n[2/5] Backing up Files..." -ForegroundColor Yellow
+Write-Host "`n[2/6] Backing up Files..." -ForegroundColor Yellow
 
 # Function to safely copy
 function Safe-Copy ($Source, $Dest, $Exclude) {
@@ -91,27 +105,32 @@ Safe-Copy "$ProjectRoot\backend" "$CurrentBackupDir\backend" @("node_modules", "
 # Backup Uploads (CRITICAL)
 Safe-Copy "$ProjectRoot\backend\uploads" "$CurrentBackupDir\uploads" @()
 
-# Backup Frontend Dist (Current Live Site)
-Safe-Copy "$ProjectRoot\frontend\dist" "$CurrentBackupDir\frontend_dist_backup" @()
+# Backup Current IIS Site
+Safe-Copy $IISSitePath "$CurrentBackupDir\iis_site_backup" @()
 
 Write-Host "[+] Backup Complete" -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
-# STEP 3: GIT PULL
+# STEP 3: GIT PULL & ENV SETUP
 # ---------------------------------------------------------------------------
-Write-Host "`n[3/5] Pulling Latest Code..." -ForegroundColor Yellow
+Write-Host "`n[3/6] Pulling Latest Code & Setting Env..." -ForegroundColor Yellow
 Set-Location $ProjectRoot
 git pull origin main
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Git pull failed. Please resolve conflicts manually."
     exit 1
 }
-Write-Host "[+] Code updated" -ForegroundColor Green
+
+# Write .env file
+$EnvFilePath = Join-Path "$ProjectRoot\backend" ".env"
+$EnvContent | Out-File -FilePath $EnvFilePath -Encoding UTF8 -Force
+Write-Host "    Updated .env file at $EnvFilePath" -ForegroundColor Gray
+Write-Host "[+] Code updated and Env set" -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # STEP 4: BACKEND DEPLOYMENT
 # ---------------------------------------------------------------------------
-Write-Host "`n[4/5] Deploying Backend..." -ForegroundColor Yellow
+Write-Host "`n[4/6] Deploying Backend..." -ForegroundColor Yellow
 Set-Location "$ProjectRoot\backend"
 
 Write-Host "    Installing dependencies..."
@@ -122,6 +141,8 @@ npm run build
 if ($LASTEXITCODE -ne 0) { Write-Error "Backend build failed"; exit 1 }
 
 Write-Host "    Running Database Migrations..."
+# Set ENV for migration
+$env:DATABASE_URL = "postgresql://$($DbUser):$($DbPassword)@localhost:5432/$($DbName)?schema=public"
 npx prisma migrate deploy
 if ($LASTEXITCODE -ne 0) { Write-Error "DB Migration failed"; exit 1 }
 
@@ -133,9 +154,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ---------------------------------------------------------------------------
-# STEP 5: FRONTEND DEPLOYMENT
+# STEP 5: FRONTEND BUILD
 # ---------------------------------------------------------------------------
-Write-Host "`n[5/5] Deploying Frontend..." -ForegroundColor Yellow
+Write-Host "`n[5/6] Building Frontend..." -ForegroundColor Yellow
 Set-Location "$ProjectRoot\frontend"
 
 Write-Host "    Installing dependencies..."
@@ -145,8 +166,22 @@ Write-Host "    Building React App..."
 npm run build
 if ($LASTEXITCODE -ne 0) { Write-Error "Frontend build failed"; exit 1 }
 
+# ---------------------------------------------------------------------------
+# STEP 6: IIS DEPLOYMENT
+# ---------------------------------------------------------------------------
+Write-Host "`n[6/6] Deploying to IIS ($IISSitePath)..." -ForegroundColor Yellow
+
+if (-not (Test-Path $IISSitePath)) {
+    New-Item -ItemType Directory -Force -Path $IISSitePath | Out-Null
+}
+
+$DistPath = "$ProjectRoot\frontend\dist"
+# Copy contents of dist to IIS path
+Robocopy $DistPath $IISSitePath /E /NFL /NDL /NJH /NJS
+Write-Host "    Copied build files to IIS Site" -ForegroundColor Gray
+
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host " DEPLOYMENT SUCCESSFUL" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Backup Location: $CurrentBackupDir"
-Write-Host "Please verify the site is accessible."
+Write-Host "Site: https://smartvahan.net"

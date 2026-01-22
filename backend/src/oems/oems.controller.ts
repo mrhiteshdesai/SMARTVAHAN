@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseInterceptors, UploadedFile, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseInterceptors, UploadedFile, UseGuards, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OemsService } from './oems.service';
 import { diskStorage } from 'multer';
@@ -24,7 +24,7 @@ export class OemsController {
       }
     })
   }))
-  create(@Body() createOemDto: any, @UploadedFile() file?: any) {
+  create(@Body() createOemDto: any, @Req() req: any, @UploadedFile() file?: any) {
     if (file) {
       createOemDto.logo = `/uploads/oems/${file.filename}`;
     }
@@ -39,7 +39,8 @@ export class OemsController {
         }
     }
     
-    return this.oemsService.create(createOemDto);
+    const userId = req.user?.userId;
+    return this.oemsService.create(createOemDto, userId);
   }
 
   @Get()

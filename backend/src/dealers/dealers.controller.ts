@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
 import { DealersService } from './dealers.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -12,8 +12,9 @@ export class DealersController {
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN)
-  create(@Body() createDealerDto: any) {
-    return this.dealersService.create(createDealerDto);
+  create(@Body() createDealerDto: any, @Req() req: any) {
+    const userId = req.user?.userId;
+    return this.dealersService.create(createDealerDto, userId);
   }
 
   @Get()

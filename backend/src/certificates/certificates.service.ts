@@ -829,11 +829,12 @@ export class CertificatesService {
         ownerContact: data.ownerContact
     };
 
-    let dealerDetails: { name: string; tradeCertificateNo: string; gstNo: string; tradeValidity: string | null } = {
+    let dealerDetails: { name: string; tradeCertificateNo: string; gstNo: string; tradeValidity: string | null; aadharNumber: string | null } = {
         name: 'NA',
         tradeCertificateNo: 'NA',
         gstNo: 'NA',
-        tradeValidity: null
+        tradeValidity: null,
+        aadharNumber: null
     };
 
     if (dealerId) {
@@ -845,7 +846,8 @@ export class CertificatesService {
                 name: dealer.name,
                 tradeCertificateNo: dealer.tradeCertificateNo || 'NA',
                 gstNo: dealer.gstNo || 'NA',
-                tradeValidity: dealer.tradeValidity ? dealer.tradeValidity.toISOString() : null
+                tradeValidity: dealer.tradeValidity ? dealer.tradeValidity.toISOString() : null,
+                aadharNumber: dealer.aadharNumber || null
             };
         } else {
             console.log("Dealer not found for ID:", dealerId);
@@ -856,7 +858,8 @@ export class CertificatesService {
             name: data.dealerDetails.name || 'NA',
             tradeCertificateNo: data.dealerDetails.tradeCertificateNo || 'NA',
             gstNo: data.dealerDetails.gstNo || 'NA',
-            tradeValidity: data.dealerDetails.tradeValidity || null
+            tradeValidity: data.dealerDetails.tradeValidity || null,
+            aadharNumber: data.dealerDetails.aadharNumber || null
         };
     }
     
@@ -994,8 +997,9 @@ export class CertificatesService {
             dealerName: dealerDetails.name,
             tradeCertificateNo: dealerDetails.tradeCertificateNo,
             gstNo: dealerDetails.gstNo,
+            aadharNumber: dealerDetails.aadharNumber,
             tradeValidity: dealerDetails.tradeValidity
-                ? new Date(dealerDetails.tradeValidity).toLocaleDateString('en-IN')
+                ? new Date(dealerDetails.tradeValidity).toLocaleDateString('en-GB').replace(/\//g, '-')
                 : ''
         });
 
@@ -1118,19 +1122,24 @@ export class CertificatesService {
       };
 
       // ================= HEADER =================
-      doc.rect(startX, currentY, contentWidth, 160).fill('#E0E0E0');
+      const headerHeight = 90;
+      doc.rect(startX, currentY, contentWidth, headerHeight).fill('#E0E0E0');
       
+      const logoMaxHeight = 60; 
+      const logoMaxWidth = 100;
+      const logoY = currentY + (headerHeight - logoMaxHeight) / 2;
+
       // OEM Logo (Left)
       if (data.qrCode.batch.oem.logo) {
           try {
               const logo = data.qrCode.batch.oem.logo;
               const fsPath = resolveLogoPath(logo);
               if (fsPath) {
-                   doc.image(fsPath, startX + 10, currentY + 25, { width: 60, align: 'center', valign: 'center' });
+                   doc.image(fsPath, startX + 10, logoY, { fit: [logoMaxWidth, logoMaxHeight], align: 'center', valign: 'center' });
               } else {
                   let logoData = logo;
                   if (logoData.startsWith('data:')) logoData = logoData.split(',')[1];
-                  doc.image(Buffer.from(logoData, 'base64'), startX + 10, currentY + 25, { width: 60, align: 'center', valign: 'center' });
+                  doc.image(Buffer.from(logoData, 'base64'), startX + 10, logoY, { fit: [logoMaxWidth, logoMaxHeight], align: 'center', valign: 'center' });
               }
           } catch (e) {
                console.error("OEM Logo Error", e);
@@ -1139,31 +1148,37 @@ export class CertificatesService {
 
       // Center Text
       const centerX = startX;
+      // Calculate vertical centering for text block
+      // Block Height approx: 16 (Title) + 4 (Gap) + 11 (System) + 4 (Gap) + 13 (RTO) = ~48 points
+      const textBlockHeight = 48;
+      const textStartY = currentY + (headerHeight - textBlockHeight) / 2;
+
       doc.fillColor('black');
-      doc.font('Helvetica-Bold').fontSize(16).text('INSTALLATION CERTIFICATE', centerX, currentY + 35, { align: 'center', width: contentWidth });
+      doc.font('Helvetica-Bold').fontSize(16).text('INSTALLATION CERTIFICATE', centerX, textStartY, { align: 'center', width: contentWidth });
       // Base URL or System Name
-      doc.fontSize(11).text((data.systemName || 'SMART VAHAN').toUpperCase(), centerX, currentY + 58, { align: 'center', width: contentWidth });
+      doc.fontSize(11).text((data.systemName || 'SMART VAHAN').toUpperCase(), centerX, textStartY + 20, { align: 'center', width: contentWidth });
       // Registration RTO Series (Title/Number)
       const rtoSeries = `${data.vehicleDetails.registrationRto}-${data.vehicleDetails.series}`.toUpperCase(); 
-      doc.fontSize(13).text(rtoSeries, centerX, currentY + 80, { align: 'center', width: contentWidth });
+      doc.fontSize(13).text(rtoSeries, centerX, textStartY + 35, { align: 'center', width: contentWidth });
 
       // System Logo (Right)
       if (data.systemLogo) {
           try {
               const fsPath = resolveLogoPath(data.systemLogo);
               if (fsPath) {
-                doc.image(fsPath, startX + contentWidth - 120, currentY + 25, { width: 60, align: 'center', valign: 'center' });
+                // Align right: x = startX + contentWidth - logoMaxWidth - 10
+                doc.image(fsPath, startX + contentWidth - (logoMaxWidth + 10), logoY, { fit: [logoMaxWidth, logoMaxHeight], align: 'center', valign: 'center' });
               } else {
                 let sysLogoData = data.systemLogo;
                 if (sysLogoData.startsWith('data:')) sysLogoData = sysLogoData.split(',')[1];
-                doc.image(Buffer.from(sysLogoData, 'base64'), startX + contentWidth - 120, currentY + 25, { width: 60, align: 'center', valign: 'center' });
+                doc.image(Buffer.from(sysLogoData, 'base64'), startX + contentWidth - (logoMaxWidth + 10), logoY, { fit: [logoMaxWidth, logoMaxHeight], align: 'center', valign: 'center' });
               }
           } catch (e) {
                console.error("System Logo Error", e);
           }
       }
 
-      currentY += 170;
+      currentY += headerHeight + 10;
 
       // Note Sub-header
       doc.font('Helvetica-Oblique').fontSize(8)
@@ -1194,8 +1209,8 @@ export class CertificatesService {
 
       // Text Fields (Right)
       // Fields: COP, COP Validity, Certificate No, QR Serial, Date Gen, Gen At, Valid From, Valid Till, Vehicle No
-      const validFrom = new Date(data.generatedAt).toLocaleDateString('en-IN');
-      const validTill = new Date(new Date(data.generatedAt).setFullYear(new Date(data.generatedAt).getFullYear() + 1)).toLocaleDateString('en-IN');
+      const validFrom = new Date(data.generatedAt).toLocaleDateString('en-GB').replace(/\//g, '-');
+      const validTill = new Date(new Date(data.generatedAt).setFullYear(new Date(data.generatedAt).getFullYear() + 1)).toLocaleDateString('en-GB').replace(/\//g, '-');
       // Vehicle Number in image seems to be date?? But we use Reg No.
       const vehicleNumber = `${data.vehicleDetails.registrationRto}${data.vehicleDetails.series}`; // Or reg number logic
 
@@ -1298,7 +1313,7 @@ export class CertificatesService {
       // 4 Photos in a row
       const photoGap = 10;
       const photoW = (contentWidth - (photoGap * 3)) / 4;
-      const photoH = 100; 
+      const photoH = 160; 
 
       const photos = [
           { img: data.photos.photoFrontLeft, label: 'FRONT LEFT IMAGE' },
@@ -1336,20 +1351,48 @@ export class CertificatesService {
       const tradeCert = (data.tradeCertificateNo ?? 'NA');
       const gstNo = (data.gstNo ?? 'NA');
       const tradeValidity = (data.tradeValidity ?? 'NA');
-      console.log('PDF Dealer Section Values:', { dealerName, tradeCert, gstNo, tradeValidity });
+      const aadharNo = (data.aadharNumber ?? 'NA');
+      console.log('PDF Dealer Section Values:', { dealerName, tradeCert, gstNo, tradeValidity, aadharNo });
       
-      // Row 1
-      drawField('RTO LOCATION', data.vehicleDetails.passingRto, startX, dY, vColW);
-      drawField('DEALER NAME', dealerName, startX + vColW, dY, vColW);
+      // Left Column: Dealer Name, Trade Cert, GST, Aadhar
+      // Right Column: RTO Location
       
-      // Row 2
-      drawField('TRADE CERTIFICATE', tradeCert, startX, dY + vRowH, vColW);
-      drawField('TRADE VALIDITY', tradeValidity, startX + vColW, dY + vRowH, vColW);
+      const leftX = startX;
+      const rightX = startX + vColW;
+      
+      let currentLeftY = dY;
+      
+      // Dealer Name
+      drawField('DEALER NAME', dealerName, leftX, currentLeftY, vColW);
+      currentLeftY += vRowH;
 
-      // Row 3
-      drawField('GSTIN', gstNo, startX, dY + (vRowH * 2), vColW);
-
-      currentY += (vRowH * 3) + 20;
+      // Trade Certificate (Conditional)
+      if (tradeCert !== 'NA') {
+          drawField('TRADE CERTIFICATE', tradeCert, leftX, currentLeftY, vColW);
+          currentLeftY += vRowH;
+          if (tradeValidity !== 'NA') {
+              drawField('TRADE VALIDITY', tradeValidity, leftX, currentLeftY, vColW);
+              currentLeftY += vRowH;
+          }
+      }
+      
+      // GST (Conditional)
+      if (gstNo !== 'NA') {
+          drawField('GSTIN', gstNo, leftX, currentLeftY, vColW);
+          currentLeftY += vRowH;
+      }
+      
+      // Aadhar (Conditional)
+      if (aadharNo && aadharNo !== 'NA') {
+           drawField('AADHAR NUMBER', aadharNo, leftX, currentLeftY, vColW);
+           currentLeftY += vRowH;
+      }
+      
+      // Right Column: RTO Location
+      drawField('RTO LOCATION', data.vehicleDetails.passingRto, rightX, dY, vColW);
+      
+      // Update currentY based on max height used
+      currentY = Math.max(currentLeftY, dY + vRowH) + 10;
 
       // ================= FOOTER =================
       doc.font('Helvetica-Bold').fontSize(9).text('DECLARATION:', startX, currentY);

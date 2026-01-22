@@ -40,6 +40,7 @@ model User {
   state     State?   @relation(fields: [stateCode], references: [code])
   oemCode   String?
   oem       OEM?     @relation(fields: [oemCode], references: [code])
+  auditLogs AuditLog[]
 
   @@map("users")
 }
@@ -117,9 +118,14 @@ model Dealer {
   // Certificate Details
   tradeCertificateNo String?
   tradeValidity      DateTime?
+  tradeCertificateUrl String?
   gstNo              String?
+  gstCertificateUrl  String?
+  aadharNumber       String?
+  aadharCardUrl      String?
 
   certificates    Certificate[]
+  inventoryLogs   InventoryLog[]
 
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
@@ -284,4 +290,43 @@ model SystemSettings {
   updatedAt       DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+// Audit Log
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String   // e.g., "LOGIN", "CREATE", "UPDATE", "DELETE"
+  entity    String   // e.g., "USER", "DEALER", "CERTIFICATE"
+  entityId  String?  // ID of the affected entity
+  details   String?  // JSON string or description
+  userId    String?  // Actor
+  user      User?    @relation(fields: [userId], references: [id])
+  ipAddress String?
+  timestamp DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// Inventory Log
+model InventoryLog {
+  id          String   @id @default(uuid())
+  type        String   // "INWARD", "OUTWARD"
+  stateCode   String
+  oemCode     String
+  productCode String
+  quantity    Int
+  
+  serialStart String?
+  serialEnd   String?
+  remark      String?
+  
+  batchId     String?  // Optional link to batch
+  
+  dealerId    String?
+  dealer      Dealer?  @relation(fields: [dealerId], references: [id])
+
+  userId      String?
+  createdAt   DateTime @default(now())
+
+  @@map("inventory_logs")
 }

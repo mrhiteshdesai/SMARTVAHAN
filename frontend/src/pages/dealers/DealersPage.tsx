@@ -487,37 +487,6 @@ export default function DealersPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-               <div>
-                  <label className="block text-sm font-medium mb-1">Trade Certificate No.</label>
-                  <input
-                    value={form.tradeCertificateNo}
-                    onChange={e => setForm({...form, tradeCertificateNo: e.target.value})}
-                    className="w-full border rounded px-3 py-2"
-                    placeholder="Trade Cert No"
-                  />
-               </div>
-               <div>
-                  <label className="block text-sm font-medium mb-1">Trade Validity</label>
-                  <input
-                    type="date"
-                    value={form.tradeValidity}
-                    onChange={e => setForm({...form, tradeValidity: e.target.value})}
-                    className="w-full border rounded px-3 py-2"
-                  />
-               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">GST No.</label>
-              <input
-                value={form.gstNo}
-                onChange={e => setForm({...form, gstNo: e.target.value})}
-                className="w-full border rounded px-3 py-2"
-                placeholder="GSTIN"
-              />
-            </div>
-
             <div>
               <label className="block text-sm font-medium mb-1">Authorised OEMs (Multi-select)</label>
               <div className="border rounded p-2 h-32 overflow-y-auto bg-white">
@@ -546,6 +515,92 @@ export default function DealersPage() {
               <p className="text-xs text-gray-500 mt-1">
                 {form.oemCodes.length} selected
               </p>
+            </div>
+
+            {/* Verifications Section */}
+            <div className="border-t pt-4 mt-2">
+                <h4 className="font-semibold text-gray-700 mb-3">Verifications</h4>
+                
+                {/* Trade Certificate */}
+                <div className="bg-gray-50 p-3 rounded mb-3">
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="text-sm font-medium text-gray-700">Trade Certificate</label>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                        <input
+                            value={form.tradeCertificateNo}
+                            onChange={e => setForm({...form, tradeCertificateNo: e.target.value})}
+                            className="w-full border rounded px-3 py-2 text-sm"
+                            placeholder="Certificate Number"
+                        />
+                        <input
+                            type="date"
+                            value={form.tradeValidity}
+                            onChange={e => setForm({...form, tradeValidity: e.target.value})}
+                            className="w-full border rounded px-3 py-2 text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">Upload Certificate</label>
+                        <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={(e) => handleFileChange('tradeCertificateUrl', e)}
+                            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                        {form.tradeCertificateUrl && <span className="text-xs text-green-600 mt-1 block">File Selected</span>}
+                    </div>
+                </div>
+
+                {/* GST Certificate */}
+                <div className="bg-gray-50 p-3 rounded mb-3">
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="text-sm font-medium text-gray-700">GST Details</label>
+                    </div>
+                    <div className="mb-2">
+                        <input
+                            value={form.gstNo}
+                            onChange={e => setForm({...form, gstNo: e.target.value})}
+                            className="w-full border rounded px-3 py-2 text-sm"
+                            placeholder="GST Number"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">Upload GST Certificate</label>
+                        <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={(e) => handleFileChange('gstCertificateUrl', e)}
+                            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                        {form.gstCertificateUrl && <span className="text-xs text-green-600 mt-1 block">File Selected</span>}
+                    </div>
+                </div>
+
+                {/* Aadhar Card */}
+                <div className="bg-gray-50 p-3 rounded mb-3">
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="text-sm font-medium text-gray-700">Aadhar Details</label>
+                    </div>
+                    <div className="mb-2">
+                        <input
+                            value={form.aadharNumber}
+                            onChange={e => setForm({...form, aadharNumber: e.target.value})}
+                            className="w-full border rounded px-3 py-2 text-sm"
+                            placeholder="Aadhar Number"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">Upload Aadhar Card</label>
+                        <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={(e) => handleFileChange('aadharCardUrl', e)}
+                            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                        {form.aadharCardUrl && <span className="text-xs text-green-600 mt-1 block">File Selected</span>}
+                    </div>
+                </div>
             </div>
 
             <div>

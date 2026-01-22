@@ -15,18 +15,19 @@ export class QrController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN) // Admin cannot generate
   async generateBatch(@Body() body: any, @Req() req: any) {
     // In a real app, extract userId from request. For now, trust the body or use a default
-    const userId = body.userId || 'system-admin';
+    const userId = req.user?.userId || body.userId || 'system-admin';
     const baseUrl = req.get('origin') || process.env.BASE_URL || 'https://smartvahan.com';
     return this.qrService.generateBatch(body, userId, baseUrl);
   }
 
   @Post('reactivate')
   @UseGuards(JwtAuthGuard)
-  async reactivateQr(@Body() body: { stateCode: string; oemCode: string; serialNumber: number }) {
+  async reactivateQr(@Body() body: { stateCode: string; oemCode: string; serialNumber: number }, @Req() req: any) {
       if (!body.stateCode || !body.oemCode || !body.serialNumber) {
           throw new Error('Missing required fields: stateCode, oemCode, serialNumber');
       }
-      return this.qrService.reactivateQr(body);
+      const userId = req.user?.userId || 'system-admin';
+      return this.qrService.reactivateQr(body, userId);
   }
 
   @Get('batches')

@@ -20,6 +20,9 @@ import { VehicleManufacturersModule } from "./vehicle-manufacturers/vehicle-manu
 import { SettingsModule } from "./settings/settings.module";
 import { StatsModule } from "./stats/stats.module";
 import { S3Module } from "./s3/s3.module";
+import { AuditModule } from "./audit/audit.module";
+import { InventoryModule } from "./inventory/inventory.module";
+import { ReportsModule } from "./reports/reports.module";
 import { AppController } from "./app.controller";
 
 @Module({
@@ -43,7 +46,10 @@ import { AppController } from "./app.controller";
     VehicleCategoriesModule,
     VehicleManufacturersModule,
     SettingsModule,
-    StatsModule
+    StatsModule,
+    AuditModule,
+    InventoryModule,
+    ReportsModule
   ],
   controllers: [AppController],
   providers: [

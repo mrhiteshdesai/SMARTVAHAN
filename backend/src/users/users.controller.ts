@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
@@ -12,8 +12,9 @@ export class UsersController {
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN)
-  create(@Body() createUserDto: any) {
-    return this.usersService.create(createUserDto);
+  create(@Body() createUserDto: any, @Req() req: any) {
+    const userId = req.user?.userId;
+    return this.usersService.create(createUserDto, userId);
   }
 
   @Get()

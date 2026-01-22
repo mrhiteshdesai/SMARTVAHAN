@@ -67,17 +67,21 @@ export default function DownloadPage() {
 
   const handleExport = () => {
     if (!rows.length) return;
-    const data = rows.map((r) => ({
-      "Generation Date": new Date(r.generationDate).toLocaleString(),
-      State: r.state || "",
-      OEM: r.oem || "",
-      Product: r.product || "",
-      "QR Serial": r.qrSerial,
-      "Certificate Number": r.certificateNumber,
-      "Vehicle Number": r.vehicleNumber,
-      "Dealer Name": r.dealerName || "",
-      "Dealer User ID": r.dealerUserId || ""
-    }));
+    const data = rows.map((r) => {
+      const d = new Date(r.generationDate);
+      const dateStr = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+      return {
+        "Generation Date": dateStr,
+        State: r.state || "",
+        OEM: r.oem || "",
+        Product: r.product || "",
+        "QR Serial": r.qrSerial,
+        "Certificate Number": r.certificateNumber,
+        "Vehicle Number": r.vehicleNumber,
+        "Dealer Name": r.dealerName || "",
+        "Dealer User ID": r.dealerUserId || ""
+      };
+    });
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Certificates");
@@ -212,7 +216,10 @@ export default function DownloadPage() {
               {rows.map((row) => (
                 <tr key={row.id} className="border-t hover:bg-gray-50">
                   <td className="px-4 py-2">
-                    {new Date(row.generationDate).toLocaleString()}
+                    {(() => {
+                      const d = new Date(row.generationDate);
+                      return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+                    })()}
                   </td>
                   <td className="px-4 py-2">{row.state || "-"}</td>
                   <td className="px-4 py-2">{row.oem || "-"}</td>

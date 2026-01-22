@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { S3Service } from '../s3/s3.service';
+import { AuditService } from '../audit/audit.service';
 import * as PDFDocument from 'pdfkit';
 import * as QRCode from 'qrcode';
 import * as fs from 'fs';
@@ -13,7 +14,8 @@ export class QrService {
 
   constructor(
     private prisma: PrismaService,
-    private s3Service: S3Service
+    private s3Service: S3Service,
+    private auditService: AuditService
   ) {}
 
   async generateBatch(data: any, userId: string, baseUrl: string) {
@@ -75,6 +77,15 @@ export class QrService {
               filePath: '', // Placeholder
             }
         });
+
+        // Audit Log for Batch Generation
+        await this.auditService.logAction(
+            userId,
+            'GENERATE_BATCH',
+            'BATCH',
+            batchId,
+            `Generated batch of ${quantity} QR codes for ${stateCode}-${oemCode}-${productCode}`
+        );
 
         // Trigger Async Processing (Fire and forget, but catch errors inside)
         this.processBatch(batch.id, data, batchId, baseUrl).catch(err => {
@@ -177,9 +188,9 @@ export class QrService {
 
         // 1. Header: {STATE CODE}-{BRAND CODE}-{PRODUCT}
         // Position: Top Margin + 20pt
-        // Font: 60pt Bold (Reduced from 80pt)
+        // Font: 75pt Bold
         const headerY = margin + 20;
-        doc.font('Helvetica-Bold').fontSize(60)
+        doc.font('Helvetica-Bold').fontSize(75)
            .text(`${stateCode}-${oemCode}-${productCode}`, 0, headerY, { 
                align: 'center', 
                width: width // Center across full page width
@@ -188,7 +199,7 @@ export class QrService {
         // 2. QR Code Image
         // Make it as large as possible while keeping margins
         // Y Position: Below Header + Spacing
-        const qrY = headerY + 80; // 60pt text + 20pt gap
+        const qrY = headerY + 100; // 75pt text + 25pt gap
         const qrSize = usableWidth; // Full width between margins (approx 600pt)
         
         doc.image(Buffer.from(base64Data, 'base64'), margin, qrY, { 
@@ -212,10 +223,10 @@ export class QrService {
         // 4. Footer Line 1: {YYYYMMDD}-{BATCHID}-(X/TOTAL)
         // Position: Just above Footer 2
         const footer2Y = height - margin - 40; // Bottom absolute anchor
-        const footer1Y = footer2Y - 50;
+        const footer1Y = footer2Y - 70;
         
         const footer1 = `${dateYMD}-${batchId}-(${i + 1}/${quantity})`;
-        doc.font('Helvetica').fontSize(30)
+        doc.font('Helvetica').fontSize(45)
            .text(footer1, 0, footer1Y, { 
                align: 'center', 
                width: width 
@@ -223,8 +234,8 @@ export class QrService {
 
         // 5. Footer Line 2: SADAK SURAKSHA JEEVAN RAKSHA
         // Position: Bottom Margin
-        // Font: 25pt Bold (Reduced from 35pt)
-        doc.font('Helvetica-Bold').fontSize(25)
+        // Font: 30pt Bold
+        doc.font('Helvetica-Bold').fontSize(30)
            .text("SADAK SURAKSHA JEEVAN RAKSHA", 0, footer2Y, { 
                align: 'center', 
                width: width 
@@ -275,7 +286,11 @@ export class QrService {
               }
           }
       });
-  }
+
+      // --- INVENTORY LOGGING (INWARD) ---
+        // Removed: We now calculate inward stock dynamically from Batch records to support historical data
+        
+    }
   
   async getBatches() {
       return this.prisma.batch.findMany({
@@ -311,7 +326,7 @@ export class QrService {
       };
   }
 
-  async reactivateQr(data: { stateCode: string; oemCode: string; serialNumber: number }) {
+  async reactivateQr(data: { stateCode: string; oemCode: string; serialNumber: number }, userId: string) {
     const { stateCode, oemCode, serialNumber } = data;
     
     // 1. Find the QR Code by Serial + State + OEM

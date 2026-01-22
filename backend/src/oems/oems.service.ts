@@ -1,13 +1,17 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { OEM, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class OemsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService
+  ) {}
 
-  async create(data: any): Promise<OEM> {
+  async create(data: any, createdByUserId?: string): Promise<OEM> {
     const { username, password, ...oemData } = data;
 
     // If username/password provided, create user transactionally
@@ -20,7 +24,7 @@ export class OemsService {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        return this.prisma.$transaction(async (tx) => {
+        const oem = await this.prisma.$transaction(async (tx) => {
             const oem = await tx.oEM.create({ data: oemData });
             
             await tx.user.create({
@@ -36,9 +40,35 @@ export class OemsService {
 
             return oem;
         });
+
+        // Audit Log
+        if (createdByUserId) {
+            await this.auditService.logAction(
+                createdByUserId,
+                'CREATE_OEM',
+                'OEM',
+                oem.id,
+                `Created OEM ${oem.name} (${oem.code})`
+            );
+        }
+
+        return oem;
     }
 
-    return this.prisma.oEM.create({ data: oemData });
+    const oem = await this.prisma.oEM.create({ data: oemData });
+    
+    // Audit Log
+    if (createdByUserId) {
+        await this.auditService.logAction(
+            createdByUserId,
+            'CREATE_OEM',
+            'OEM',
+            oem.id,
+            `Created OEM ${oem.name} (${oem.code})`
+        );
+    }
+    
+    return oem;
   }
 
   async findAll(): Promise<OEM[]> {

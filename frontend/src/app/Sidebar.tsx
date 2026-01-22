@@ -16,16 +16,21 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronLeft,
-  RefreshCcw
+  RefreshCcw,
+  Package
 } from "lucide-react";
 
 const items = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/qr-generation", label: "QR Generator", icon: QrCode },
+  { path: "/inventory", label: "Inventory", icon: Package },
   { path: "/activate-qr", label: "Reactivate QR Code", icon: RefreshCcw },
   { path: "/certificate", label: "Certificate Generator", icon: FileBadge2 },
   { path: "/search-qr", label: "Search QR Code", icon: Search },
   { path: "/search-cert", label: "Search Certificate", icon: FileSearch },
+  // Reports is handled as a separate section or collapsible if needed, but for now simple link is fine
+  // or better, a Collapsible for Reports? The user requested: Reports (Main Menu) -> State, RTO, OEM, Dealer
+  // Let's implement Collapsible for Reports similar to User Management
   { path: "/download", label: "Download Data", icon: Download },
   { path: "/audit", label: "Audit Logs", icon: ShieldCheck },
   { path: "/settings", label: "Settings", icon: Settings }
@@ -76,6 +81,41 @@ export default function Sidebar() {
               </NavLink>
             );
           })}
+          
+          {/* Collapsible: Reports */}
+          <button
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm hover:bg-gray-100 text-gray-700"
+            onClick={() => setOpenReports((v) => !v)}
+            aria-expanded={openReports}
+          >
+            <FileBarChart2 className="w-5 h-5" />
+            {!collapsed && (
+              <>
+                <span>Reports</span>
+                <span className="ml-auto">{openReports ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+              </>
+            )}
+          </button>
+          {!collapsed && openReports && (
+            <div className="ml-8 space-y-1">
+              <NavLink to="/reports/state" className={({ isActive }) => ItemClass(isActive)}>
+                <Map className="w-4 h-4" />
+                <span>State Report</span>
+              </NavLink>
+              <NavLink to="/reports/rto" className={({ isActive }) => ItemClass(isActive)}>
+                <FileBarChart2 className="w-4 h-4" />
+                <span>RTO Report</span>
+              </NavLink>
+              <NavLink to="/reports/oem" className={({ isActive }) => ItemClass(isActive)}>
+                <Building2 className="w-4 h-4" />
+                <span>OEM Report</span>
+              </NavLink>
+              <NavLink to="/reports/dealer" className={({ isActive }) => ItemClass(isActive)}>
+                <Users className="w-4 h-4" />
+                <span>Dealer Report</span>
+              </NavLink>
+            </div>
+          )}
 
           {/* Collapsible: User Management */}
           <button
@@ -118,36 +158,6 @@ export default function Sidebar() {
             </div>
           )}
 
-          {/* Collapsible: Reports */}
-          <button
-            className="w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm hover:bg-gray-100 text-gray-700"
-            onClick={() => setOpenReports((v) => !v)}
-            aria-expanded={openReports}
-          >
-            <FileBarChart2 className="w-5 h-5" />
-            {!collapsed && (
-              <>
-                <span>Reports</span>
-                <span className="ml-auto">{openReports ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
-              </>
-            )}
-          </button>
-          {!collapsed && openReports && (
-            <div className="ml-8 space-y-1">
-              <NavLink to="/reports/states" className={({ isActive }) => ItemClass(isActive)}>
-                <Map className="w-4 h-4" />
-                <span>States Reports</span>
-              </NavLink>
-              <NavLink to="/reports/oems" className={({ isActive }) => ItemClass(isActive)}>
-                <Building2 className="w-4 h-4" />
-                <span>OEMs Reports</span>
-              </NavLink>
-              <NavLink to="/reports/material" className={({ isActive }) => ItemClass(isActive)}>
-                <FileBadge2 className="w-4 h-4" />
-                <span>Material Reports</span>
-              </NavLink>
-            </div>
-          )}
         </nav>
 
         <div className="px-3 py-4 mt-auto text-xs text-gray-500">

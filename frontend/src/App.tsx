@@ -15,6 +15,12 @@ import { CertificateGeneratorPage } from "./pages/CertificateGeneratorPage";
 import SearchQrPage from "./pages/SearchQrPage";
 import SearchCertPage from "./pages/SearchCertPage";
 import DownloadPage from "./pages/DownloadPage";
+import StateReportPage from "./pages/reports/StateReportPage";
+import RtoReportPage from "./pages/reports/RtoReportPage";
+import OemReportPage from "./pages/reports/OemReportPage";
+import DealerReportPage from "./pages/reports/DealerReportPage";
+import AuditLogPage from "./pages/AuditLogPage";
+import InventoryPage from "./pages/inventory/InventoryPage";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import MobileSplash from "./mobile/MobileSplash";
 import MobileLogin from "./mobile/MobileLogin";
@@ -48,6 +54,46 @@ export default function App() {
             <ProtectedRoute>
               <AppShell>
                 <Dashboard />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/state"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <StateReportPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/rto"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <RtoReportPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/oem"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <OemReportPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/dealer"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <DealerReportPage />
               </AppShell>
             </ProtectedRoute>
           }
@@ -95,6 +141,16 @@ export default function App() {
           }
         />
         <Route
+          path="/audit"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <AuditLogPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/users/system"
           element={
             <ProtectedRoute>
@@ -123,6 +179,18 @@ export default function App() {
               <AppShell>
                 <ErrorBoundary>
                   <QRGenerationPage />
+                </ErrorBoundary>
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory"
+          element={
+            <ProtectedRoute>
+              <AppShell>
+                <ErrorBoundary>
+                  <InventoryPage />
                 </ErrorBoundary>
               </AppShell>
             </ProtectedRoute>

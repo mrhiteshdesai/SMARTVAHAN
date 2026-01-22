@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Search, Filter, Download, FileDown } from "lucide-react";
+import { Plus, Search, Filter, Download, FileDown, FileSpreadsheet } from "lucide-react";
+import * as XLSX from 'xlsx';
 import Modal from "../../ui/Modal";
 import {
   useStates,
@@ -84,6 +85,28 @@ export const QRGenerationPage = () => {
   }, [batches, searchTerm, filterState, filterOem, filterProduct]);
 
   // Handlers
+  const handleExportExcel = () => {
+    if (filteredBatches.length === 0) {
+      alert("No data to export");
+      return;
+    }
+    const data = filteredBatches.map((b: any) => ({
+      "Batch ID": b.batchId,
+      "State": b.state?.name || b.stateCode,
+      "OEM": b.oem?.name || b.oemCode,
+      "Product": b.product?.name || b.productCode,
+      "Quantity": b.quantity,
+      "Start Serial": b.startSerial || '-',
+      "End Serial": b.endSerial || '-',
+      "Status": b.status || 'COMPLETED',
+      "Created At": new Date(b.createdAt).toLocaleString()
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "QR Batches");
+    XLSX.writeFile(wb, `QR_Batches_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const handleGenerate = async () => {
     setErrorMsg("");
     setSuccessMsg("");
@@ -184,15 +207,14 @@ export const QRGenerationPage = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
             <input 
                 type="text"
-                placeholder="Search by Batch ID..."
+                placeholder="Search Batch ID, State, OEM, Product..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
             />
         </div>
         
-        <div className="flex items-center gap-2 flex-wrap">
-            <Filter size={18} className="text-gray-500 mr-1" />
+        <div className="flex items-center gap-2 w-full md:w-auto">
             <select 
                 className="border border-gray-300 rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 value={filterState}
@@ -219,6 +241,15 @@ export const QRGenerationPage = () => {
                 <option value="">All Products</option>
                 {products.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
             </select>
+
+            <button
+                onClick={handleExportExcel}
+                className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm font-medium whitespace-nowrap"
+                title="Export Filtered List to Excel"
+            >
+                <FileSpreadsheet size={16} />
+                Export Excel
+            </button>
         </div>
       </div>
 
@@ -251,7 +282,10 @@ export const QRGenerationPage = () => {
                   <tr key={batch.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 font-medium text-blue-600">{batch.batchId}</td>
                     <td className="px-6 py-4 text-gray-500 whitespace-nowrap">
-                        {new Date(batch.createdAt).toLocaleDateString()}
+                        {(() => {
+                          const d = new Date(batch.createdAt);
+                          return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+                        })()}
                     </td>
                     <td className="px-6 py-4">{batch.state?.name || batch.stateCode}</td>
                     <td className="px-6 py-4">{batch.oem?.name || batch.oemCode}</td>

@@ -31,6 +31,7 @@ $Pm2ServiceName = "backend"
 $EnvContent = @"
 DATABASE_URL="postgresql://smartvahan:@002550641646Hitesh@localhost:5432/smartvahan?schema=public"
 BASE_URL="https://smartvahan.net"
+BASE_DOMAIN="smartvahan.net"
 JWT_SECRET="c3889fdaba32e2f877b1f7e82685e8c2"
 PORT=3000
 "@

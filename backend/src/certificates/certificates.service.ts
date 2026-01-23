@@ -607,7 +607,9 @@ export class CertificatesService {
 
     const allowedDomains = [
         'smartvahan.com', 
-        'www.smartvahan.com', 
+        'www.smartvahan.com',
+        'smartvahan.net',
+        'www.smartvahan.net',
         'localhost', 
         '127.0.0.1'
     ];

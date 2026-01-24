@@ -116,16 +116,21 @@ Write-Host "[+] Backup Complete" -ForegroundColor Green
 # ---------------------------------------------------------------------------
 Write-Host "`n[3/6] Pulling Latest Code & Setting Env..." -ForegroundColor Yellow
 Set-Location $ProjectRoot
-git pull origin main
+
+# Hard Reset to ensure clean state
+Write-Host "    Fetching latest changes and resetting hard..."
+git fetch --all
+git reset --hard origin/main
+
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Git pull failed. Please resolve conflicts manually."
+    Write-Error "Git fetch/reset failed."
     exit 1
 }
 
 # Write .env file
 $EnvFilePath = Join-Path "$ProjectRoot\backend" ".env"
 $EnvContent | Out-File -FilePath $EnvFilePath -Encoding UTF8 -Force
-Write-Host "    Updated .env file a \yot $EnvFilePath" -ForegroundColor Gray
+Write-Host "    Updated .env file at $EnvFilePath" -ForegroundColor Gray
 Write-Host "[+] Code updated and Env set" -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
@@ -136,6 +141,9 @@ Set-Location "$ProjectRoot\backend"
 
 Write-Host "    Installing dependencies..."
 npm install | Out-Null
+
+Write-Host "    Generating Prisma Client..."
+npx prisma generate
 
 Write-Host "    Building NestJS..."
 npm run build

@@ -93,9 +93,10 @@ export default function SystemUsersPage() {
       }
       setOpenAdd(false);
       resetForm();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to save user:", err);
-      alert("Failed to save user.");
+      const msg = err.response?.data?.message || "Failed to save user.";
+      alert(msg);
     }
   };
 

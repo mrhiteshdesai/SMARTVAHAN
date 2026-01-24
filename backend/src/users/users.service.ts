@@ -16,6 +16,14 @@ export class UsersService {
         if (!data.password) {
             throw new BadRequestException('Password is required');
         }
+
+        // Handle empty email -> null to avoid unique constraint violation on empty strings
+        if (data.email && data.email.trim() === '') {
+            data.email = null;
+        } else if (!data.email) {
+            data.email = null;
+        }
+
         const hashedPassword = await bcrypt.hash(data.password, 10);
         const user = await this.prisma.user.create({
             data: {
@@ -59,6 +67,16 @@ export class UsersService {
         if (data.password) {
             data.password = await bcrypt.hash(data.password, 10);
         }
+
+        // Handle empty email -> null
+        if (typeof data.email !== 'undefined') {
+             if (data.email && data.email.trim() === '') {
+                 data.email = null;
+             } else if (!data.email) {
+                 data.email = null;
+             }
+        }
+
         return await this.prisma.user.update({
             where: { id },
             data,

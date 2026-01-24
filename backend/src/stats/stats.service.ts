@@ -107,10 +107,7 @@ export class StatsService {
     const totalQrUsed = await this.prisma.qRCode.count({
         where: {
             batch: whereBatch,
-            OR: [
-                { status: { gt: 0 } },
-                { certificate: { isNot: null } }
-            ]
+            certificate: { isNot: null }
         }
     });
 
@@ -147,10 +144,7 @@ export class StatsService {
         const used = await this.prisma.qRCode.count({
             where: {
                 batch: { ...whereBatch, productCode: p },
-                OR: [
-                    { status: { gt: 0 } },
-                    { certificate: { isNot: null } }
-                ]
+                certificate: { isNot: null }
             }
         });
         row4[p] = { issued, used };
@@ -324,5 +318,61 @@ export class StatsService {
     });
 
     return { row1, row2, row3, row4, barData, oemBarData, oemPerformance, rtoDensity, heatmapData };
+  }
+
+  async getDealerDailyStats(dealerId: string, startDate?: string, endDate?: string) {
+    let start: Date;
+    let end: Date;
+
+    if (startDate && endDate) {
+        start = new Date(startDate);
+        end = new Date(endDate);
+    } else {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        start = today;
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        end = tomorrow;
+    }
+
+    const products = ['CT', 'C3', 'C4', 'CTAUTO'];
+    const stats: Record<string, number> = {};
+    products.forEach(p => stats[p] = 0);
+
+    const certs = await this.prisma.certificate.findMany({
+        where: {
+            dealerId: dealerId,
+            generatedAt: {
+                gte: start,
+                lt: end
+            }
+        },
+        include: {
+            qrCode: {
+                include: {
+                    batch: true
+                }
+            }
+        }
+    });
+
+    certs.forEach(c => {
+        let p = c.qrCode?.batch?.productCode;
+        if (p) {
+            p = p.trim();
+            if (stats[p] !== undefined) {
+                stats[p]++;
+            } else {
+                // Handle potential case mismatches
+                const upperP = p.toUpperCase();
+                if (stats[upperP] !== undefined) {
+                    stats[upperP]++;
+                }
+            }
+        }
+    });
+
+    return stats;
   }
 }

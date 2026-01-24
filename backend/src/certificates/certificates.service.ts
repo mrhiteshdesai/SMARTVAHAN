@@ -547,6 +547,7 @@ export class CertificatesService {
           qrSerial: c.qrCode.serialNumber,
           certificateNumber: c.certificateNumber,
           vehicleNumber: c.vehicleNumber,
+          ownerName: c.ownerName,
           dealerName: c.dealer ? c.dealer.name : null,
           dealerUserId: c.dealer ? c.dealer.phone : null,
           pdfUrl

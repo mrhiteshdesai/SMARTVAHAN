@@ -23,7 +23,10 @@ export class AuthService {
         }
 
         // Check Dealers
-        const dealer = await this.prisma.dealer.findUnique({ where: { phone } });
+        const dealer = await this.prisma.dealer.findUnique({
+          where: { phone },
+          include: { oems: true, state: true }
+        });
         if (dealer) {
             // Ensure password exists before comparing
             if (!dealer.password) return null;
@@ -35,7 +38,10 @@ export class AuthService {
                     name: dealer.name,
                     phone: dealer.phone,
                     role: 'DEALER_USER',
-                    status: dealer.status
+                    status: dealer.status,
+                    stateCode: dealer.stateCode,
+                    stateName: dealer.state?.name,
+                    oems: dealer.oems.map(o => o.name).join(', '),
                 };
             }
         }
@@ -54,5 +60,33 @@ export class AuthService {
       user: user,
       accessToken: await this.jwt.signAsync(payload),
     };
+  }
+
+  async getProfile(userId: string, role: string) {
+    if (role === 'DEALER_USER' || role === 'DEALER') {
+      const dealer = await this.prisma.dealer.findUnique({
+        where: { id: userId },
+        include: { oems: true, state: true }
+      });
+      if (dealer) {
+        return {
+            id: dealer.id,
+            name: dealer.name,
+            phone: dealer.phone,
+            role: 'DEALER_USER',
+            status: dealer.status,
+            stateCode: dealer.stateCode,
+            stateName: dealer.state?.name,
+            oems: dealer.oems.map(o => o.name).join(', '),
+        };
+      }
+    } else {
+       const user = await this.prisma.user.findUnique({ where: { id: userId } });
+       if (user) {
+          const { password, ...result } = user;
+          return result;
+       }
+    }
+    return null;
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { User, UserRole, UserStatus } from '@prisma/client';
@@ -12,26 +12,36 @@ export class UsersService {
   ) {}
 
   async create(data: any, createdByUserId?: string): Promise<User> {
-    const hashedPassword = await bcrypt.hash(data.password, 10);
-    const user = await this.prisma.user.create({
-      data: {
-        ...data,
-        password: hashedPassword,
-      },
-    });
-    
-    // Audit Log
-    if (createdByUserId) {
-        await this.auditService.logAction(
-            createdByUserId,
-            'CREATE_USER',
-            'USER',
-            user.id,
-            `Created user ${user.name} (${user.role})`
-        );
+    try {
+        if (!data.password) {
+            throw new BadRequestException('Password is required');
+        }
+        const hashedPassword = await bcrypt.hash(data.password, 10);
+        const user = await this.prisma.user.create({
+            data: {
+                ...data,
+                password: hashedPassword,
+            },
+        });
+        
+        // Audit Log
+        if (createdByUserId) {
+            await this.auditService.logAction(
+                createdByUserId,
+                'CREATE_USER',
+                'USER',
+                user.id,
+                `Created user ${user.name} (${user.role})`
+            );
+        }
+        
+        return user;
+    } catch (error) {
+        if (error.code === 'P2002') {
+            throw new ConflictException('User with this email or phone already exists');
+        }
+        throw error;
     }
-    
-    return user;
   }
 
   async findAll(): Promise<User[]> {
@@ -45,13 +55,20 @@ export class UsersService {
   }
 
   async update(id: string, data: any): Promise<User> {
-    if (data.password) {
-        data.password = await bcrypt.hash(data.password, 10);
+    try {
+        if (data.password) {
+            data.password = await bcrypt.hash(data.password, 10);
+        }
+        return await this.prisma.user.update({
+            where: { id },
+            data,
+        });
+    } catch (error) {
+        if (error.code === 'P2002') {
+            throw new ConflictException('User with this email or phone already exists');
+        }
+        throw error;
     }
-    return this.prisma.user.update({
-      where: { id },
-      data,
-    });
   }
 
   async remove(id: string): Promise<User> {

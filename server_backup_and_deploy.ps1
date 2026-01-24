@@ -125,7 +125,7 @@ if ($LASTEXITCODE -ne 0) {
 # Write .env file
 $EnvFilePath = Join-Path "$ProjectRoot\backend" ".env"
 $EnvContent | Out-File -FilePath $EnvFilePath -Encoding UTF8 -Force
-Write-Host "    Updated .env file at $EnvFilePath" -ForegroundColor Gray
+Write-Host "    Updated .env file a \yot $EnvFilePath" -ForegroundColor Gray
 Write-Host "[+] Code updated and Env set" -ForegroundColor Green
 
 # ---------------------------------------------------------------------------

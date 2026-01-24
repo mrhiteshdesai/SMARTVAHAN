@@ -1,6 +1,7 @@
-import { Controller, Post, Body, UnauthorizedException, HttpCode, HttpStatus, Ip } from '@nestjs/common';
+import { Controller, Post, Body, UnauthorizedException, HttpCode, HttpStatus, Ip, Get, UseGuards, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Public } from './public.decorator';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('api/auth')
 export class AuthController {
@@ -15,5 +16,11 @@ export class AuthController {
       throw new UnauthorizedException('Invalid credentials or inactive account');
     }
     return this.authService.login(user, ip);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async getProfile(@Req() req: any) {
+      return this.authService.getProfile(req.user.userId, req.user.role);
   }
 }

@@ -183,14 +183,14 @@ export class InventoryService {
         }
       },
       orderBy: { createdAt: 'desc' },
-      take: 50
+      take: 500
     });
 
     // Fetch Batches
     const batches = await this.prisma.batch.findMany({
         where: whereBatch,
         orderBy: { createdAt: 'desc' },
-        take: 50
+        take: 500
     });
 
     // Map Batches to Log format

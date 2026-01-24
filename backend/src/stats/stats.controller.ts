@@ -27,4 +27,17 @@ export class StatsController {
         throw new InternalServerErrorException(error.message);
     }
   }
+
+  @Get('dealer/daily')
+  @UseGuards(JwtAuthGuard)
+  async getDealerDailyStats(
+    @Query('dealerId') dealerId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    if (!dealerId) {
+      throw new InternalServerErrorException('Dealer ID is required');
+    }
+    return this.statsService.getDealerDailyStats(dealerId, startDate, endDate);
+  }
 }

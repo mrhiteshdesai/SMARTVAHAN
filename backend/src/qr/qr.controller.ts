@@ -31,16 +31,17 @@ export class QrController {
   }
 
   @Get('batches')
-  @UseGuards(JwtAuthGuard)
-  async getBatches() {
-      return this.qrService.getBatches();
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN)
+  async getBatches(@Req() req: any) {
+      return this.qrService.getBatches(req.user);
   }
 
   @Get('download/:batchId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN)
-  async downloadBatch(@Param('batchId') batchId: string, @Res() res: Response) {
-      const file = await this.qrService.getBatchFile(batchId);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN)
+  async downloadBatch(@Param('batchId') batchId: string, @Res() res: Response, @Req() req: any) {
+      const file = await this.qrService.getBatchFile(batchId, req.user);
       if (file.isUrl) {
           res.redirect(file.path);
       } else {

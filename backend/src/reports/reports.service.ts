@@ -43,11 +43,12 @@ export class ReportsService {
   }
 
   // 2. RTO Report
-  async getRtoReport(filters: { stateCode?: string; startDate?: string; endDate?: string }) {
-    const { stateCode, startDate, endDate } = filters;
+  async getRtoReport(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string }) {
+    const { stateCode, oemCode, startDate, endDate } = filters;
     let whereClause = 'WHERE 1=1';
 
     if (stateCode) whereClause += ` AND b."stateCode" = '${stateCode}'`;
+    if (oemCode) whereClause += ` AND b."oemCode" = '${oemCode}'`;
     if (startDate && endDate) {
       whereClause += ` AND c."generatedAt" >= '${startDate}'::timestamp AND c."generatedAt" <= '${endDate} 23:59:59'::timestamp`;
     }

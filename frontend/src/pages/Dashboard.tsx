@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useDashboardStats, useStates, useOEMs, useSystemSettings } from "../api/hooks";
+import { useAuth } from "../auth/AuthContext";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { LayoutDashboard, Users, CheckCircle2, QrCode, AlertTriangle } from "lucide-react";
 import { GoogleMap, HeatmapLayerF, useJsApiLoader } from '@react-google-maps/api';
@@ -92,6 +93,9 @@ function DashboardMap({ apiKey, data }: { apiKey: string, data: any[] }) {
 }
 
 function DashboardContent() {
+  const { user } = useAuth();
+  const isRestricted = user?.role === 'OEM_ADMIN' || user?.role === 'DEALER_USER' || user?.role === 'DEALER';
+
   const [stateCode, setStateCode] = useState("");
   const [oemCode, setOemCode] = useState("");
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
@@ -120,22 +124,26 @@ function DashboardContent() {
           <p className="text-sm text-gray-500">System overview and statistics</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select 
-            className="rounded-md border px-3 py-2 text-sm bg-white"
-            value={stateCode}
-            onChange={(e) => setStateCode(e.target.value)}
-          >
-            <option value="">All States</option>
-            {states?.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
-          </select>
-          <select 
-            className="rounded-md border px-3 py-2 text-sm bg-white"
-            value={oemCode}
-            onChange={(e) => setOemCode(e.target.value)}
-          >
-            <option value="">All OEMs</option>
-            {oems?.map(o => <option key={o.code} value={o.code}>{o.name}</option>)}
-          </select>
+          {user?.role !== 'STATE_ADMIN' && user?.role !== 'DEALER_USER' && user?.role !== 'DEALER' && (
+            <select 
+              className="rounded-md border px-3 py-2 text-sm bg-white"
+              value={stateCode}
+              onChange={(e) => setStateCode(e.target.value)}
+            >
+              <option value="">All States</option>
+              {states?.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
+            </select>
+          )}
+          {user?.role !== 'OEM_ADMIN' && user?.role !== 'DEALER_USER' && user?.role !== 'DEALER' && (
+            <select 
+              className="rounded-md border px-3 py-2 text-sm bg-white"
+              value={oemCode}
+              onChange={(e) => setOemCode(e.target.value)}
+            >
+              <option value="">All OEMs</option>
+              {oems?.map(o => <option key={o.code} value={o.code}>{o.name}</option>)}
+            </select>
+          )}
           <input 
             type="date" 
             className="rounded-md border px-2 py-2 text-sm bg-white"
@@ -177,11 +185,11 @@ function DashboardContent() {
       </div>
 
       {/* Row 3: Totals */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total QR Issued" value={stats.row3.totalQrIssued} icon={<QrCode className="w-5 h-5 text-indigo-500" />} />
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${isRestricted ? 'lg:grid-cols-2' : 'lg:grid-cols-4'} gap-4`}>
+        {!isRestricted && <StatCard title="Total QR Issued" value={stats.row3.totalQrIssued} icon={<QrCode className="w-5 h-5 text-indigo-500" />} />}
         <StatCard title="Total QR Used" value={stats.row3.totalQrUsed} icon={<QrCode className="w-5 h-5 text-emerald-500" />} />
         <StatCard title="Total Certs Generated" value={stats.row3.totalCerts} icon={<CheckCircle2 className="w-5 h-5 text-orange-500" />} />
-        <StatCard title="Total Active Dealers" value={stats.row3.totalActiveDealers} icon={<Users className="w-5 h-5 text-blue-500" />} />
+        {!isRestricted && <StatCard title="Total Active Dealers" value={stats.row3.totalActiveDealers} icon={<Users className="w-5 h-5 text-blue-500" />} />}
       </div>
 
       {/* Row 4: QR Metrics by Product */}
@@ -195,10 +203,12 @@ function DashboardContent() {
                     </div>
                 </div>
                 <div className="space-y-2">
+                    {!isRestricted && (
                     <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Issued</span>
                         <span className="font-semibold">{stats.row4[p]?.issued || 0}</span>
                     </div>
+                    )}
                     <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Used</span>
                         <span className="font-semibold">{stats.row4[p]?.used || 0}</span>
@@ -253,11 +263,13 @@ function DashboardContent() {
                 </ResponsiveContainer>
             </div>
         </div>
+        )}
       </div>
 
       {/* Row 6: Tables (Top OEMs & Top RTOs) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 ${isRestricted ? '' : 'lg:grid-cols-2'} gap-6`}>
          {/* Left: Top Performing OEMs */}
+         {!isRestricted && (
          <div className="bg-white p-6 rounded-xl border shadow-sm flex flex-col h-[400px]">
             <h3 className="text-lg font-semibold mb-4">Top Performing OEMs</h3>
             <div className="overflow-y-auto flex-1">
@@ -284,6 +296,7 @@ function DashboardContent() {
                 </table>
             </div>
         </div>
+        )}
 
         {/* Right: Top 10 RTOs Table */}
         <div className="bg-white p-6 rounded-xl border shadow-sm flex flex-col h-[400px]">

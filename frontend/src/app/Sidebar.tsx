@@ -28,9 +28,6 @@ const items = [
   { path: "/certificate", label: "Certificate Generator", icon: FileBadge2 },
   { path: "/search-qr", label: "Search QR Code", icon: Search },
   { path: "/search-cert", label: "Search Certificate", icon: FileSearch },
-  // Reports is handled as a separate section or collapsible if needed, but for now simple link is fine
-  // or better, a Collapsible for Reports? The user requested: Reports (Main Menu) -> State, RTO, OEM, Dealer
-  // Let's implement Collapsible for Reports similar to User Management
   { path: "/download", label: "Download Data", icon: Download },
   { path: "/audit", label: "Audit Logs", icon: ShieldCheck },
   { path: "/settings", label: "Settings", icon: Settings }
@@ -48,6 +45,48 @@ export default function Sidebar() {
     `flex items-center gap-3 px-3 py-3 rounded-md text-sm ${
       isActive ? "bg-primary/10 text-primary" : "hover:bg-gray-100 text-gray-700"
     }`;
+
+  const hasAccess = (path: string) => {
+    const role = user?.role;
+    if (!role) return false;
+
+    // Special handling for DEALER role mapping if needed (DEALER vs DEALER_USER)
+    // Assuming 'DEALER' is also a valid role string or mapped to 'DEALER_USER'
+    const isDealer = role === 'DEALER_USER' || role === 'DEALER';
+
+    switch (path) {
+        case "/": // Dashboard
+            return true;
+        case "/qr-generation":
+            return ["SUPER_ADMIN", "ADMIN"].includes(role);
+        case "/inventory":
+            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "SUB_ADMIN"].includes(role); // Dealer No Access
+        case "/activate-qr":
+            return ["SUPER_ADMIN"].includes(role);
+        case "/certificate":
+            // "Certificate Generator"
+            return ["SUPER_ADMIN", "ADMIN"].includes(role) || isDealer;
+        case "/search-qr":
+            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN"].includes(role);
+        case "/search-cert":
+            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN"].includes(role);
+        case "/download":
+            // SUB_ADMIN: No Access
+            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN"].includes(role) || isDealer;
+        case "/audit":
+            return ["SUPER_ADMIN", "ADMIN"].includes(role);
+        case "/settings":
+            return ["SUPER_ADMIN"].includes(role);
+        case "reports-section":
+             // SUB_ADMIN, DEALER: No Access
+             return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN"].includes(role);
+        case "users-section":
+             // Only SUPER_ADMIN and ADMIN
+             return ["SUPER_ADMIN", "ADMIN"].includes(role);
+        default:
+            return true;
+    }
+  };
 
   return (
     <aside
@@ -67,12 +106,7 @@ export default function Sidebar() {
 
         <nav className="px-3 space-y-1 flex-1">
           {/* Top-level items */}
-          {items.filter(item => {
-            if (user?.role === 'ADMIN') {
-              if (item.path === '/settings') return false;
-            }
-            return true;
-          }).map((item) => {
+          {items.filter(item => hasAccess(item.path)).map((item) => {
             const Icon = item.icon;
             return (
               <NavLink key={item.path} to={item.path} className={({ isActive }) => ItemClass(isActive)}>
@@ -83,79 +117,97 @@ export default function Sidebar() {
           })}
           
           {/* Collapsible: Reports */}
-          <button
-            className="w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm hover:bg-gray-100 text-gray-700"
-            onClick={() => setOpenReports((v) => !v)}
-            aria-expanded={openReports}
-          >
-            <FileBarChart2 className="w-5 h-5" />
-            {!collapsed && (
+          {hasAccess("reports-section") && (
               <>
-                <span>Reports</span>
-                <span className="ml-auto">{openReports ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+                <button
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm hover:bg-gray-100 text-gray-700"
+                    onClick={() => setOpenReports((v) => !v)}
+                    aria-expanded={openReports}
+                >
+                    <FileBarChart2 className="w-5 h-5" />
+                    {!collapsed && (
+                    <>
+                        <span>Reports</span>
+                        <span className="ml-auto">{openReports ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+                    </>
+                    )}
+                </button>
+                {!collapsed && openReports && (
+                    <div className="ml-8 space-y-1">
+                     {/* State Report: Everyone except Dealer/SubAdmin? No, prompt says: 
+                        ADMIN: Full
+                        STATE_ADMIN: State Specific
+                        OEM_ADMIN: Restricted (RTO & DEALER REPORT)
+                     */}
+                     {user?.role !== 'OEM_ADMIN' && (
+                         <>
+                            <NavLink to="/reports/state" className={({ isActive }) => ItemClass(isActive)}>
+                                <Map className="w-4 h-4" />
+                                <span>State Report</span>
+                            </NavLink>
+                            <NavLink to="/reports/oem" className={({ isActive }) => ItemClass(isActive)}>
+                                <Building2 className="w-4 h-4" />
+                                <span>OEM Report</span>
+                            </NavLink>
+                         </>
+                     )}
+                     <NavLink to="/reports/rto" className={({ isActive }) => ItemClass(isActive)}>
+                        <FileBarChart2 className="w-4 h-4" />
+                        <span>RTO Report</span>
+                    </NavLink>
+                    <NavLink to="/reports/dealer" className={({ isActive }) => ItemClass(isActive)}>
+                        <Users className="w-4 h-4" />
+                        <span>Dealer Report</span>
+                    </NavLink>
+                    </div>
+                )}
               </>
-            )}
-          </button>
-          {!collapsed && openReports && (
-            <div className="ml-8 space-y-1">
-              <NavLink to="/reports/state" className={({ isActive }) => ItemClass(isActive)}>
-                <Map className="w-4 h-4" />
-                <span>State Report</span>
-              </NavLink>
-              <NavLink to="/reports/rto" className={({ isActive }) => ItemClass(isActive)}>
-                <FileBarChart2 className="w-4 h-4" />
-                <span>RTO Report</span>
-              </NavLink>
-              <NavLink to="/reports/oem" className={({ isActive }) => ItemClass(isActive)}>
-                <Building2 className="w-4 h-4" />
-                <span>OEM Report</span>
-              </NavLink>
-              <NavLink to="/reports/dealer" className={({ isActive }) => ItemClass(isActive)}>
-                <Users className="w-4 h-4" />
-                <span>Dealer Report</span>
-              </NavLink>
-            </div>
           )}
 
           {/* Collapsible: User Management */}
-          <button
-            className="w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm hover:bg-gray-100 text-gray-700"
-            onClick={() => setOpenUsers((v) => !v)}
-            aria-expanded={openUsers}
-          >
-            <Users className="w-5 h-5" />
-            {!collapsed && (
+          {hasAccess("users-section") && (
               <>
-                <span>User Management</span>
-                <span className="ml-auto">{openUsers ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+                <button
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm hover:bg-gray-100 text-gray-700"
+                    onClick={() => setOpenUsers((v) => !v)}
+                    aria-expanded={openUsers}
+                >
+                    <Users className="w-5 h-5" />
+                    {!collapsed && (
+                    <>
+                        <span>User Management</span>
+                        <span className="ml-auto">{openUsers ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+                    </>
+                    )}
+                </button>
+                {!collapsed && openUsers && (
+                    <div className="ml-8 space-y-1">
+                    {/* ADMIN: Only Dealers. SUPER_ADMIN: All */}
+                    {user?.role !== 'ADMIN' && (
+                        <>
+                        <NavLink to="/users/states" className={({ isActive }) => ItemClass(isActive)}>
+                            <Map className="w-4 h-4" />
+                            <span>States</span>
+                        </NavLink>
+                        <NavLink to="/users/oems" className={({ isActive }) => ItemClass(isActive)}>
+                            <Building2 className="w-4 h-4" />
+                            <span>OEMs</span>
+                        </NavLink>
+                        </>
+                    )}
+                    <NavLink to="/users/dealers" className={({ isActive }) => ItemClass(isActive)}>
+                        <Users className="w-4 h-4" />
+                        <span>Dealers</span>
+                    </NavLink>
+                    {user?.role !== 'ADMIN' && (
+                        <NavLink to="/users/system" className={({ isActive }) => ItemClass(isActive)}>
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>System Users</span>
+                        </NavLink>
+                    )}
+                    </div>
+                )}
               </>
-            )}
-          </button>
-          {!collapsed && openUsers && (
-            <div className="ml-8 space-y-1">
-              {user?.role !== 'ADMIN' && (
-                <>
-                  <NavLink to="/users/states" className={({ isActive }) => ItemClass(isActive)}>
-                    <Map className="w-4 h-4" />
-                    <span>States</span>
-                  </NavLink>
-                  <NavLink to="/users/oems" className={({ isActive }) => ItemClass(isActive)}>
-                    <Building2 className="w-4 h-4" />
-                    <span>OEMs</span>
-                  </NavLink>
-                </>
-              )}
-              <NavLink to="/users/dealers" className={({ isActive }) => ItemClass(isActive)}>
-                <Users className="w-4 h-4" />
-                <span>Dealers</span>
-              </NavLink>
-              {user?.role !== 'ADMIN' && (
-                <NavLink to="/users/system" className={({ isActive }) => ItemClass(isActive)}>
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>System Users</span>
-                </NavLink>
-              )}
-            </div>
           )}
 
         </nav>

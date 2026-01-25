@@ -11,7 +11,7 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get('stats')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN', 'DEALER_USER')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN')
   async getStats(
     @Req() req: any,
     @Query('stateCode') stateCode?: string,
@@ -25,13 +25,12 @@ export class InventoryController {
 
     if (user.role === 'STATE_ADMIN') finalStateCode = user.stateCode;
     if (user.role === 'OEM_ADMIN') finalOemCode = user.oemCode;
-    if (user.role === 'DEALER_USER') finalStateCode = user.stateCode;
 
     return this.inventoryService.getStats({ stateCode: finalStateCode, oemCode: finalOemCode, startDate, endDate });
   }
 
   @Get('logs')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN', 'DEALER_USER')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN')
   async getLogs(
     @Req() req: any,
     @Query('stateCode') stateCode?: string,
@@ -46,16 +45,12 @@ export class InventoryController {
 
     if (user.role === 'STATE_ADMIN') finalStateCode = user.stateCode;
     if (user.role === 'OEM_ADMIN') finalOemCode = user.oemCode;
-    if (user.role === 'DEALER_USER') {
-        finalStateCode = user.stateCode;
-        dealerId = user.userId;
-    }
 
     return this.inventoryService.getLogs({ stateCode: finalStateCode, oemCode: finalOemCode, dealerId, startDate, endDate });
   }
 
   @Post('outward')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN', 'DEALER_USER')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN')
   async createOutward(@Body() data: any, @Req() req: any) {
     if (!data.stateCode || !data.oemCode || !data.productCode || !data.quantity) {
         throw new BadRequestException('Missing required fields');

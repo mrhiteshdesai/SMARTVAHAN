@@ -38,7 +38,7 @@ export class ReportsController {
   }
 
   @Get('rto')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN')
   async getRtoReport(
     @Req() req: any,
     @Query('stateCode') stateCode?: string,
@@ -46,12 +46,15 @@ export class ReportsController {
     @Query('endDate') endDate?: string,
   ) {
     const user = req.user;
-    if (user.role === 'OEM_ADMIN') throw new ForbiddenException('Access denied');
+    // if (user.role === 'OEM_ADMIN') throw new ForbiddenException('Access denied'); // OEM Admin Allowed now
 
     let finalStateCode = stateCode;
-    if (user.role === 'STATE_ADMIN') finalStateCode = user.stateCode;
+    let finalOemCode = undefined;
 
-    return this.reportsService.getRtoReport({ stateCode: finalStateCode, startDate, endDate });
+    if (user.role === 'STATE_ADMIN') finalStateCode = user.stateCode;
+    if (user.role === 'OEM_ADMIN') finalOemCode = user.oemCode;
+
+    return this.reportsService.getRtoReport({ stateCode: finalStateCode, oemCode: finalOemCode, startDate, endDate });
   }
 
   @Get('oem')

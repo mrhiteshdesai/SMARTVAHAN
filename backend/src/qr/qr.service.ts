@@ -292,16 +292,37 @@ export class QrService {
         
     }
   
-  async getBatches() {
+  async getBatches(user: any) {
+      const where: any = {};
+      
+      if (user.role === 'STATE_ADMIN') {
+          where.stateCode = user.stateCode;
+      } else if (user.role === 'OEM_ADMIN') {
+          where.oemCode = user.oemCode;
+      }
+      // ADMIN/SUPER_ADMIN see all (no filter)
+      // DEALER not allowed (controlled by Guard)
+
       return this.prisma.batch.findMany({
+          where,
           include: { state: true, oem: true, product: true },
           orderBy: { createdAt: 'desc' }
       });
   }
 
-  async getBatchFile(batchId: string) {
+  async getBatchFile(batchId: string, user?: any) {
       const batch = await this.prisma.batch.findUnique({ where: { batchId } });
       if (!batch) throw new NotFoundException('Batch not found');
+      
+      // Authorization Check
+      if (user) {
+          if (user.role === 'STATE_ADMIN' && batch.stateCode !== user.stateCode) {
+              throw new BadRequestException('Access Denied: You cannot download batches from other states');
+          }
+          if (user.role === 'OEM_ADMIN' && batch.oemCode !== user.oemCode) {
+              throw new BadRequestException('Access Denied: You cannot download batches for other OEMs');
+          }
+      }
       
       if (batch.status !== 'COMPLETED') {
           throw new BadRequestException('Batch is not ready for download');

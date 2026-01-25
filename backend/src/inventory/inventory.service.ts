@@ -151,7 +151,7 @@ export class InventoryService {
     return stats;
   }
 
-  async getLogs(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string }) {
+  async getLogs(filters: { stateCode?: string; oemCode?: string; dealerId?: string; startDate?: string; endDate?: string }) {
     const whereLog: any = {};
     const whereBatch: any = { status: 'COMPLETED' };
 
@@ -162,6 +162,14 @@ export class InventoryService {
     if (filters.oemCode) {
         whereLog.oemCode = filters.oemCode;
         whereBatch.oemCode = filters.oemCode;
+    }
+
+    // Filter logs for Dealer (Own logs + Shared/Admin logs where dealerId is null)
+    if (filters.dealerId) {
+        whereLog.OR = [
+            { dealerId: filters.dealerId },
+            { dealerId: null }
+        ];
     }
 
     if (filters.startDate && filters.endDate) {

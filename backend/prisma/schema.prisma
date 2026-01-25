@@ -262,6 +262,7 @@ enum UserRole {
   OEM_ADMIN
   DEALER_USER
   ADMIN
+  SUB_ADMIN
 }
 
 enum UserStatus {

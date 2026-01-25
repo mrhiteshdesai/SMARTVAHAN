@@ -5,8 +5,8 @@ import { PrismaService } from '../prisma.service';
 export class StatsService {
   constructor(private prisma: PrismaService) {}
 
-  async getDashboardStats(query: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string }) {
-    const { stateCode, oemCode, startDate, endDate } = query;
+  async getDashboardStats(query: { stateCode?: string; oemCode?: string; dealerId?: string; startDate?: string; endDate?: string }) {
+    const { stateCode, oemCode, dealerId, startDate, endDate } = query;
     
     const dateFilter = startDate && endDate ? {
         generatedAt: {
@@ -20,14 +20,21 @@ export class StatsService {
         ...(oemCode && { oemCode })
     };
 
-    const whereCert = {
-        ...dateFilter,
+    // Base filter for structure and permissions (Dealer/State/OEM)
+    const baseCertWhere: any = {
         qrCode: {
             batch: whereBatch
         }
     };
+    if (dealerId) {
+        baseCertWhere.dealerId = dealerId;
+    }
 
-    const products = ['C3', 'C4', 'CT', 'CTAUTO'];
+    // Full filter including date range (for aggregates that respect dashboard filter)
+    const certWhere: any = {
+        ...baseCertWhere,
+        ...dateFilter
+    };
 
     // --- Row 1: Certificates Generated Today by Product ---
     const today = new Date();
@@ -41,7 +48,7 @@ export class StatsService {
                 gte: today,
                 lt: tomorrow
             },
-            qrCode: { batch: whereBatch }
+            ...baseCertWhere
         },
         include: {
             qrCode: {
@@ -69,7 +76,7 @@ export class StatsService {
                 gte: yesterday,
                 lt: today
             },
-            qrCode: { batch: whereBatch }
+            ...baseCertWhere
         }
     });
 
@@ -87,7 +94,7 @@ export class StatsService {
             generatedAt: {
                 gte: startOfWeek
             },
-            qrCode: { batch: whereBatch }
+            ...baseCertWhere
         }
     });
 
@@ -104,24 +111,38 @@ export class StatsService {
         }
     });
     
-    const totalQrUsed = await this.prisma.qRCode.count({
-        where: {
-            batch: whereBatch,
-            certificate: { isNot: null }
-        }
-    });
+    // For Total QR Used, it effectively checks certificates. 
+    // If dealerId is present, we should filter by dealerId on certificate relation?
+    // But QRCode logic is: where batch matches AND certificate is not null.
+    // If dealerId is present, we want QRs used BY THIS DEALER.
+    // So better to query Certificate count directly for 'totalQrUsed' if dealerId is present.
+    // But existing logic uses QRCode count.
+    
+    let totalQrUsed = 0;
+    if (dealerId) {
+         totalQrUsed = await this.prisma.certificate.count({
+             where: certWhere
+         });
+    } else {
+        totalQrUsed = await this.prisma.qRCode.count({
+            where: {
+                batch: whereBatch,
+                certificate: { isNot: null }
+            }
+        });
+    }
 
     const totalCerts = await this.prisma.certificate.count({
-        where: {
-            qrCode: { batch: whereBatch }
-        }
+        where: certWhere
     });
 
     // Active Dealers
     const dealerWhere: any = { status: 'ACTIVE' };
     if (stateCode) dealerWhere.stateCode = stateCode;
     if (oemCode) dealerWhere.oems = { some: { code: oemCode } };
-
+    
+    // If dealerId is provided (Dealer Role), Total Active Dealers is likely 1 (Self) or irrelevant.
+    // We'll return it as is (filtered by State/OEM) but Frontend hides it.
     const totalActiveDealers = await this.prisma.dealer.count({
         where: dealerWhere
     });
@@ -172,7 +193,7 @@ export class StatsService {
                     gte: d,
                     lt: nextD
                 },
-                qrCode: { batch: whereBatch }
+                ...certWhere
             },
             include: { qrCode: { include: { batch: true } } }
         });
@@ -241,10 +262,7 @@ export class StatsService {
     // --- Charts: Heatmap (Density by RTO) ---
     const rtoGroups = await this.prisma.certificate.groupBy({
         by: ['registrationRto'],
-        where: {
-             qrCode: { batch: whereBatch },
-             ...dateFilter
-        },
+        where: certWhere,
         _count: {
             id: true
         }
@@ -260,7 +278,7 @@ export class StatsService {
     // We only need locationText field.
     const certsWithLocation = await this.prisma.certificate.findMany({
         where: {
-             qrCode: { batch: whereBatch },
+             ...certWhere,
              ...dateFilter,
              locationText: { not: null }
         },

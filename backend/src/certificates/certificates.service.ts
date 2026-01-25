@@ -983,7 +983,9 @@ export class CertificatesService {
         }
 
         // 5. Generate PDF
-        const pdfFilename = `${certNumber}.pdf`;
+        // Format: {Vehicle Number}-{passingRto}{qrValue}.pdf
+        const vehicleNumber = `${vehicleDetails.registrationRto}${vehicleDetails.series}`;
+        const pdfFilename = `${vehicleNumber}-${certNumber}.pdf`;
         const pdfPath = path.join(baseUploadDir, pdfFilename);
         
         await this.generatePdf(pdfPath, {

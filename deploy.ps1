@@ -131,6 +131,13 @@ Set-Content -Path .env -Value $EnvContent
 # Install & Build
 Write-Host "Installing Backend Dependencies..."
 npm install
+
+# Force clean Prisma cache to prevent locking issues
+if (Test-Path "node_modules\.prisma") {
+    Write-Host "Cleaning .prisma cache..."
+    Remove-Item -Path "node_modules\.prisma" -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Write-Host "Generating Prisma Client..."
 npx prisma generate
 Write-Host "Running Database Migrations..."

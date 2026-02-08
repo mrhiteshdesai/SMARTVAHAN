@@ -69,28 +69,28 @@ export default function Sidebar() {
         case "/": // Dashboard
             return true;
         case "/qr-generation":
-            return ["SUPER_ADMIN", "ADMIN"].includes(role);
+            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(role);
         case "/inventory":
-            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "SUB_ADMIN"].includes(role); // Dealer No Access
+            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(role); // Dealer No Access
         case "/activate-qr":
-            return ["SUPER_ADMIN"].includes(role);
+            return ["SUPER_ADMIN", "GHOST_ADMIN"].includes(role);
         case "/certificate":
             // "Certificate Generator"
-            return ["SUPER_ADMIN", "ADMIN"].includes(role) || isDealer;
+            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(role) || isDealer;
         case "/search-qr":
-            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN"].includes(role);
+            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(role);
         case "/search-cert":
-            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN"].includes(role);
+            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(role);
         case "/download":
             // SUB_ADMIN: No Access
-            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN"].includes(role) || isDealer;
+            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(role) || isDealer;
         case "/audit":
-            return ["SUPER_ADMIN", "ADMIN"].includes(role);
+            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(role);
         case "/settings":
             return ["SUPER_ADMIN"].includes(role);
         case "reports-section":
              // SUB_ADMIN, DEALER: No Access
-             return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN"].includes(role);
+             return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(role);
         case "users-section":
              // Only SUPER_ADMIN and ADMIN
              return ["SUPER_ADMIN", "ADMIN"].includes(role);

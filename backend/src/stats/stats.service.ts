@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma.service';
 
 @Injectable()
 export class StatsService {
-  private readonly products = ['CNG_KIT', 'VTS', 'SLD', 'PANIQUE_BUTTON'];
+  private readonly products = ['CT', 'C3', 'C4', 'CTAUTO'];
 
   constructor(private prisma: PrismaService) {}
 
@@ -20,7 +20,7 @@ export class StatsService {
     const whereBatch = {
         ...(stateCode && { stateCode }),
         ...(oemCode && { oemCode }),
-        isGhost: isGhost
+        isGhost
     };
 
     // Base filter for structure and permissions (Dealer/State/OEM)

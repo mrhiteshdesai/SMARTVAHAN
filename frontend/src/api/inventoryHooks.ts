@@ -70,7 +70,7 @@ export function useCreateOutward() {
 export function useDeleteOutward() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/inventory/outward/${id}`),
+    mutationFn: (id: string) => api.delete(`/inventory/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory-stats"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-logs"] });

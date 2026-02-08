@@ -209,6 +209,7 @@ export default function DownloadPage() {
             <thead className="bg-gray-50 border-b">
               <tr className="text-left text-gray-600">
                 <th className="px-4 py-2">Generation Date</th>
+                <th className="px-4 py-2">State</th>
                 <th className="px-4 py-2">OEM</th>
                 <th className="px-4 py-2">Product</th>
                 <th className="px-4 py-2">QR Serial</th>
@@ -223,7 +224,7 @@ export default function DownloadPage() {
               {rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-4 py-6 text-center text-gray-500"
                   >
                     No certificates found for selected filters.
@@ -244,7 +245,6 @@ export default function DownloadPage() {
                   <td className="px-4 py-2">{row.qrSerial}</td>
                   <td className="px-4 py-2">{row.certificateNumber}</td>
                   <td className="px-4 py-2">{row.vehicleNumber}</td>
-                  <td className="px-4 py-2">{row.passingRto || "-"}</td>
                   <td className="px-4 py-2">{row.dealerName || "-"}</td>
                   <td className="px-4 py-2">{row.dealerUserId || "-"}</td>
                   <td className="px-4 py-2">

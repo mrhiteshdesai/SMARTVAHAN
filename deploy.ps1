@@ -154,7 +154,7 @@ try {
         pm2 restart smartvahan-backend
     } else {
         Write-Host "Starting new PM2 process..."
-        pm2 start dist/src/main.js --name smartvahan-backend
+        pm2 start dist/main.js --name smartvahan-backend
     }
     pm2 save
 } catch {

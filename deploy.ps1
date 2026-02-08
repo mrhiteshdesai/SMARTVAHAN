@@ -105,6 +105,15 @@ Set-Location $RepoPath
 git reset --hard
 git pull origin main
 
+# --- 6.5 Stop Backend Service (Prevent File Locking) ---
+Write-Host ">>> 6.5 Stopping Backend Service..." -ForegroundColor Cyan
+try {
+    pm2 stop smartvahan-backend
+    Write-Host "Backend service stopped to release file locks."
+} catch {
+    Write-Warning "Could not stop backend service (might not be running)."
+}
+
 # --- 7. Backend Setup ---
 Write-Host ">>> 7. Configuring Backend..." -ForegroundColor Cyan
 Set-Location "$RepoPath\backend"

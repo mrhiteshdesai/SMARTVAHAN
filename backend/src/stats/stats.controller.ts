@@ -12,7 +12,7 @@ export class StatsController {
 
   @Get('dashboard')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN', 'DEALER_USER')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN', 'DEALER_USER', 'GHOST_ADMIN')
   async getDashboardStats(
     @Req() req: any,
     @Query('stateCode') stateCode?: string,
@@ -28,9 +28,9 @@ export class StatsController {
     // Check for ghost mode header
     const isGhost = req.headers['x-ghost-mode'] === 'true';
 
-    // Restrict Ghost Mode to SUPER_ADMIN only
-    if (isGhost && user.role !== 'SUPER_ADMIN') {
-        throw new InternalServerErrorException("Access Denied: Ghost Mode is restricted to Super Admins.");
+    // Restrict Ghost Mode to GHOST_ADMIN and SUPER_ADMIN
+    if (isGhost && user.role !== 'GHOST_ADMIN' && user.role !== 'SUPER_ADMIN') {
+        throw new InternalServerErrorException("Access Denied: Ghost Mode is restricted to Ghost Admins.");
     }
 
     if (user.role === 'STATE_ADMIN') {

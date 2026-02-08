@@ -11,7 +11,7 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get('stats')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN', 'GHOST_ADMIN')
   async getStats(
     @Req() req: any,
     @Query('stateCode') stateCode?: string,
@@ -25,7 +25,7 @@ export class InventoryController {
 
     // Check for ghost mode header
     const isGhost = req.headers['x-ghost-mode'] === 'true';
-    if (isGhost && user.role !== 'SUPER_ADMIN') {
+    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
         throw new ForbiddenException("Access Denied: Ghost Mode is restricted to Super Admins.");
     }
 
@@ -36,7 +36,7 @@ export class InventoryController {
   }
 
   @Get('logs')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'SUB_ADMIN', 'GHOST_ADMIN')
   async getLogs(
     @Req() req: any,
     @Query('stateCode') stateCode?: string,
@@ -51,7 +51,7 @@ export class InventoryController {
 
     // Check for ghost mode header
     const isGhost = req.headers['x-ghost-mode'] === 'true';
-    if (isGhost && user.role !== 'SUPER_ADMIN') {
+    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
         throw new ForbiddenException("Access Denied: Ghost Mode is restricted to Super Admins.");
     }
     // For Ghost Mode, we currently return EMPTY logs because InventoryLogs (Manual) are not part of Ghost System yet.

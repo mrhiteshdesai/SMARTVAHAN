@@ -67,7 +67,7 @@ export class CertificatesController {
 
   @Get('search-cert')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN', 'OEM_ADMIN', 'SUB_ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OEM_ADMIN', 'SUB_ADMIN', 'GHOST_ADMIN')
   async searchCertificate(
     @Query('state') state: string,
     @Query('oem') oem: string,
@@ -85,7 +85,7 @@ export class CertificatesController {
 
     // Ghost Mode check
     const isGhost = req.headers['x-ghost-mode'] === 'true';
-    if (isGhost && user.role !== 'SUPER_ADMIN') {
+    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
         throw new ForbiddenException('Ghost Mode is restricted to Super Admin');
     }
 
@@ -103,7 +103,7 @@ export class CertificatesController {
 
   @Get('download-list')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'DEALER_USER')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'DEALER_USER', 'GHOST_ADMIN')
   async downloadList(
     @Query('state') state?: string,
     @Query('oem') oem?: string,
@@ -123,7 +123,7 @@ export class CertificatesController {
     // The service method accepts `user`.
 
     const isGhost = req.headers['x-ghost-mode'] === 'true';
-    if (isGhost && user.role !== 'SUPER_ADMIN') {
+    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
          throw new ForbiddenException('Ghost Mode is restricted to Super Admin');
     }
     

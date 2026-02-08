@@ -85,7 +85,7 @@ export class QrController {
       
       // Check for ghost mode header
       const isGhost = req.headers['x-ghost-mode'] === 'true';
-      if (isGhost && req.user.role !== 'SUPER_ADMIN') {
+      if (isGhost && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'GHOST_ADMIN') {
         // Should be caught by RoleGuard but reactivateQr currently has no Role restriction in decorator?
         // Wait, @UseGuards(JwtAuthGuard) only. Any logged in user can access?
         // The original code has no @Roles decorator.
@@ -99,7 +99,7 @@ export class QrController {
 
   @Get('batches')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN, UserRole.GHOST_ADMIN)
   async getBatches(@Req() req: any) {
       // Check for ghost mode header
       const isGhost = req.headers['x-ghost-mode'] === 'true';

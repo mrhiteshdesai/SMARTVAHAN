@@ -10,7 +10,7 @@ export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Get('state')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'GHOST_ADMIN')
   async getStateReport(
     @Req() req: any,
     @Query('startDate') startDate?: string,
@@ -21,7 +21,7 @@ export class ReportsController {
 
     // Check for ghost mode header
     const isGhost = req.headers['x-ghost-mode'] === 'true';
-    if (isGhost && user.role !== 'SUPER_ADMIN') {
+    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
         throw new ForbiddenException("Access Denied: Ghost Mode is restricted to Super Admins.");
     }
     
@@ -105,7 +105,7 @@ export class ReportsController {
   }
 
   @Get('dealer')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'GHOST_ADMIN')
   async getDealerReport(
     @Req() req: any,
     @Query('stateCode') stateCode?: string,
@@ -119,7 +119,7 @@ export class ReportsController {
 
     // Check for ghost mode header
     const isGhost = req.headers['x-ghost-mode'] === 'true';
-    if (isGhost && user.role !== 'SUPER_ADMIN') {
+    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
         throw new ForbiddenException("Access Denied: Ghost Mode is restricted to Super Admins.");
     }
 

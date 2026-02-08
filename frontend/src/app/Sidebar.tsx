@@ -49,6 +49,17 @@ export default function Sidebar() {
   const hasAccess = (path: string) => {
     const role = user?.role;
     if (!role) return false;
+    
+    // Ghost Mode Logic
+    const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
+    if (isGhostMode) {
+        // In Ghost Mode, HIDE Dealers, Settings, User Management
+        if (path === "/settings") return false;
+        if (path === "users-section") return false;
+        if (path === "/reports/dealer") return false; // Hide Dealer Report specifically if needed, but "Reports" section is generic.
+        // Requirement says "Dealers/Settings remains only with main dashboard".
+        // Also "Ghost dashboard Stats, Reports, Inventory only shows certificate...". So Reports/Inventory are allowed.
+    }
 
     // Special handling for DEALER role mapping if needed (DEALER vs DEALER_USER)
     // Assuming 'DEALER' is also a valid role string or mapped to 'DEALER_USER'

@@ -10,6 +10,7 @@ export type ReportFilters = {
   oemCode?: string;
   startDate?: string;
   endDate?: string;
+  isGhost?: boolean;
 };
 
 export function useStateReport(filters: ReportFilters, enabled: boolean = true) {

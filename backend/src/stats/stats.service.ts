@@ -3,10 +3,12 @@ import { PrismaService } from '../prisma.service';
 
 @Injectable()
 export class StatsService {
+  private readonly products = ['CNG_KIT', 'VTS', 'SLD', 'PANIQUE_BUTTON'];
+
   constructor(private prisma: PrismaService) {}
 
-  async getDashboardStats(query: { stateCode?: string; oemCode?: string; dealerId?: string; startDate?: string; endDate?: string }) {
-    const { stateCode, oemCode, dealerId, startDate, endDate } = query;
+  async getDashboardStats(query: { stateCode?: string; oemCode?: string; dealerId?: string; startDate?: string; endDate?: string, isGhost?: boolean }) {
+    const { stateCode, oemCode, dealerId, startDate, endDate, isGhost = false } = query;
     
     const dateFilter = startDate && endDate ? {
         generatedAt: {
@@ -17,7 +19,8 @@ export class StatsService {
 
     const whereBatch = {
         ...(stateCode && { stateCode }),
-        ...(oemCode && { oemCode })
+        ...(oemCode && { oemCode }),
+        isGhost: isGhost
     };
 
     // Base filter for structure and permissions (Dealer/State/OEM)
@@ -60,7 +63,7 @@ export class StatsService {
     });
 
     const row1: Record<string, number> = {};
-    products.forEach(p => row1[p] = 0);
+    this.products.forEach(p => row1[p] = 0);
     todayCerts.forEach(c => {
         const p = c.qrCode.batch.productCode;
         if (row1[p] !== undefined) row1[p]++;
@@ -156,7 +159,7 @@ export class StatsService {
 
     // --- Row 4: QR Metrics by Product (Issued/Used) ---
     const row4: Record<string, { issued: number; used: number }> = {};
-    for (const p of products) {
+    for (const p of this.products) {
         const issued = await this.prisma.qRCode.count({
             where: {
                 batch: { ...whereBatch, productCode: p }
@@ -200,7 +203,7 @@ export class StatsService {
 
         // Product Bar Data
         const dayStat: any = { date: d.toISOString().split('T')[0] };
-        products.forEach(p => dayStat[p] = 0);
+        this.products.forEach(p => dayStat[p] = 0);
         
         // OEM Bar Data
         const oemDayStat: any = { date: d.toISOString().split('T')[0] };

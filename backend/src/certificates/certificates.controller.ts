@@ -83,6 +83,12 @@ export class CertificatesController {
         throw new ForbiddenException('You can only search your own OEM.');
     }
 
+    // Ghost Mode check
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+    if (isGhost && user.role !== 'SUPER_ADMIN') {
+        throw new ForbiddenException('Ghost Mode is restricted to Super Admin');
+    }
+
     return this.certificatesService.searchCertificate({
       state,
       oem,
@@ -90,7 +96,8 @@ export class CertificatesController {
       serial,
       registrationRto,
       series,
-      certificateNumber
+      certificateNumber,
+      isGhost
     });
   }
 
@@ -114,7 +121,12 @@ export class CertificatesController {
     
     // For Dealer, certificatesService.listCertificatesForDownload likely checks user.role and filters by dealerId if needed.
     // The service method accepts `user`.
+
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+    if (isGhost && user.role !== 'SUPER_ADMIN') {
+         throw new ForbiddenException('Ghost Mode is restricted to Super Admin');
+    }
     
-    return this.certificatesService.listCertificatesForDownload({ state: finalState, oem: finalOem, from, to, user });
+    return this.certificatesService.listCertificatesForDownload({ state: finalState, oem: finalOem, from, to, user, isGhost });
   }
 }

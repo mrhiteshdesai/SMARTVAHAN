@@ -18,6 +18,13 @@ api.interceptors.request.use(
         // invalid token format
       }
     }
+
+    // Add Ghost Mode Header if active
+    const isGhost = localStorage.getItem('isGhostMode') === 'true';
+    if (isGhost) {
+      config.headers['x-ghost-mode'] = 'true';
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

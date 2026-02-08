@@ -10,14 +10,17 @@ export type InventoryStats = {
 
 export type InventoryLog = {
   id: string;
+  source?: 'BATCH' | 'LOG';
   type: "INWARD" | "OUTWARD";
   stateCode: string;
   oemCode: string;
+  oemName?: string;
   productCode: string;
   quantity: number;
   serialStart?: string;
   serialEnd?: string;
   remark?: string;
+  dealerId?: string;
   dealer?: { name: string };
   createdAt: string;
   userId?: string;
@@ -57,6 +60,28 @@ export function useCreateOutward() {
       const res = await api.post("/inventory/outward", data);
       return res.data;
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-logs"] });
+    },
+  });
+}
+
+export function useDeleteOutward() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/inventory/outward/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-logs"] });
+    },
+  });
+}
+
+export function useUpdateLog() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; payload: any }) => api.post(`/inventory/log/${data.id}`, data.payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory-stats"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-logs"] });

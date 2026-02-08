@@ -5,10 +5,23 @@ import { PrismaService } from '../prisma.service';
 export class InventoryService {
   constructor(private prisma: PrismaService) {}
 
-  async getStats(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string }) {
-    const whereLog: any = {};
-    const whereBatch: any = { status: 'COMPLETED' };
-    const whereCertificate: any = {};
+  async getStats(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string, isGhost?: boolean }) {
+    const isGhost = filters.isGhost || false;
+    const whereLog: any = {}; // InventoryLog does not have isGhost directly, assume it follows batch context or manual logic?
+    // InventoryLogs are for manual inward/outward. For now, let's assume manual logs are MAIN system only unless we add isGhost to Logs too.
+    // Ideally, Ghost System is purely REGENERATED BATCHES (Auto Inward). Manual Outward for Ghost?
+    // Requirement says: "Ghost dashboard Stats, Reports, Inventory only shows certificate generated after the 1st code that is count 0"
+    // Requirement 1: "Regenerate those QR codes... One qr code if used can be regenerated multiple times... Certificate generated with these regenerated codes will be saved with count=0"
+    
+    // For Ghost Inventory:
+    // Inward = Ghost Batches (isGhost=true)
+    // Outward = Not explicitly mentioned as manual process, but "Sell/Outward" logic exists.
+    // If we want to track Ghost Stock, we need to know if we are selling Ghost stock.
+    // Simplification: Ghost Inventory tracks Ghost Batches. 
+    // Manual Inventory Logs currently don't have isGhost. We will filter them OUT for Ghost Mode for now to avoid pollution.
+    
+    const whereBatch: any = { status: 'COMPLETED', isGhost: isGhost };
+    const whereCertificate: any = {}; // Certificate doesn't have isGhost, but its QR->Batch does.
 
     if (filters.stateCode) {
         whereLog.stateCode = filters.stateCode;
@@ -55,33 +68,36 @@ export class InventoryService {
         }
     });
 
-    // 2. Calculate Inward/Outward from InventoryLogs (Manual Adjustments & Sales)
-    const logGroups = await this.prisma.inventoryLog.groupBy({
-        by: ['productCode', 'type'],
-        _sum: { quantity: true },
-        where: whereLog
-    });
+    // 2. Calculate Inward/Outward from InventoryLogs
+    // CRITICAL: InventoryLogs don't have isGhost. 
+    // If isGhost=true, we SKIP manual logs to prevent showing Main stock movements in Ghost Dashboard.
+    // If isGhost=false, we SHOW manual logs (Main Dashboard behavior).
+    if (!isGhost) {
+        const logGroups = await this.prisma.inventoryLog.groupBy({
+            by: ['productCode', 'type'],
+            _sum: { quantity: true },
+            where: whereLog
+        });
 
-    logGroups.forEach(g => {
-        const p = g.productCode;
-        const qty = g._sum.quantity || 0;
-        
-        if (g.type === 'INWARD') {
-            if (stats.inward[p] !== undefined) {
-                stats.inward[p] += qty;
-                stats.inward.total += qty;
+        logGroups.forEach(g => {
+            const p = g.productCode;
+            const qty = g._sum.quantity || 0;
+            
+            if (g.type === 'INWARD') {
+                if (stats.inward[p] !== undefined) {
+                    stats.inward[p] += qty;
+                    stats.inward.total += qty;
+                }
+            } else if (g.type === 'OUTWARD') {
+                if (stats.outward[p] !== undefined) {
+                    stats.outward[p] += qty;
+                    stats.outward.total += qty;
+                }
             }
-        } else if (g.type === 'OUTWARD') {
-            if (stats.outward[p] !== undefined) {
-                stats.outward[p] += qty;
-                stats.outward.total += qty;
-            }
-        }
-    });
+        });
+    }
 
     // 3. Calculate Used (Certificates Generated)
-    // Since we cannot groupBy deep relations easily, we'll iterate products or fetch flattened data
-    // Efficient approach: Count certificates where QRCode -> Batch -> matches filters
     for (const p of products) {
         const count = await this.prisma.certificate.count({
             where: {
@@ -89,8 +105,9 @@ export class InventoryService {
                 qrCode: {
                     batch: {
                         productCode: p,
-                        stateCode: filters.stateCode, // undefined is ignored by Prisma? No, need to check
-                        oemCode: filters.oemCode
+                        stateCode: filters.stateCode,
+                        oemCode: filters.oemCode,
+                        isGhost: isGhost
                     }
                 }
             }
@@ -188,6 +205,9 @@ export class InventoryService {
       include: {
         dealer: {
             select: { name: true }
+        },
+        oem: {
+            select: { name: true }
         }
       },
       orderBy: { createdAt: 'desc' },
@@ -197,6 +217,11 @@ export class InventoryService {
     // Fetch Batches
     const batches = await this.prisma.batch.findMany({
         where: whereBatch,
+        include: {
+            oem: {
+                select: { name: true }
+            }
+        },
         orderBy: { createdAt: 'desc' },
         take: 500
     });
@@ -204,9 +229,11 @@ export class InventoryService {
     // Map Batches to Log format
     const batchLogs = batches.map(b => ({
         id: b.id,
+        source: 'BATCH',
         type: 'INWARD',
         stateCode: b.stateCode,
         oemCode: b.oemCode,
+        oemName: b.oem?.name,
         productCode: b.productCode,
         quantity: b.quantity,
         serialStart: b.startSerial,
@@ -218,11 +245,42 @@ export class InventoryService {
     }));
 
     // Merge and Sort
-    const combined = [...logs, ...batchLogs].sort((a, b) => 
+    const combined = [...logs.map(l => ({ ...l, oemName: l.oem?.name, source: 'LOG' })), ...batchLogs].sort((a, b) => 
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
     return combined.slice(0, 100);
+  }
+
+  async deleteLog(id: string) {
+    const log = await this.prisma.inventoryLog.findUnique({ where: { id } });
+    if (!log) {
+        throw new BadRequestException('Inventory log not found');
+    }
+    // Allow deleting any manual log (INWARD/OUTWARD)
+    return this.prisma.inventoryLog.delete({ where: { id } });
+  }
+
+  async updateLog(id: string, data: any) {
+    const log = await this.prisma.inventoryLog.findUnique({ where: { id } });
+    if (!log) throw new BadRequestException('Inventory log not found');
+
+    // Optional: Check stock if quantity changes (complex logic omitted for brevity, assuming SuperAdmin knows what they are doing)
+    
+    return this.prisma.inventoryLog.update({
+        where: { id },
+        data: {
+            stateCode: data.stateCode,
+            oemCode: data.oemCode,
+            productCode: data.productCode,
+            quantity: data.quantity ? Number(data.quantity) : undefined,
+            serialStart: data.serialStart,
+            serialEnd: data.serialEnd,
+            remark: data.remark,
+            dealerId: data.dealerId || null,
+            createdAt: data.saleDate ? new Date(data.saleDate) : undefined
+        }
+    });
   }
 
   async createOutward(data: any, userId: string) {
@@ -256,6 +314,7 @@ export class InventoryService {
         remark: data.remark,
         dealerId: data.dealerId || null,
         userId: userId,
+        createdAt: data.saleDate ? new Date(data.saleDate) : undefined
       }
     });
   }

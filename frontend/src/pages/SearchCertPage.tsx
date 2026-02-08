@@ -48,6 +48,8 @@ export default function SearchCertPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SearchCertResponse | null>(null);
 
+  const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
+
   const { data: rtos = [] } = useRTOs(stateCode);
 
   const availableOems = useMemo(() => {
@@ -90,6 +92,7 @@ export default function SearchCertPage() {
                 oem: oemCode,
                 by: "QR_SERIAL",
                 serial: serial.trim(),
+                isGhost: isGhostMode
               }
             : searchBy === "VEHICLE"
             ? {
@@ -98,12 +101,14 @@ export default function SearchCertPage() {
                 by: "VEHICLE",
                 registrationRto,
                 series: series.trim(),
+                isGhost: isGhostMode
               }
             : {
                 state: stateCode,
                 oem: oemCode,
                 by: "CERTIFICATE",
                 certificateNumber: certificateNumber.trim(),
+                isGhost: isGhostMode
               }
       });
       setResult(res.data);
@@ -128,7 +133,10 @@ export default function SearchCertPage() {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
       <div className="bg-white rounded-lg border shadow-sm p-6 flex flex-col">
         <div className="mb-4">
-          <h1 className="text-xl font-semibold text-gray-900">Search Certificate</h1>
+          <h1 className="text-xl font-semibold text-gray-900">
+            Search Certificate
+            {isGhostMode && <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full border border-red-200">Ghost Mode</span>}
+          </h1>
           <p className="text-sm text-gray-500">
             Find certificate using State, OEM and QR Serial, Vehicle Number or Certificate Number.
           </p>

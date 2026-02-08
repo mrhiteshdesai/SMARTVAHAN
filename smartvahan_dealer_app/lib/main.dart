@@ -1497,7 +1497,7 @@ class _FormScreenState extends State<FormScreen> {
   void initState() {
     super.initState();
     _years = List<String>.generate(
-      15,
+      62,
       (index) => (DateTime.now().year - index).toString(),
     );
     _registrationRtoController.addListener(_updateVehicleNumber);

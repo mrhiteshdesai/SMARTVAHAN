@@ -54,6 +54,9 @@ export class UsersService {
 
   async findAll(): Promise<User[]> {
     return this.prisma.user.findMany({
+        where: {
+            role: { not: UserRole.GHOST_ADMIN }
+        },
         orderBy: { createdAt: 'desc' }
     });
   }

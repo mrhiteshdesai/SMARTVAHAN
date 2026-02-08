@@ -30,8 +30,9 @@ import MobileForm from "./mobile/MobileForm";
 import PublicVerifyPage from "./pages/PublicVerifyPage";
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user, signOut } = useAuth();
   const location = useLocation();
+  const isGhostMode = localStorage.getItem("isGhostMode") === "true";
 
   if (!isAuthenticated) {
     if (location.pathname.startsWith("/app")) {
@@ -39,6 +40,23 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
     }
     return <Navigate to="/login" replace />;
   }
+
+  // Ghost Mode Restrictions
+  if (isGhostMode) {
+    if (user?.role !== "SUPER_ADMIN" && user?.role !== "GHOST_ADMIN") {
+      // Not authorized for ghost mode
+      signOut(); // Force logout to prevent loop or invalid state
+      return <Navigate to="/login" replace />;
+    }
+  } else {
+    // Main Dashboard Restrictions
+    if (user?.role === "GHOST_ADMIN") {
+      // Ghost Admin cannot access main dashboard
+      signOut();
+      return <Navigate to="/login" replace />;
+    }
+  }
+
   return children;
 }
 

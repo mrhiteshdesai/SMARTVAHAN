@@ -9,10 +9,13 @@ import {
   Search,
   ArrowUpRight,
   ArrowDownLeft,
-  CheckCircle2
+  CheckCircle2,
+  Trash2,
+  Edit
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { useStates, useOEMs, useProducts, useDealers } from "../../api/hooks";
-import { useInventoryStats, useInventoryLogs, useCreateOutward } from "../../api/inventoryHooks";
+import { useInventoryStats, useInventoryLogs, useCreateOutward, useDeleteOutward, useUpdateLog, InventoryLog } from "../../api/inventoryHooks";
 import Modal from "../../ui/Modal";
 import { useAuth } from "../../auth/AuthContext";
 
@@ -37,6 +40,7 @@ function StatCard({ title, value, subValue, subLabel, icon, colorClass }: { titl
 
 export default function InventoryPage() {
   const { user } = useAuth();
+  const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
   
   // Filters
   const [stateCode, setStateCode] = useState("");
@@ -62,9 +66,43 @@ export default function InventoryPage() {
   const { data: stats, isLoading: statsLoading } = useInventoryStats(filters);
   const { data: logs = [], isLoading: logsLoading } = useInventoryLogs(filters);
   const createOutward = useCreateOutward();
+  const deleteOutward = useDeleteOutward();
+  const updateLog = useUpdateLog();
+
+  const handleExport = () => {
+    if (logs.length === 0) return;
+    
+    const data = logs.map(log => ({
+      Date: new Date(log.createdAt).toLocaleString(),
+      Type: log.type,
+      State: log.stateCode,
+      OEM: log.oemName || log.oemCode,
+      Product: log.productCode,
+      'Serial Range': log.serialStart && log.serialEnd ? `${log.serialStart} - ${log.serialEnd}` : '-',
+      Quantity: log.quantity,
+      Dealer: log.dealer ? log.dealer.name : '',
+      Remark: log.remark || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Inventory Activity");
+    XLSX.writeFile(wb, "Inventory_Activity.xlsx");
+  };
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm("Are you sure you want to delete this entry?")) {
+      try {
+        await deleteOutward.mutateAsync(id);
+      } catch (err: any) {
+        alert(err.response?.data?.message || "Failed to delete entry");
+      }
+    }
+  };
 
   // Outward Modal State
   const [isOutwardModalOpen, setIsOutwardModalOpen] = useState(false);
+  const [editingLog, setEditingLog] = useState<InventoryLog | null>(null);
   const [outwardForm, setOutwardForm] = useState({
     stateCode: "",
     oemCode: "",
@@ -73,9 +111,26 @@ export default function InventoryPage() {
     quantity: 1,
     serialStart: "",
     serialEnd: "",
-    remark: ""
+    remark: "",
+    saleDate: ""
   });
   const [errorMsg, setErrorMsg] = useState("");
+
+  const handleEdit = (log: InventoryLog) => {
+      setEditingLog(log);
+      setOutwardForm({
+          stateCode: log.stateCode,
+          oemCode: log.oemCode,
+          productCode: log.productCode,
+          dealerId: log.dealerId || "",
+          quantity: log.quantity,
+          serialStart: log.serialStart || "",
+          serialEnd: log.serialEnd || "",
+          remark: log.remark || "",
+          saleDate: log.createdAt ? new Date(log.createdAt).toISOString().split('T')[0] : ""
+      });
+      setIsOutwardModalOpen(true);
+  };
 
   // Stats for Modal Validation
   const { data: modalStats } = useInventoryStats({
@@ -114,14 +169,21 @@ export default function InventoryPage() {
       return;
     }
 
-    if (outwardForm.quantity > availableStock) {
-        setErrorMsg(`Insufficient stock. Available: ${availableStock}`);
-        return;
+    if (!editingLog) {
+        if (outwardForm.quantity > availableStock) {
+            setErrorMsg(`Insufficient stock. Available: ${availableStock}`);
+            return;
+        }
     }
 
     try {
-      await createOutward.mutateAsync(outwardForm);
+      if (editingLog) {
+          await updateLog.mutateAsync({ id: editingLog.id, payload: outwardForm });
+      } else {
+          await createOutward.mutateAsync(outwardForm);
+      }
       setIsOutwardModalOpen(false);
+      setEditingLog(null);
       setOutwardForm({
         stateCode: "",
         oemCode: "",
@@ -130,10 +192,11 @@ export default function InventoryPage() {
         quantity: 1,
         serialStart: "",
         serialEnd: "",
-        remark: ""
+        remark: "",
+        saleDate: ""
       });
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.message || "Failed to create outward entry.");
+      setErrorMsg(err.response?.data?.message || "Failed to save entry.");
     }
   };
 
@@ -147,6 +210,7 @@ export default function InventoryPage() {
           <h1 className="text-2xl font-bold text-gray-900">Inventory Management</h1>
           <p className="text-gray-500 text-sm">Track Inward, Outward and Stock Levels</p>
         </div>
+        {!isGhostMode && (
         <button
           onClick={() => setIsOutwardModalOpen(true)}
           className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2 font-medium shadow-sm"
@@ -154,6 +218,7 @@ export default function InventoryPage() {
           <ShoppingCart size={18} />
           Sell / Outward
         </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -259,6 +324,13 @@ export default function InventoryPage() {
             <TrendingUp size={18} className="text-gray-500" />
             Inventory Activity
           </h3>
+          <button
+              onClick={handleExport}
+              disabled={logs.length === 0}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium disabled:text-gray-400"
+          >
+              Export Excel
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -267,16 +339,20 @@ export default function InventoryPage() {
                 <th className="px-6 py-3 font-semibold text-gray-700">Date</th>
                 <th className="px-6 py-3 font-semibold text-gray-700">Type</th>
                 <th className="px-6 py-3 font-semibold text-gray-700">State</th>
+                <th className="px-6 py-3 font-semibold text-gray-700">OEM Name</th>
                 <th className="px-6 py-3 font-semibold text-gray-700">Product</th>
                 <th className="px-6 py-3 font-semibold text-gray-700">Serial Range</th>
                 <th className="px-6 py-3 font-semibold text-gray-700">Qty</th>
                 <th className="px-6 py-3 font-semibold text-gray-700">Dealer / Remark</th>
+                {user?.role === 'SUPER_ADMIN' && (
+                    <th className="px-6 py-3 font-semibold text-gray-700">Action</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {logs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={user?.role === 'SUPER_ADMIN' ? 9 : 8} className="px-6 py-8 text-center text-gray-500">
                     No activity found.
                   </td>
                 </tr>
@@ -294,6 +370,7 @@ export default function InventoryPage() {
                       </span>
                     </td>
                     <td className="px-6 py-3">{log.stateCode}</td>
+                    <td className="px-6 py-3">{log.oemName || log.oemCode}</td>
                     <td className="px-6 py-3">{log.productCode}</td>
                     <td className="px-6 py-3 text-xs font-mono">
                         {log.serialStart && log.serialEnd ? `${log.serialStart} - ${log.serialEnd}` : '-'}
@@ -309,6 +386,28 @@ export default function InventoryPage() {
                             <span className="text-gray-500 text-xs">{log.remark || '-'}</span>
                         )}
                     </td>
+                    {user?.role === 'SUPER_ADMIN' && (
+                        <td className="px-6 py-3 flex items-center gap-2">
+                            {log.source === 'LOG' && (
+                                <>
+                                    <button 
+                                        onClick={() => handleEdit(log)}
+                                        className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                                        title="Edit Entry"
+                                    >
+                                        <Edit size={16} />
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDelete(log.id)}
+                                        className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                        title="Delete Entry"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </>
+                            )}
+                        </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -321,7 +420,7 @@ export default function InventoryPage() {
       <Modal
         open={isOutwardModalOpen}
         onClose={() => setIsOutwardModalOpen(false)}
-        title="Sell / Outward Inventory"
+        title={editingLog ? "Edit Inventory Entry" : "Sell / Outward Inventory"}
       >
         <div className="space-y-4">
           {errorMsg && (
@@ -354,6 +453,17 @@ export default function InventoryPage() {
                   {availableOemsForModal.map(o => <option key={o.id} value={o.code}>{o.name}</option>)}
                 </select>
              </div>
+          </div>
+
+          <div>
+             <label className="block text-sm font-medium text-gray-700 mb-1">Sale Date (Optional)</label>
+             <input
+               type="date"
+               value={outwardForm.saleDate}
+               onChange={(e) => setOutwardForm({ ...outwardForm, saleDate: e.target.value })}
+               className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+             />
+             <p className="text-xs text-gray-500 mt-1">Leave empty for today. Use past date for backdated entry.</p>
           </div>
 
           <div>
@@ -438,10 +548,10 @@ export default function InventoryPage() {
             </button>
             <button
               onClick={handleOutwardSubmit}
-              disabled={createOutward.isPending}
+              disabled={createOutward.isPending || updateLog.isPending}
               className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center gap-2"
             >
-              {createOutward.isPending ? "Submitting..." : "Submit Sell/Outward"}
+              {(createOutward.isPending || updateLog.isPending) ? "Submitting..." : (editingLog ? "Update Entry" : "Submit Sell/Outward")}
             </button>
           </div>
         </div>

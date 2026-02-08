@@ -15,6 +15,7 @@ export default function ActivateQrPage() {
   const { data: states } = useStates();
   const { data: oems } = useOEMs();
   const queryClient = useQueryClient();
+  const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
 
   const reactivateMutation = useMutation({
     mutationFn: async (data: { stateCode: string; oemCode: string; serialNumber: number }) => {
@@ -48,6 +49,15 @@ export default function ActivateQrPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      {isGhostMode && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5" />
+          <div>
+            <span className="font-bold">GHOST MODE ACTIVE:</span> Reactivating QR will affect Ghost Batches only.
+          </div>
+        </div>
+      )}
+      
       <div>
         <h1 className="text-2xl font-bold text-gray-800">Reactivate QR Code</h1>
         <p className="text-sm text-gray-500">

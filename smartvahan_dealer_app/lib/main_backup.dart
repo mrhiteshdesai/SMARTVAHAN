@@ -1110,7 +1110,7 @@ class _FormScreenState extends State<FormScreen> {
           '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
       if (!mounted) return;
       if (_locationController.text.isEmpty) {
-        _locationController.text = locationText!;
+        _locationController.text = locationText;
       }
       _locationError = null;
       setState(() {});
@@ -1149,7 +1149,7 @@ class _FormScreenState extends State<FormScreen> {
     });
 
     try {
-      if (needRtos && stateCode != null) {
+      if (needRtos) {
         final rtoRes = await api.get(
           '/rtos',
           queryParameters: {'stateCode': stateCode},

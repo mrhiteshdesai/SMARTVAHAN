@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { AlertTriangle } from "lucide-react";
 import { useStates, useOEMs, OEM } from "../api/hooks";
 import api from "../api/client";
 import * as XLSX from "xlsx";
@@ -12,6 +13,7 @@ type DownloadRow = {
   qrSerial: number;
   certificateNumber: string;
   vehicleNumber: string;
+  passingRto: string | null;
   dealerName: string | null;
   dealerUserId: string | null;
   pdfUrl: string | null;
@@ -35,6 +37,8 @@ export default function DownloadPage() {
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<DownloadRow[]>([]);
 
+  const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
+
   const availableOems = useMemo(() => {
     if (!stateCode) return oems;
     return (oems as OEM[]).filter((o) => !o.authorizedStates || o.authorizedStates.includes(stateCode));
@@ -50,7 +54,8 @@ export default function DownloadPage() {
           state: stateCode || undefined,
           oem: oemCode || undefined,
           from: fromDate || undefined,
-          to: toDate || undefined
+          to: toDate || undefined,
+          isGhost: isGhostMode
         }
       });
       setRows(res.data.data || []);
@@ -94,9 +99,21 @@ export default function DownloadPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Download Certificates</h1>
+    <div className="h-full flex flex-col gap-4">
+      {isGhostMode && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5" />
+          <div>
+            <span className="font-bold">GHOST MODE ACTIVE:</span> Downloading Certificates with Count = 0 (Regenerated/Duplicate).
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg border shadow-sm p-4 flex-shrink-0">
+        <h1 className="text-2xl font-semibold text-gray-900">
+          Download Certificates
+          {isGhostMode && <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full border border-red-200">Ghost Mode</span>}
+        </h1>
         <p className="text-sm text-gray-500">
           Filter certificates by State, OEM and date range, then export to Excel.
         </p>
@@ -227,6 +244,7 @@ export default function DownloadPage() {
                   <td className="px-4 py-2">{row.qrSerial}</td>
                   <td className="px-4 py-2">{row.certificateNumber}</td>
                   <td className="px-4 py-2">{row.vehicleNumber}</td>
+                  <td className="px-4 py-2">{row.passingRto || "-"}</td>
                   <td className="px-4 py-2">{row.dealerName || "-"}</td>
                   <td className="px-4 py-2">{row.dealerUserId || "-"}</td>
                   <td className="px-4 py-2">

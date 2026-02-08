@@ -6,6 +6,37 @@ import App from "./App";
 import "./index.css";
 import api from "./api/client";
 
+// --- GHOST MODE DETECTION ---
+const hostname = window.location.hostname;
+const pathname = window.location.pathname;
+const searchParams = new URLSearchParams(window.location.search);
+
+// 1. Subdomain: rp.smartvahan.net
+// 2. Path: /rp or /ghost (e.g. smartvahan.net/rp)
+// 3. Query Param: ?ghost=true (for testing)
+const isGhost = 
+  hostname.startsWith("rp.") || 
+  pathname.startsWith("/rp") || 
+  pathname.startsWith("/ghost") || 
+  searchParams.get("ghost") === "true";
+
+if (isGhost) {
+  // Set Ghost Mode
+  localStorage.setItem("isGhostMode", "true");
+  
+  // Visuals
+  document.title = "GHOST DASHBOARD - SmartVahan";
+  document.documentElement.style.setProperty("--primary", "220 38 38"); // Red-600
+} else {
+  // Clear if explicitly disabled OR if not on any ghost entry point
+  // We check strict conditions to allow "sticky" behavior if needed, 
+  // but for path-based, we usually want it to match the path.
+  // If user leaves /rp to go to /, they likely want main dashboard.
+  if (searchParams.get("ghost") !== "true") {
+     localStorage.removeItem("isGhostMode");
+  }
+}
+
 // Handle QR Code Legacy URL Redirection
 // Pattern: /{STATE}/{OEM}/{PRODUCT}/qr={VALUE}
 // We redirect this to /#/verify?url={FULL_URL} so HashRouter can handle it
@@ -24,6 +55,12 @@ function hexToRgb(hex: string) {
 }
 
 function applyVisuals(data: any) {
+  // If Ghost Mode, OVERRIDE Primary Color to Red/Dark
+  if (localStorage.getItem("isGhostMode") === "true") {
+      document.documentElement.style.setProperty("--primary", "220 38 38"); // Red-600
+      return;
+  }
+
   if (data?.primaryColor) {
     document.documentElement.style.setProperty("--primary", hexToRgb(data.primaryColor));
   }

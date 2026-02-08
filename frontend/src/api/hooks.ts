@@ -374,6 +374,35 @@ export function useGenerateBatch() {
     });
 }
 
+export function useRegenerateBatch() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (data: any) => {
+            const res = await api.post("/qr/regenerate", data);
+            return res.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["batches"] });
+        }
+    });
+}
+
+export function useBulkReplacement() {
+    return useMutation({
+        mutationFn: async (data: { serials: number[], stateCode: string, oemCode: string }) => {
+            const res = await api.post("/qr/bulk-replacement", data, {
+                responseType: 'blob'
+            });
+            // Return blob and custom headers
+            return {
+                data: res.data,
+                count: res.headers['x-processed-count'],
+                skipped: res.headers['x-skipped-count']
+            };
+        }
+    });
+}
+
 // --- Vehicle Categories ---
 export type VehicleCategory = {
   id: string;

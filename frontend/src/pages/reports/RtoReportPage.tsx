@@ -9,9 +9,11 @@ export default function RtoReportPage() {
   const [hasApplied, setHasApplied] = useState(false);
 
   const { data, isLoading } = useRtoReport(appliedFilters, hasApplied);
+  
+  const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
 
   const handleApply = (filters: FilterState) => {
-    setAppliedFilters(filters);
+    setAppliedFilters({ ...filters, isGhost: isGhostMode });
     setHasApplied(true);
   };
 
@@ -30,7 +32,10 @@ export default function RtoReportPage() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">RTO Wise Report</h1>
+        <h1 className="text-2xl font-bold text-gray-900">
+          RTO Wise Report
+          {isGhostMode && <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full border border-red-200">Ghost Mode</span>}
+        </h1>
         <p className="text-sm text-gray-500">Certificate generation summary by RTO and Product.</p>
       </div>
 

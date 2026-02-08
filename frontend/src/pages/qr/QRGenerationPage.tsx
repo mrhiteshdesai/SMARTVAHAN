@@ -8,6 +8,7 @@ import {
   useProducts,
   useBatches,
   useGenerateBatch,
+  useRegenerateBatch,
   Batch,
 } from "../../api/hooks";
 import { useAuth } from "../../auth/AuthContext";
@@ -31,6 +32,9 @@ const getDeviceId = () => {
 export const QRGenerationPage = () => {
   // Auth
   const { user } = useAuth();
+  
+  // Ghost Mode Check
+  const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
 
   // UI State
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
@@ -44,6 +48,7 @@ export const QRGenerationPage = () => {
   const [oemCode, setOemCode] = useState("");
   const [productCode, setProductCode] = useState("");
   const [quantity, setQuantity] = useState(100);
+  const [startSerial, setStartSerial] = useState(""); // Only for Ghost Mode
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -66,6 +71,7 @@ export const QRGenerationPage = () => {
   }, [batches, refetchBatches]);
   
   const generateBatch = useGenerateBatch();
+  const regenerateBatch = useRegenerateBatch();
 
   // Filter OEMs based on selected state for the dropdown
   const availableOems = useMemo(() => {
@@ -99,7 +105,8 @@ export const QRGenerationPage = () => {
       "Start Serial": b.startSerial || '-',
       "End Serial": b.endSerial || '-',
       "Status": b.status || 'COMPLETED',
-      "Created At": new Date(b.createdAt).toLocaleString()
+      "Created At": new Date(b.createdAt).toLocaleString(),
+      "Is Ghost": b.isGhost ? "Yes" : "No"
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -110,22 +117,45 @@ export const QRGenerationPage = () => {
   const handleGenerate = async () => {
     setErrorMsg("");
     setSuccessMsg("");
+    
+    // Validate common fields
     if (!stateCode || !oemCode || !productCode || !quantity) {
       setErrorMsg("Please fill all fields");
       return;
     }
 
+    // Validate Ghost Mode fields
+    if (isGhostMode && !startSerial) {
+        setErrorMsg("Start Serial is required for Regeneration");
+        return;
+    }
+
     setIsGenerating(true);
     try {
-      await generateBatch.mutateAsync({
-        stateCode,
-        oemCode,
-        productCode,
-        quantity: Number(quantity),
-        userId: user?.id || "unknown-user", 
-        pcBindingId: getDeviceId(),
-      });
-      setSuccessMsg("Batch generated successfully");
+      if (isGhostMode) {
+          // GHOST REGENERATION
+          await regenerateBatch.mutateAsync({
+              stateCode,
+              oemCode,
+              productCode,
+              quantity: Number(quantity),
+              startSerial: startSerial,
+              userId: user?.id || "unknown-user", 
+              pcBindingId: getDeviceId(),
+          });
+      } else {
+          // STANDARD GENERATION
+          await generateBatch.mutateAsync({
+            stateCode,
+            oemCode,
+            productCode,
+            quantity: Number(quantity),
+            userId: user?.id || "unknown-user", 
+            pcBindingId: getDeviceId(),
+          });
+      }
+      
+      setSuccessMsg(isGhostMode ? "Batch regenerated successfully" : "Batch generated successfully");
       refetchBatches();
       // Reset form and close modal after short delay or manually
       setTimeout(() => {
@@ -136,6 +166,7 @@ export const QRGenerationPage = () => {
           setOemCode("");
           setProductCode("");
           setQuantity(100);
+          setStartSerial("");
       }, 1500);
     } catch (error: any) {
       setErrorMsg(error.response?.data?.message || "Failed to generate batch");
@@ -341,7 +372,7 @@ export const QRGenerationPage = () => {
       <Modal 
         open={isGenerateModalOpen} 
         onClose={() => !isGenerating && setIsGenerateModalOpen(false)}
-        title="Generate New QR Batch"
+        title={isGhostMode ? "Regenerate Ghost Batch" : "Generate New QR Batch"}
       >
         <div className="space-y-5">
             {errorMsg && (
@@ -353,6 +384,13 @@ export const QRGenerationPage = () => {
             {successMsg && (
                 <div className="bg-green-50 text-green-600 p-3 rounded text-sm border border-green-200">
                 {successMsg}
+                </div>
+            )}
+            
+            {/* GHOST MODE WARNING */}
+            {isGhostMode && (
+                <div className="bg-red-50 text-red-800 p-3 rounded text-sm border border-red-200 font-medium">
+                    ⚠️ You are in GHOST MODE. This will regenerate used QR codes with new values but keep the same Serial Numbers.
                 </div>
             )}
 
@@ -403,6 +441,22 @@ export const QRGenerationPage = () => {
                     ))}
                 </select>
             </div>
+            
+            {/* Start Serial - ONLY FOR GHOST MODE */}
+            {isGhostMode && (
+                <div className="flex flex-col gap-2">
+                    <label className="font-medium text-sm text-gray-700">Start Serial Number <span className="text-red-500">*</span></label>
+                    <input
+                        type="number"
+                        placeholder="e.g. 1001"
+                        className="border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none w-full"
+                        value={startSerial}
+                        onChange={(e) => setStartSerial(e.target.value)}
+                        disabled={isGenerating}
+                    />
+                    <p className="text-xs text-gray-500">Enter the starting serial number of the codes you want to regenerate.</p>
+                </div>
+            )}
 
             <div className="flex flex-col gap-2">
                 <label className="font-medium text-sm text-gray-700">Quantity</label>
@@ -427,12 +481,12 @@ export const QRGenerationPage = () => {
                     Cancel
                 </button>
                 <button 
-                    className={`px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2 ${isGenerating ? 'opacity-70 cursor-not-allowed' : ''}`}
+                    className={`px-4 py-2 ${isGhostMode ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-md transition-colors flex items-center gap-2 ${isGenerating ? 'opacity-70 cursor-not-allowed' : ''}`}
                     onClick={handleGenerate}
                     disabled={isGenerating}
                 >
                     {isGenerating && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
-                    {isGenerating ? "Generating..." : "Generate Batch"}
+                    {isGenerating ? "Processing..." : (isGhostMode ? "Regenerate Batch" : "Generate Batch")}
                 </button>
             </div>
         </div>

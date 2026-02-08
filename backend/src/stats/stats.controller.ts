@@ -25,6 +25,14 @@ export class StatsController {
     let finalOemCode = oemCode;
     let dealerId: string | undefined = undefined;
 
+    // Check for ghost mode header
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+
+    // Restrict Ghost Mode to SUPER_ADMIN only
+    if (isGhost && user.role !== 'SUPER_ADMIN') {
+        throw new InternalServerErrorException("Access Denied: Ghost Mode is restricted to Super Admins.");
+    }
+
     if (user.role === 'STATE_ADMIN') {
         finalStateCode = user.stateCode;
     } else if (user.role === 'OEM_ADMIN') {
@@ -34,8 +42,8 @@ export class StatsController {
     }
 
     try {
-        this.logger.log(`Dashboard stats requested: ${JSON.stringify({ stateCode: finalStateCode, oemCode: finalOemCode, dealerId, startDate, endDate })}`);
-        return await this.statsService.getDashboardStats({ stateCode: finalStateCode, oemCode: finalOemCode, dealerId, startDate, endDate });
+        this.logger.log(`Dashboard stats requested: ${JSON.stringify({ stateCode: finalStateCode, oemCode: finalOemCode, dealerId, startDate, endDate, isGhost })}`);
+        return await this.statsService.getDashboardStats({ stateCode: finalStateCode, oemCode: finalOemCode, dealerId, startDate, endDate, isGhost });
     } catch (error) {
         this.logger.error('Failed to get dashboard stats', error.stack);
         throw new InternalServerErrorException(error.message);

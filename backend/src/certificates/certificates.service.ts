@@ -43,6 +43,19 @@ export class CertificatesService {
         cert.photoRc
       ];
 
+      // Add QR Code Image to deletion list
+      // We derive the path from one of the photo paths (assuming they are in the same directory)
+      if (cert.photoFrontLeft && cert.photoFrontLeft !== 'DELETED') {
+        try {
+           const dir = path.dirname(cert.photoFrontLeft);
+           const qrFilename = `${cert.certificateNumber}_QR.png`;
+           const qrPath = path.join(dir, qrFilename);
+           filesToDelete.push(qrPath);
+        } catch (e) {
+           this.logger.error(`[Image Cleanup] Failed to derive QR path for ${cert.certificateNumber}`, e);
+        }
+      }
+
       for (const filepath of filesToDelete) {
         // Only delete if it looks like a valid path (not 'DELETED') and exists
         if (filepath && filepath !== 'DELETED') {
@@ -285,9 +298,11 @@ export class CertificatesService {
     registrationRto?: string;
     series?: string;
     certificateNumber?: string;
+    isGhost?: boolean;
   }) {
     const state = params.state?.trim();
     const oem = params.oem?.trim();
+    const isGhost = params.isGhost || false;
 
     if (!state || !oem) {
       throw new BadRequestException('state and oem are required');
@@ -310,7 +325,8 @@ export class CertificatesService {
           serialNumber,
           batch: {
             stateCode: state,
-            oemCode: oem
+            oemCode: oem,
+            isGhost: isGhost
           }
         },
         include: {
@@ -347,7 +363,8 @@ export class CertificatesService {
           qrCode: {
             batch: {
               stateCode: state,
-              oemCode: oem
+              oemCode: oem,
+              isGhost: isGhost
             }
           }
         },
@@ -386,7 +403,8 @@ export class CertificatesService {
           qrCode: {
             batch: {
               stateCode: state,
-              oemCode: oem
+              oemCode: oem,
+              isGhost: isGhost
             }
           }
         },
@@ -456,9 +474,10 @@ export class CertificatesService {
     };
   }
 
-  async listCertificatesForDownload(params: { state?: string; oem?: string; from?: string; to?: string; user?: any }) {
+  async listCertificatesForDownload(params: { state?: string; oem?: string; from?: string; to?: string; user?: any; isGhost?: boolean }) {
     const where: any = {};
     const user = params.user;
+    const isGhost = params.isGhost || false;
 
     if (user && (user.role === 'DEALER' || user.role === 'DEALER_USER')) {
       where.dealerId = user.userId;
@@ -493,6 +512,10 @@ export class CertificatesService {
     if (params.oem) {
       batchWhere.oemCode = params.oem;
     }
+    
+    // Ghost Filter
+    batchWhere.isGhost = isGhost;
+
     if (Object.keys(batchWhere).length > 0) {
       qrWhere.batch = {
         ...(qrWhere.batch || {}),
@@ -547,6 +570,7 @@ export class CertificatesService {
           qrSerial: c.qrCode.serialNumber,
           certificateNumber: c.certificateNumber,
           vehicleNumber: c.vehicleNumber,
+          passingRto: c.passingRto,
           ownerName: c.ownerName,
           dealerName: c.dealer ? c.dealer.name : null,
           dealerUserId: c.dealer ? c.dealer.phone : null,
@@ -1025,10 +1049,9 @@ export class CertificatesService {
         }
 
         // 6. Save to DB
-        const vehicleNumber = `${vehicleDetails.registrationRto}${vehicleDetails.series}`;
         
-        // Always 1 as per requirement (one vehicle can have multiple certificates)
-        const count = 1;
+        // Determine count based on Ghost Mode (Original=1, Ghost=0)
+        const count = qrCode.batch.isGhost ? 0 : 1;
 
         console.log("Starting Transaction for Certificate Creation...");
 

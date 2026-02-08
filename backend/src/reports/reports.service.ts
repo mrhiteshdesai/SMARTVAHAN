@@ -12,13 +12,16 @@ export class ReportsService {
   }
 
   // 1. State Report
-  async getStateReport(filters: { startDate?: string; endDate?: string }) {
-    const { startDate, endDate } = filters;
+  async getStateReport(filters: { startDate?: string; endDate?: string, isGhost?: boolean }) {
+    const { startDate, endDate, isGhost = false } = filters;
     let dateFilter = '';
     
     if (startDate && endDate) {
       dateFilter = `AND c."generatedAt" >= '${startDate}'::timestamp AND c."generatedAt" <= '${endDate} 23:59:59'::timestamp`;
     }
+
+    // Ghost Filter
+    const ghostFilter = isGhost ? `AND b."isGhost" = true` : `AND b."isGhost" = false`;
 
     // We join Certificate -> QRCode -> Batch -> State
     // Group by State Name (via Batch.stateCode -> State.name)
@@ -34,7 +37,7 @@ export class ReportsService {
       JOIN qr_codes q ON c."qrCodeId" = q.id
       JOIN batches b ON q."batchId" = b.id
       JOIN states s ON b."stateCode" = s.code
-      WHERE 1=1 ${dateFilter}
+      WHERE 1=1 ${dateFilter} ${ghostFilter}
       GROUP BY s.name
       ORDER BY s.name ASC
     `;
@@ -43,8 +46,8 @@ export class ReportsService {
   }
 
   // 2. RTO Report
-  async getRtoReport(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string }) {
-    const { stateCode, oemCode, startDate, endDate } = filters;
+  async getRtoReport(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string, isGhost?: boolean }) {
+    const { stateCode, oemCode, startDate, endDate, isGhost = false } = filters;
     let whereClause = 'WHERE 1=1';
 
     if (stateCode) whereClause += ` AND b."stateCode" = '${stateCode}'`;
@@ -53,10 +56,16 @@ export class ReportsService {
       whereClause += ` AND c."generatedAt" >= '${startDate}'::timestamp AND c."generatedAt" <= '${endDate} 23:59:59'::timestamp`;
     }
 
+    // Ghost Filter
+    whereClause += isGhost ? ` AND b."isGhost" = true` : ` AND b."isGhost" = false`;
+
     // Group by Certificate.passingRto (or registrationRto). User usually means Passing RTO.
     const query = `
       SELECT 
-        c."passingRto" as "RTO",
+        CASE 
+            WHEN r.name IS NOT NULL THEN CONCAT(r.name, ' (', c."passingRto", ')')
+            ELSE c."passingRto"
+        END as "RTO",
         COUNT(CASE WHEN b."productCode" = 'C3' THEN 1 END)::int as "C3",
         COUNT(CASE WHEN b."productCode" = 'C4' THEN 1 END)::int as "C4",
         COUNT(CASE WHEN b."productCode" = 'CT' THEN 1 END)::int as "CT",
@@ -65,8 +74,9 @@ export class ReportsService {
       FROM certificates c
       JOIN qr_codes q ON c."qrCodeId" = q.id
       JOIN batches b ON q."batchId" = b.id
+      LEFT JOIN rtos r ON c."passingRto" = r."code"
       ${whereClause}
-      GROUP BY c."passingRto"
+      GROUP BY c."passingRto", r.name
       ORDER BY c."passingRto" ASC
     `;
 
@@ -74,14 +84,17 @@ export class ReportsService {
   }
 
   // 3. OEM Report
-  async getOemReport(filters: { stateCode?: string; startDate?: string; endDate?: string }) {
-    const { stateCode, startDate, endDate } = filters;
+  async getOemReport(filters: { stateCode?: string; startDate?: string; endDate?: string, isGhost?: boolean }) {
+    const { stateCode, startDate, endDate, isGhost = false } = filters;
     let whereClause = 'WHERE 1=1';
 
     if (stateCode) whereClause += ` AND b."stateCode" = '${stateCode}'`;
     if (startDate && endDate) {
       whereClause += ` AND c."generatedAt" >= '${startDate}'::timestamp AND c."generatedAt" <= '${endDate} 23:59:59'::timestamp`;
     }
+
+    // Ghost Filter
+    whereClause += isGhost ? ` AND b."isGhost" = true` : ` AND b."isGhost" = false`;
 
     const query = `
       SELECT 
@@ -104,8 +117,8 @@ export class ReportsService {
   }
 
   // 4. Dealer Report
-  async getDealerReport(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string }) {
-    const { stateCode, oemCode, startDate, endDate } = filters;
+  async getDealerReport(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string, isGhost?: boolean }) {
+    const { stateCode, oemCode, startDate, endDate, isGhost = false } = filters;
     let whereClause = 'WHERE 1=1';
 
     if (stateCode) whereClause += ` AND b."stateCode" = '${stateCode}'`;
@@ -113,6 +126,9 @@ export class ReportsService {
     if (startDate && endDate) {
       whereClause += ` AND c."generatedAt" >= '${startDate}'::timestamp AND c."generatedAt" <= '${endDate} 23:59:59'::timestamp`;
     }
+
+    // Ghost Filter
+    whereClause += isGhost ? ` AND b."isGhost" = true` : ` AND b."isGhost" = false`;
 
     // Dealer info is in Certificate.dealerId (nullable)
     // We join 'dealers' table

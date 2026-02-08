@@ -4,7 +4,7 @@ import api from "../api/client";
 type User = {
   id: string;
   name: string;
-  role: "SUPER_ADMIN" | "STATE_ADMIN" | "OEM_ADMIN" | "DEALER_USER" | "ADMIN";
+  role: "SUPER_ADMIN" | "STATE_ADMIN" | "OEM_ADMIN" | "DEALER_USER" | "ADMIN" | "GHOST_ADMIN";
   phone: string;
 };
 
@@ -57,6 +57,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     localStorage.removeItem("sv_auth");
   };
+
+  // Enforce Ghost Mode Security on Session Load/Change
+  useEffect(() => {
+    const isGhostMode = localStorage.getItem("isGhostMode") === "true";
+    if (user && isGhostMode && user.role !== "GHOST_ADMIN") {
+        console.warn("Session invalid for Ghost Dashboard. Logging out.");
+        signOut();
+    }
+  }, [user]);
 
   const value = useMemo(
     () => ({ user, token, isAuthenticated: !!user && !!token, signIn, signOut }),

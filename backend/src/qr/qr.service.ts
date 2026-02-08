@@ -75,6 +75,7 @@ export class QrService {
               quantity,
               status: 'PENDING',
               filePath: '', // Placeholder
+              isGhost: false // Default
             }
         });
 
@@ -88,7 +89,7 @@ export class QrService {
         );
 
         // Trigger Async Processing (Fire and forget, but catch errors inside)
-        this.processBatch(batch.id, data, batchId, baseUrl).catch(err => {
+        this.processBatch(batch.id, data, batchId, baseUrl, false).catch(err => {
             this.logger.error(`Async batch processing failed for ${batchId}`, err);
             this.prisma.batch.update({
                 where: { id: batch.id },
@@ -104,7 +105,7 @@ export class QrService {
     }
   }
 
-  private async processBatch(dbId: string, data: any, batchId: string, baseUrl: string) {
+  private async processBatch(dbId: string, data: any, batchId: string, baseUrl: string, isGhost: boolean, ghostConfig?: { startSerial?: string, specificSerials?: number[] }) {
       const { stateCode, oemCode, productCode, quantity } = data;
       
       // Update Status to PROCESSING
@@ -113,21 +114,32 @@ export class QrService {
           data: { status: 'PROCESSING' }
       });
 
-      // Get Iteration Start
-      // Sequence is per State > OEM
-      // We increment by quantity, so the range is [newVal - quantity, newVal - 1]
-      // Ensure initial value starts at 1000 if not exists
-      
-      const sequenceId = `QR_SEQ_${stateCode}_${oemCode}`;
-      
-      // Use upsert for atomic operation (BUG-QR-004)
-      const sequence = await this.prisma.sequence.upsert({
-          where: { id: sequenceId },
-          create: { id: sequenceId, value: 1000 + quantity },
-          update: { value: { increment: quantity } }
-      });
-      
-      const startIteration = sequence.value - quantity; 
+      let startIteration: number;
+
+      if (isGhost) {
+        // Ghost Mode: Use provided serials
+        if (ghostConfig?.specificSerials) {
+            startIteration = ghostConfig.specificSerials[0];
+        } else if (ghostConfig?.startSerial) {
+             startIteration = parseInt(ghostConfig.startSerial);
+             if (isNaN(startIteration)) throw new Error("Invalid Start Serial Number");
+        } else {
+             throw new Error("Start Serial or Specific Serials required for Ghost Batch");
+        }
+
+      } else {
+        // Normal Mode: Increment Sequence
+        const sequenceId = `QR_SEQ_${stateCode}_${oemCode}`;
+        
+        // Use upsert for atomic operation (BUG-QR-004)
+        const sequence = await this.prisma.sequence.upsert({
+            where: { id: sequenceId },
+            create: { id: sequenceId, value: 1000 + quantity },
+            update: { value: { increment: quantity } }
+        });
+        
+        startIteration = sequence.value - quantity; 
+      }
 
       // Prepare PDF
       // 250mm = 708.66 pts, 380mm = 1077.16 pts
@@ -146,9 +158,13 @@ export class QrService {
       const dateYMD = dateObj.toISOString().split('T')[0].replace(/-/g, ''); // YYYYMMDD
       const dateDMY = this.formatDateDDMMYYYY(dateObj); // DDMMYYYY
       
-      const pdfName = `${stateCode}-${oemCode}-${productCode}-${quantity}-${dateDMY}-${batchId}.pdf`;
+      const ghostPrefix = isGhost ? 'GHOST-' : '';
+      const pdfName = `${ghostPrefix}${stateCode}-${oemCode}-${productCode}-${quantity}-${dateDMY}-${batchId}.pdf`;
       
       // Directory: uploads/QR/{STATE}/{BRAND}
+      // If Ghost, maybe separate folder? Or same?
+      // Requirement: "Ghost Batches... cleanest way to manage them in database".
+      // Let's keep in same folder structure for simplicity, file name has batchId which is unique.
       const baseDir = path.join(process.cwd(), 'uploads', 'QR', stateCode, oemCode);
       
       if (!fs.existsSync(baseDir)) {
@@ -165,7 +181,18 @@ export class QrService {
 
       for (let i = 0; i < quantity; i++) {
         doc.addPage();
-        const serial = startIteration + i;
+        let serial: number;
+        if (ghostConfig?.specificSerials && ghostConfig.specificSerials.length > 0) {
+             // Use specific serials found in database
+             if (i >= ghostConfig.specificSerials.length) {
+                 // Should not happen as we updated quantity, but for safety
+                 break; 
+             }
+             serial = ghostConfig.specificSerials[i];
+        } else {
+             // Sequential generation (Standard or Ghost fallback)
+             serial = startIteration + i;
+        }
         
         // QR Logic: a = Iteration, b = Product, c = Random
         const a = i; 
@@ -292,9 +319,12 @@ export class QrService {
         
     }
   
-  async getBatches(user: any) {
+  async getBatches(user: any, isGhost: boolean = false) {
       const where: any = {};
       
+      // Ghost Filter
+      where.isGhost = isGhost;
+
       if (user.role === 'STATE_ADMIN') {
           where.stateCode = user.stateCode;
       } else if (user.role === 'OEM_ADMIN') {
@@ -308,6 +338,264 @@ export class QrService {
           include: { state: true, oem: true, product: true },
           orderBy: { createdAt: 'desc' }
       });
+  }
+
+  async regenerateBatch(data: any, userId: string, baseUrl: string) {
+    // Regenerate Logic:
+    // 1. Accepts state, oem, product, startSerial, quantity
+    // 2. Creates a GHOST BATCH (isGhost=true)
+    // 3. Generates QR codes for USED codes starting from startSerial
+    
+    // Validate Input
+    const { stateCode, oemCode, productCode, quantity, startSerial } = data;
+    if (!stateCode || !oemCode || !productCode || !quantity || !startSerial) {
+        throw new BadRequestException('Missing required fields: stateCode, oemCode, productCode, quantity, startSerial');
+    }
+
+    const qty = Number(quantity);
+    if (isNaN(qty) || !Number.isInteger(qty) || qty <= 0) {
+        throw new BadRequestException('Quantity must be a positive integer');
+    }
+
+    // Validate existence
+    const state = await this.prisma.state.findUnique({ where: { code: stateCode } });
+    const oem = await this.prisma.oEM.findUnique({ where: { code: oemCode } });
+    const product = await this.prisma.product.findUnique({ where: { code: productCode } });
+
+    if (!state || !oem || !product) {
+      throw new BadRequestException('Invalid State, OEM or Product code');
+    }
+
+    // FIND USED SERIALS
+    const startSerialNum = parseInt(startSerial);
+    if (isNaN(startSerialNum)) {
+        throw new BadRequestException('Start Serial must be a number');
+    }
+
+    // Search for USED QR codes (status=1) in MAIN batches (isGhost=false)
+    const usedQRs = await this.prisma.qRCode.findMany({
+        where: {
+            batch: {
+                stateCode,
+                oemCode,
+                productCode,
+                isGhost: false // Only regenerate from original batches
+            },
+            serialNumber: {
+                gte: startSerialNum
+            },
+            status: 1 // USED
+        },
+        orderBy: {
+            serialNumber: 'asc'
+        },
+        take: qty,
+        select: {
+            serialNumber: true
+        }
+    });
+
+    if (usedQRs.length === 0) {
+        throw new NotFoundException(`No used QR codes found starting from serial ${startSerial} for this State/OEM/Product`);
+    }
+
+    const serialsToRegenerate = usedQRs.map(q => q.serialNumber);
+    const actualQty = serialsToRegenerate.length;
+
+    // Create Ghost Batch
+    let batchId = this.generateBatchId();
+    // Ensure unique
+    while (await this.prisma.batch.findUnique({ where: { batchId } })) {
+        batchId = this.generateBatchId();
+    }
+
+    const batch = await this.prisma.batch.create({
+        data: {
+            batchId,
+            userId,
+            stateCode,
+            oemCode,
+            productCode,
+            quantity: actualQty, // Use actual found quantity
+            startSerial: serialsToRegenerate[0].toString(),
+            endSerial: serialsToRegenerate[actualQty - 1].toString(),
+            status: 'PENDING',
+            filePath: '',
+            isGhost: true // MARK AS GHOST
+        }
+    });
+
+    // Audit Log
+    await this.auditService.logAction(
+        userId,
+        'REGENERATE_BATCH',
+        'BATCH',
+        batchId,
+        `Regenerated GHOST batch of ${actualQty} QR codes (requested ${qty}) for ${stateCode}-${oemCode}-${productCode} starting at ${startSerial}`
+    );
+
+    // Update data quantity for processBatch
+    const processData = { ...data, quantity: actualQty };
+
+    // Process Async
+    this.processBatch(batch.id, processData, batchId, baseUrl, true, { specificSerials: serialsToRegenerate }).catch(err => {
+        this.logger.error(`Async ghost batch processing failed for ${batchId}`, err);
+        this.prisma.batch.update({
+            where: { id: batch.id },
+            data: { status: 'FAILED' }
+        }).catch(e => this.logger.error('Failed to update batch status to FAILED', e));
+    });
+
+    return batch;
+  }
+
+  async generateBulkReplacementPdf(serials: number[], stateCode: string, oemCode: string, baseUrl: string): Promise<{ filePath: string, count: number, skipped: number }> {
+      // 1. Fetch QRs
+      const qrs = await this.prisma.qRCode.findMany({
+          where: {
+              serialNumber: { in: serials },
+              batch: {
+                  stateCode: stateCode,
+                  oemCode: oemCode
+              }
+          },
+          include: {
+              batch: true
+          }
+      });
+
+      // 2. Filter Active (status === 0) and Sort
+      const activeQrs = qrs.filter(q => q.status === 0);
+      const skippedCount = serials.length - activeQrs.length;
+
+      if (activeQrs.length === 0) {
+          throw new BadRequestException('No active QR codes found matching the criteria (State/OEM/Serials) or they are already used.');
+      }
+
+      // Sort by State > OEM > Product > Serial
+      activeQrs.sort((a, b) => {
+          const stateCompare = a.batch.stateCode.localeCompare(b.batch.stateCode);
+          if (stateCompare !== 0) return stateCompare;
+          const oemCompare = a.batch.oemCode.localeCompare(b.batch.oemCode);
+          if (oemCompare !== 0) return oemCompare;
+          const prodCompare = a.batch.productCode.localeCompare(b.batch.productCode);
+          if (prodCompare !== 0) return prodCompare;
+          return a.serialNumber - b.serialNumber;
+      });
+
+      // 3. Generate PDF
+      const width = 708.66;
+      const height = 1077.16;
+      const margin = 56.7;
+
+      const doc = new PDFDocument({ 
+          size: [width, height], 
+          margins: { top: 0, bottom: 0, left: 0, right: 0 }, 
+          autoFirstPage: false 
+      });
+
+      const dateObj = new Date();
+      const dateDMY = this.formatDateDDMMYYYY(dateObj);
+      const dateYMD = dateObj.toISOString().split('T')[0].replace(/-/g, '');
+      const batchId = `REPL-${Date.now().toString().slice(-5)}`; // Short Batch ID for footer (last 5 digits)
+      const fileName = `Replacement-${dateDMY}-${activeQrs.length}.pdf`;
+      const filePath = path.join(process.cwd(), 'uploads', 'QR', fileName);
+
+      // Ensure directory exists (uploads/QR is safe assumption from processBatch)
+      const baseDir = path.dirname(filePath);
+      if (!fs.existsSync(baseDir)) {
+           fs.mkdirSync(baseDir, { recursive: true });
+      }
+
+      const writeStream = fs.createWriteStream(filePath);
+      doc.pipe(writeStream);
+
+      for (let i = 0; i < activeQrs.length; i++) {
+          const qr = activeQrs[i];
+          const { stateCode, oemCode, productCode } = qr.batch;
+          
+          doc.addPage();
+
+          // Generate New QR Image (Value remains same as original active QR)
+          // Wait, user said "Regenerate used qr code with new value". 
+          // BUT for "Bulk QR Search & Replacement", the request says: 
+          // "active codes (Eliminates used code) are exported in a pdf as a replacement QR Code file."
+          // This implies we are re-printing EXISTING ACTIVE codes because the sticker might be damaged.
+          // So the VALUE should remain the SAME.
+          
+          const fullUrl = qr.fullUrl || `${baseUrl}/${stateCode}/${oemCode}/${productCode}/qr=${qr.value}`;
+          // Ensure baseUrl is correct if fullUrl stored is relative or old
+          // Actually, let's reconstruct fullUrl to be safe with current baseUrl
+          const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+          const effectiveUrl = `${cleanBaseUrl}/${stateCode}/${oemCode}/${productCode}/qr=${qr.value}`;
+
+          const qrDataUrl = await QRCode.toDataURL(effectiveUrl, { errorCorrectionLevel: 'H', margin: 1 });
+          const base64Data = qrDataUrl.replace(/^data:image\/png;base64,/, "");
+          const usableWidth = width - (margin * 2);
+
+          // Header
+          const headerY = margin + 20;
+          doc.font('Helvetica-Bold').fontSize(75)
+             .text(`${stateCode}-${oemCode}-${productCode}`, 0, headerY, { 
+                 align: 'center', 
+                 width: width 
+             });
+
+          // REPLACEMENT Badge
+          // Add a clear indicator this is a replacement
+          doc.save();
+          const badgeWidth = 200;
+          const badgeHeight = 40;
+          const badgeX = (width - badgeWidth) / 2;
+          const badgeY = headerY + 80; // Reduced gap from 100
+          
+          doc.rect(badgeX, badgeY, badgeWidth, badgeHeight).fill('#dc2626'); // Red background
+          doc.fillColor('white').fontSize(20).font('Helvetica-Bold')
+             .text("REPLACEMENT", badgeX, badgeY + 10, { width: badgeWidth, align: 'center' });
+          doc.restore();
+
+          // QR Image
+          const qrY = headerY + 130; // Reduced gap from 160
+          const qrSize = usableWidth;
+          doc.image(Buffer.from(base64Data, 'base64'), margin, qrY, { 
+              width: qrSize, 
+              height: qrSize 
+          });
+
+          // Serial
+          const serialY = qrY + qrSize + 30;
+          doc.font('Helvetica-Bold').fontSize(90)
+             .text(`${qr.serialNumber}`, 0, serialY, { 
+                 align: 'center', 
+                 width: width 
+             });
+
+          // Footer 1
+          const footer2Y = height - margin - 40;
+          const footer1Y = footer2Y - 70;
+          const footer1 = `${dateYMD}-${batchId}-(${i + 1}/${activeQrs.length})`;
+          doc.font('Helvetica').fontSize(45)
+             .text(footer1, 0, footer1Y, { 
+                 align: 'center', 
+                 width: width 
+             });
+
+          // Footer 2
+          doc.font('Helvetica-Bold').fontSize(30)
+             .text("SADAK SURAKSHA JEEVAN RAKSHA", 0, footer2Y, { 
+                 align: 'center', 
+                 width: width 
+             });
+      }
+
+      doc.end();
+
+      await new Promise((resolve, reject) => {
+          writeStream.on('finish', resolve);
+          writeStream.on('error', reject);
+      });
+
+      return { filePath, count: activeQrs.length, skipped: skippedCount };
   }
 
   async getBatchFile(batchId: string, user?: any) {
@@ -347,7 +635,7 @@ export class QrService {
       };
   }
 
-  async reactivateQr(data: { stateCode: string; oemCode: string; serialNumber: number }, userId: string) {
+  async reactivateQr(data: { stateCode: string; oemCode: string; serialNumber: number }, userId: string, isGhost: boolean = false) {
     const { stateCode, oemCode, serialNumber } = data;
     
     // 1. Find the QR Code by Serial + State + OEM
@@ -359,7 +647,8 @@ export class QrService {
         serialNumber: serialNumber,
         batch: {
             stateCode: stateCode,
-            oemCode: oemCode
+            oemCode: oemCode,
+            isGhost: isGhost
         }
       },
       include: {
@@ -369,7 +658,7 @@ export class QrService {
     });
 
     if (!qr) {
-      throw new NotFoundException(`QR Code with Serial '${serialNumber}' not found for State '${stateCode}' and OEM '${oemCode}'`);
+      throw new NotFoundException(`QR Code with Serial '${serialNumber}' not found for State '${stateCode}' and OEM '${oemCode}' (Ghost: ${isGhost})`);
     }
 
     // 2. Perform Reactivation Transaction

@@ -60,6 +60,7 @@ model OEM {
   batches          Batch[]
   users            User[]
   dealers          Dealer[]  @relation("DealerToOEM")
+  inventoryLogs    InventoryLog[]
 
   @@map("oems")
 }
@@ -138,6 +139,7 @@ model Batch {
   endSerial   String?
   status      String   @default("PENDING")
   filePath    String?
+  isGhost     Boolean  @default(false)
   createdAt   DateTime @default(now())
   oem         OEM      @relation(fields: [oemCode], references: [code])
   product     Product  @relation(fields: [productCode], references: [code])
@@ -252,6 +254,7 @@ model InventoryLog {
   createdAt   DateTime @default(now())
   dealerId    String?
   dealer      Dealer?  @relation(fields: [dealerId], references: [id])
+  oem         OEM      @relation(fields: [oemCode], references: [code])
 
   @@map("inventory_logs")
 }
@@ -263,6 +266,7 @@ enum UserRole {
   DEALER_USER
   ADMIN
   SUB_ADMIN
+  GHOST_ADMIN
 }
 
 enum UserStatus {

@@ -111,6 +111,8 @@ function DashboardContent() {
   const { data: oems } = useOEMs();
   const { data: settings } = useSystemSettings();
 
+  const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
+
   if (isLoading) return <div className="p-6">Loading dashboard data...</div>;
   if (apiError) return <div className="p-6 text-red-500">Failed to load dashboard data: {(apiError as any).message}</div>;
   if (!stats) return <div className="p-6">No dashboard data available</div>;
@@ -120,7 +122,10 @@ function DashboardContent() {
       {/* Header & Filters */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-gray-800">
+            Dashboard
+            {isGhostMode && <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full border border-red-200">Ghost Mode</span>}
+          </h1>
           <p className="text-sm text-gray-500">System overview and statistics</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -263,7 +268,6 @@ function DashboardContent() {
                 </ResponsiveContainer>
             </div>
         </div>
-        )}
       </div>
 
       {/* Row 6: Tables (Top OEMs & Top RTOs) */}

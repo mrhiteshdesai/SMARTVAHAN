@@ -1081,7 +1081,7 @@ export class CertificatesService {
                 photoBackRight: photoPaths.photoBackRight!,
                 photoNumberPlate: photoPaths.photoNumberPlate!,
                 photoRc: photoPaths.photoRc!,
-                pdfPath: pdfPath,
+                pdfPath: finalPdfPath,
                 locationText: locationText,
                 vehicleNumber: vehicleNumber,
                 count: count,
@@ -1093,7 +1093,7 @@ export class CertificatesService {
         return {
             success: true,
             message: 'Certificate Generated Successfully',
-            pdfUrl: `/uploads/${stateCode}/${oemCode}/${productCode}/${pdfFilename}`,
+            pdfUrl: finalPdfPath.startsWith('http') ? finalPdfPath : `/uploads/${stateCode}/${oemCode}/${productCode}/${pdfFilename}`,
             certificateId: cert.id
         };
     } catch (error) {

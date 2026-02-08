@@ -42,6 +42,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = res.data;
       if (!data?.ok) return false;
 
+      // Ghost Mode Security Check
+      const isGhostMode = localStorage.getItem("isGhostMode") === "true";
+      if (isGhostMode && data.user.role !== "GHOST_ADMIN") {
+        console.error("Access Denied: Ghost Dashboard requires Ghost Admin credentials.");
+        return false;
+      }
+
       setUser(data.user);
       setToken(data.accessToken);
       localStorage.setItem("sv_auth", JSON.stringify({ user: data.user, token: data.accessToken }));

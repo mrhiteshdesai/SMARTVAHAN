@@ -164,15 +164,39 @@ try {
 # --- 9. Frontend Setup ---
 Write-Host ">>> 9. Configuring Frontend..." -ForegroundColor Cyan
 Set-Location "$RepoPath\frontend"
+
+# Clean previous build
+if (Test-Path "dist") {
+    Write-Host "Cleaning previous frontend build..."
+    Remove-Item -Path "dist" -Recurse -Force
+}
+
 Write-Host "Installing Frontend Dependencies..."
 npm install
 Write-Host "Building React Application..."
 npm run build
 
+# Verify Build
+if (-not (Test-Path "dist\index.html")) {
+    Write-Error "Frontend Build FAILED! dist\index.html not found."
+    exit 1
+}
+
 # --- 10. IIS Deployment ---
 Write-Host ">>> 10. Deploying to IIS..." -ForegroundColor Cyan
-# Optional: Clear old files safely (excluding web.config if needed)
-# Remove-Item "$IISPath\*" -Recurse -Force -Exclude "web.config" -ErrorAction SilentlyContinue
+
+# Stop IIS Site (Optional, prevents file locking)
+# Write-Host "Stopping IIS Site..."
+# Stop-WebSite -Name "Default Web Site"  # Adjust name if needed
+
+# Clear old files safely
+Write-Host "Clearing old IIS files..."
+Get-ChildItem -Path $IISPath -Recurse | Where-Object { $_.Name -ne "web.config" } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+Write-Host "Copying new files..."
 Copy-Item -Path "dist\*" -Destination $IISPath -Recurse -Force
+
+# Start IIS Site
+# Start-WebSite -Name "Default Web Site"
 
 Write-Host ">>> DEPLOYMENT COMPLETE SUCCESSFULLY! <<<" -ForegroundColor Green

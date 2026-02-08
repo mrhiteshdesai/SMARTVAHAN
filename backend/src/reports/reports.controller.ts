@@ -82,7 +82,7 @@ export class ReportsController {
   }
 
   @Get('oem')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'GHOST_ADMIN')
   async getOemReport(
     @Req() req: any,
     @Query('stateCode') stateCode?: string,
@@ -94,7 +94,7 @@ export class ReportsController {
 
     // Check for ghost mode header
     const isGhost = req.headers['x-ghost-mode'] === 'true';
-    if (isGhost && user.role !== 'SUPER_ADMIN') {
+    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
         throw new ForbiddenException("Access Denied: Ghost Mode is restricted to Super Admins.");
     }
 

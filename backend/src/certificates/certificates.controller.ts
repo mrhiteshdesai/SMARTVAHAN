@@ -49,7 +49,7 @@ export class CertificatesController {
 
   @Get('search-qr')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN', 'OEM_ADMIN', 'SUB_ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OEM_ADMIN', 'SUB_ADMIN', 'GHOST_ADMIN')
   async searchQr(
     @Query('state') state: string,
     @Query('oem') oem: string,

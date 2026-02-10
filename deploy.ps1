@@ -3,7 +3,7 @@
 
 # --- Configuration ---
 $RepoPath = "C:\smartvahan-src\SMARTVAHAN"
-$IISPath = "C:\inetpub\wwwroot"
+$IISPath = "C:\inetpub\wwwroot\SMARTVAHAN"
 $BackupPath = "C:\Backups\SmartVahan_$(Get-Date -Format 'yyyyMMdd_HHmm')"
 $DbPassword = "@002550641646Hitesh"
 

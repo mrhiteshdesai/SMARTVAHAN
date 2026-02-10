@@ -142,6 +142,8 @@ Write-Host "Generating Prisma Client..."
 npx prisma generate
 Write-Host "Running Database Migrations..."
 npx prisma migrate deploy 
+Write-Host "Seeding Database (Updating Ghost Admin)..."
+npx prisma db seed
 Write-Host "Building Backend..."
 npm run build
 

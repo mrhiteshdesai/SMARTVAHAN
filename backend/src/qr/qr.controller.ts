@@ -87,6 +87,8 @@ export class QrController {
       const isGhost = req.headers['x-ghost-mode'] === 'true';
       if (isGhost && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'GHOST_ADMIN') {
         // Should be caught by RoleGuard but reactivateQr currently has no Role restriction in decorator?
+         throw new Error("Access Denied: Ghost Mode is restricted to Super Admins.");
+      }
 
       return this.qrService.reactivateQr(body, userId, isGhost);
   }

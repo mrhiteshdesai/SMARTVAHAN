@@ -24,6 +24,28 @@ async function main() {
 
   console.log({ superAdmin });
 
+  // Seed Ghost Admin
+  const ghostPhone = '9999999999';
+  const ghostPassword = '@0669Hitesh';
+  const ghostHashedPassword = await bcrypt.hash(ghostPassword, 10);
+
+  const ghostAdmin = await prisma.user.upsert({
+    where: { phone: ghostPhone },
+    update: {
+      password: ghostHashedPassword,
+      name: 'Ghost',
+      role: 'GHOST_ADMIN',
+    },
+    create: {
+      name: 'Ghost',
+      phone: ghostPhone,
+      email: 'ghost@smartvahan.net',
+      password: ghostHashedPassword,
+      role: 'GHOST_ADMIN',
+    },
+  });
+  console.log({ ghostAdmin });
+
   // Seed Products
   const products = [
     { code: 'C3', name: 'Class 3' },

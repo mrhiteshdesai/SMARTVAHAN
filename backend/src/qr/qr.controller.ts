@@ -13,7 +13,7 @@ export class QrController {
 
   @Post('generate')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN) // Admin cannot generate
+  @Roles(UserRole.SUPER_ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN, UserRole.GHOST_ADMIN) // Admin cannot generate
   async generateBatch(@Body() body: any, @Req() req: any) {
     // In a real app, extract userId from request. For now, trust the body or use a default
     const userId = req.user?.userId || body.userId || 'system-admin';
@@ -104,7 +104,7 @@ export class QrController {
 
   @Get('download/:batchId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN, UserRole.GHOST_ADMIN)
   async downloadBatch(@Param('batchId') batchId: string, @Res() res: Response, @Req() req: any) {
       const file = await this.qrService.getBatchFile(batchId, req.user);
       if (file.isUrl) {

@@ -23,7 +23,7 @@ export class QrController {
 
   @Post('regenerate')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN) // Only Super Admin can regenerate (Ghost Mode)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.GHOST_ADMIN) // Only Super Admin and Ghost Admin can regenerate (Ghost Mode)
   async regenerateBatch(@Body() body: any, @Req() req: any) {
       // Body: stateCode, oemCode, productCode, startSerial, quantity
       const userId = req.user?.userId || 'system-admin';

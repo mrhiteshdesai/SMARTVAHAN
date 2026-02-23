@@ -54,14 +54,6 @@ export class InventoryController {
     if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
         throw new ForbiddenException("Access Denied: Ghost Mode is restricted to Super Admins.");
     }
-    // For Ghost Mode, we currently return EMPTY logs because InventoryLogs (Manual) are not part of Ghost System yet.
-    // Or we can just let it return empty if we implement filtering in service (which we didn't for getLogs yet).
-    // Let's handle it here: if Ghost Mode, return empty array?
-    // User said: "Ghost dashboard Stats, Reports, Inventory only shows certificate generated after the 1st code that is count 0"
-    // Inventory Logs are Manual. So for Ghost, this table should be empty or only show Ghost-related manual logs (which don't exist).
-    if (isGhost) {
-        return []; // Ghost Dashboard has no Manual Inventory Logs for now.
-    }
 
     if (user.role === 'STATE_ADMIN') finalStateCode = user.stateCode;
     if (user.role === 'OEM_ADMIN') finalOemCode = user.oemCode;
@@ -70,7 +62,7 @@ export class InventoryController {
     // Actually the Roles decorator above allows SUPER_ADMIN...SUB_ADMIN. DEALER_USER is NOT in the list.
     // So Dealer cannot access this endpoint. Good.
 
-    return this.inventoryService.getLogs({ stateCode: finalStateCode, oemCode: finalOemCode, dealerId, startDate, endDate });
+    return this.inventoryService.getLogs({ stateCode: finalStateCode, oemCode: finalOemCode, dealerId, startDate, endDate, isGhost });
   }
 
   @Delete(':id')

@@ -105,8 +105,7 @@ export const QRGenerationPage = () => {
       "Start Serial": b.startSerial || '-',
       "End Serial": b.endSerial || '-',
       "Status": b.status || 'COMPLETED',
-      "Created At": new Date(b.createdAt).toLocaleString(),
-      "Is Ghost": b.isGhost ? "Yes" : "No"
+      "Created At": new Date(b.createdAt).toLocaleString()
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();

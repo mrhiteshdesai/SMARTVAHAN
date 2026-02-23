@@ -133,18 +133,22 @@ export class InventoryService {
         where: { 
             status: 'COMPLETED',
             stateCode: filters.stateCode,
-            oemCode: filters.oemCode
+            oemCode: filters.oemCode,
+            isGhost: isGhost
         }
     });
     
-    const allTimeLogs = await this.prisma.inventoryLog.groupBy({
-        by: ['productCode', 'type'],
-        _sum: { quantity: true },
-        where: {
-            stateCode: filters.stateCode,
-            oemCode: filters.oemCode
-        }
-    });
+    let allTimeLogs: any[] = [];
+    if (!isGhost) {
+        allTimeLogs = await (this.prisma.inventoryLog as any).groupBy({
+            by: ['productCode', 'type'],
+            _sum: { quantity: true },
+            where: {
+                stateCode: filters.stateCode,
+                oemCode: filters.oemCode
+            }
+        });
+    }
 
     const instockCalc = { C3: 0, C4: 0, CT: 0, CTAUTO: 0 };
     
@@ -168,9 +172,10 @@ export class InventoryService {
     return stats;
   }
 
-  async getLogs(filters: { stateCode?: string; oemCode?: string; dealerId?: string; startDate?: string; endDate?: string }) {
+  async getLogs(filters: { stateCode?: string; oemCode?: string; dealerId?: string; startDate?: string; endDate?: string; isGhost?: boolean }) {
+    const isGhost = filters.isGhost || false;
     const whereLog: any = {};
-    const whereBatch: any = { status: 'COMPLETED' };
+    const whereBatch: any = { status: 'COMPLETED', isGhost: isGhost };
 
     if (filters.stateCode) {
         whereLog.stateCode = filters.stateCode;
@@ -199,31 +204,35 @@ export class InventoryService {
         whereBatch.createdAt = { gte: start, lte: end };
     }
 
-    // Fetch Logs with Dealer info
-    const logs = await this.prisma.inventoryLog.findMany({
-      where: whereLog,
-      include: {
-        dealer: {
-            select: { name: true }
+    let logs: any[] = [];
+
+    // For Ghost Mode, skip manual inventory logs (no isGhost flag on logs, they belong to main system).
+    if (!isGhost) {
+      logs = await this.prisma.inventoryLog.findMany({
+        where: whereLog,
+        include: {
+          dealer: {
+              select: { name: true }
+          },
+          oem: {
+              select: { name: true }
+          }
         },
+        orderBy: { createdAt: 'desc' },
+        take: 500
+      });
+    }
+
+    // Fetch Batches
+    const batches = await this.prisma.batch.findMany({
+      where: whereBatch,
+      include: {
         oem: {
             select: { name: true }
         }
       },
       orderBy: { createdAt: 'desc' },
       take: 500
-    });
-
-    // Fetch Batches
-    const batches = await this.prisma.batch.findMany({
-        where: whereBatch,
-        include: {
-            oem: {
-                select: { name: true }
-            }
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 500
     });
 
     // Map Batches to Log format

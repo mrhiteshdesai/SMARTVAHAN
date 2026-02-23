@@ -23,12 +23,16 @@ export class StatsService {
         isGhost
     };
 
-    // Base filter for structure and permissions (Dealer/State/OEM)
     const baseCertWhere: any = {
         qrCode: {
             batch: whereBatch
         }
     };
+    if (isGhost) {
+        baseCertWhere.count = 0;
+    } else {
+        baseCertWhere.NOT = { count: 0 };
+    }
     if (dealerId) {
         baseCertWhere.dealerId = dealerId;
     }
@@ -121,19 +125,9 @@ export class StatsService {
     // So better to query Certificate count directly for 'totalQrUsed' if dealerId is present.
     // But existing logic uses QRCode count.
     
-    let totalQrUsed = 0;
-    if (dealerId) {
-         totalQrUsed = await this.prisma.certificate.count({
-             where: certWhere
-         });
-    } else {
-        totalQrUsed = await this.prisma.qRCode.count({
-            where: {
-                batch: whereBatch,
-                certificate: { isNot: null }
-            }
-        });
-    }
+    const totalQrUsed = await this.prisma.certificate.count({
+        where: certWhere
+    });
 
     const totalCerts = await this.prisma.certificate.count({
         where: certWhere
@@ -228,10 +222,7 @@ export class StatsService {
     // --- Top Performing OEMs (Based on filtered period) ---
     // Aggregate certificates by OEM Code
     const certsForOemPerf = await this.prisma.certificate.findMany({
-        where: {
-            ...dateFilter,
-            qrCode: { batch: whereBatch }
-        },
+        where: certWhere,
         select: {
             qrCode: {
                 select: {

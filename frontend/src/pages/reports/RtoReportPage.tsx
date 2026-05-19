@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useRtoReport, ReportFilters } from '../../api/reportsHooks';
 import ReportTable from './ReportTable';
 import ReportFiltersComponent, { FilterState } from './ReportFilters';
+import ReportCharts from './ReportCharts';
 import * as XLSX from 'xlsx';
 
 export default function RtoReportPage() {
@@ -24,19 +25,19 @@ export default function RtoReportPage() {
     }
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "RTO Report");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Reg. RTO Report");
     const dateStr = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(workbook, `RTO_Report_${dateStr}.xlsx`);
+    XLSX.writeFile(workbook, `Reg_RTO_Report_${dateStr}.xlsx`);
   };
 
   return (
     <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">
-          RTO Wise Report
+          Reg. RTO Wise Report
           {isGhostMode && <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full border border-red-200">Ghost Mode</span>}
         </h1>
-        <p className="text-sm text-gray-500">Certificate generation summary by RTO and Product.</p>
+        <p className="text-sm text-gray-500">Certificate generation summary by Registration RTO and Product.</p>
       </div>
 
       <ReportFiltersComponent 
@@ -48,12 +49,15 @@ export default function RtoReportPage() {
       />
 
       {hasApplied ? (
-        <ReportTable 
-          title="RTO Report"
-          data={data || []}
-          isLoading={isLoading}
-          columns={['RTO', 'C3', 'C4', 'CT', 'CTAUTO', 'Total']}
-        />
+        <>
+          <ReportCharts data={data || []} labelKey="Reg. RTO" />
+          <ReportTable 
+            title="Reg. RTO Report"
+            data={data || []}
+            isLoading={isLoading}
+            columns={['Reg. RTO', 'C3', 'C4', 'CT', 'CTAUTO', 'Total']}
+          />
+        </>
       ) : (
         <div className="text-center text-gray-500 mt-10 p-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
           Select filters and click "Apply Filters" to view the report.

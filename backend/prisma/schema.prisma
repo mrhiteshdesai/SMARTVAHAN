@@ -20,6 +20,7 @@ model User {
   oemCode   String?
   stateCode String?
   auditLogs AuditLog[]
+  reviewedDealerRegistrationRequests DealerRegistrationRequest[] @relation("DealerRegistrationReviewedBy")
   oem       OEM?       @relation(fields: [oemCode], references: [code])
   state     State?     @relation(fields: [stateCode], references: [code])
 
@@ -29,6 +30,7 @@ model User {
 model State {
   code      String   @id
   name      String
+  showOnHomepage Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   batches   Batch[]
@@ -54,6 +56,7 @@ model OEM {
   name             String
   code             String    @unique
   authorizedStates String[]
+  showOnHomepage   Boolean   @default(true)
   copDocument      String?
   copValidity      DateTime?
   logo             String?
@@ -68,6 +71,8 @@ model OEM {
 model Dealer {
   id                  String         @id @default(uuid())
   name                String
+  contactPersonName   String?
+  email               String?
   phone               String         @unique
   password            String
   status              UserStatus     @default(ACTIVE)
@@ -82,6 +87,8 @@ model Dealer {
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   allRTOs             Boolean        @default(false)
+  passingRtosAll      Boolean        @default(true)
+  passingRtoCodes     String[]       @default([])
   gstNo               String?
   tradeCertificateNo  String?
   tradeValidity       DateTime?
@@ -94,8 +101,47 @@ model Dealer {
   state               State          @relation(fields: [stateCode], references: [code])
   inventoryLogs       InventoryLog[]
   oems                OEM[]          @relation("DealerToOEM")
+  registrationRequests DealerRegistrationRequest[] @relation("DealerRegistrationApprovedDealer")
 
   @@map("dealers")
+}
+
+model DealerRegistrationRequest {
+  id                  String                   @id @default(uuid())
+  status              DealerRegistrationStatus @default(PENDING)
+  name                String
+  firstName           String?
+  lastName            String?
+  email               String?
+  dealerName          String?
+  phone               String
+  stateCode           String?
+  locationAddress     String?
+  city                String?
+  zip                 String?
+  latitude            Float?
+  longitude           Float?
+  radius              Float?
+  oemCodes            String[]                 @default([])
+  passingRtoCodes     String[]                 @default([])
+  gstNo               String?
+  tradeCertificateNo  String?
+  tradeValidity       DateTime?
+  aadharNumber        String?
+  tradeCertificateUrl String?
+  gstCertificateUrl   String?
+  aadharCardUrl       String?
+  note                String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  reviewedAt          DateTime?
+  reviewedByUserId    String?
+  reviewedByUser      User?                    @relation("DealerRegistrationReviewedBy", fields: [reviewedByUserId], references: [id])
+  dealerId            String?
+  dealer              Dealer?                  @relation("DealerRegistrationApprovedDealer", fields: [dealerId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("dealer_registration_requests")
 }
 
 model VehicleManufacturer {
@@ -158,7 +204,7 @@ model QRCode {
   count        Int          @default(1)
   batchId      String
   createdAt    DateTime     @default(now())
-  certificate  Certificate?
+  certificates Certificate[]
   batch        Batch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@map("qr_codes")
@@ -167,7 +213,8 @@ model QRCode {
 model Certificate {
   id                String   @id @default(uuid())
   certificateNumber String   @unique
-  qrCodeId          String   @unique
+  qrCodeId          String
+  qrValue           String   @unique
   vehicleMake       String
   vehicleCategory   String
   fuelType          String
@@ -192,7 +239,46 @@ model Certificate {
   dealer            Dealer?  @relation(fields: [dealerId], references: [id])
   qrCode            QRCode   @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
 
+  @@index([qrCodeId])
   @@map("certificates")
+}
+
+model QRRegenerationRun {
+  id               String   @id @default(uuid())
+  stateCode        String
+  oemCode          String
+  productCode      String
+  startSerial      Int
+  requestedQuantity Int
+  eligibleCount    Int
+  regeneratedCount Int
+  filePath         String?
+  createdAt        DateTime @default(now())
+  createdBy        String?
+
+  items            QRRegeneration[]
+
+  @@index([stateCode, oemCode, productCode, createdAt])
+  @@map("qr_regeneration_runs")
+}
+
+model QRRegeneration {
+  id          String   @id @default(uuid())
+  runId       String
+  stateCode   String
+  oemCode     String
+  productCode String
+  serialNumber Int
+  oldQrValue  String
+  newQrValue  String
+  regeneratedAt DateTime @default(now())
+  regeneratedBy String?
+
+  run         QRRegenerationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([stateCode, oemCode, productCode, serialNumber])
+  @@index([newQrValue])
+  @@map("qr_regenerations")
 }
 
 model Sequence {
@@ -220,9 +306,21 @@ model SystemSettings {
   awsSecretKey    String?
   awsRegion       String?
   awsBucket       String?
+  homePageContent Json?
   updatedAt       DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+model ContactSubmission {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
+  message   String
+  createdAt DateTime @default(now())
+
+  @@map("contact_submissions")
 }
 
 model AuditLog {
@@ -267,6 +365,12 @@ enum UserRole {
   ADMIN
   SUB_ADMIN
   GHOST_ADMIN
+}
+
+enum DealerRegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum UserStatus {

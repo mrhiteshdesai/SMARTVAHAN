@@ -81,6 +81,31 @@ export class ReportsController {
     return this.reportsService.getRtoReport({ stateCode: finalStateCode, oemCode: finalOemCode, startDate, endDate, isGhost });
   }
 
+  @Get('passing-rto')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'OEM_ADMIN', 'GHOST_ADMIN')
+  async getPassingRtoReport(
+    @Req() req: any,
+    @Query('stateCode') stateCode?: string,
+    @Query('oemCode') oemCode?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const user = req.user;
+
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
+        throw new ForbiddenException("Access Denied: Ghost Mode is restricted to Super Admins.");
+    }
+
+    let finalStateCode = stateCode;
+    let finalOemCode = oemCode;
+
+    if (user.role === 'STATE_ADMIN') finalStateCode = user.stateCode;
+    if (user.role === 'OEM_ADMIN') finalOemCode = user.oemCode;
+
+    return this.reportsService.getPassingRtoReport({ stateCode: finalStateCode, oemCode: finalOemCode, startDate, endDate, isGhost });
+  }
+
   @Get('oem')
   @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN', 'GHOST_ADMIN')
   async getOemReport(

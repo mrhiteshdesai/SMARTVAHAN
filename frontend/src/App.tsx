@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, Outlet } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import AppShell from "./app/AppShell";
 import Login from "./pages/Login";
@@ -17,6 +17,7 @@ import SearchCertPage from "./pages/SearchCertPage";
 import DownloadPage from "./pages/DownloadPage";
 import StateReportPage from "./pages/reports/StateReportPage";
 import RtoReportPage from "./pages/reports/RtoReportPage";
+import PassingRtoReportPage from "./pages/reports/PassingRtoReportPage";
 import OemReportPage from "./pages/reports/OemReportPage";
 import DealerReportPage from "./pages/reports/DealerReportPage";
 import AuditLogPage from "./pages/AuditLogPage";
@@ -28,6 +29,7 @@ import MobileHome from "./mobile/MobileHome";
 import MobileScan from "./mobile/MobileScan";
 import MobileForm from "./mobile/MobileForm";
 import PublicVerifyPage from "./pages/PublicVerifyPage";
+import LandingPage from "./pages/LandingPage";
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { isAuthenticated, user, signOut } = useAuth();
@@ -38,7 +40,13 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
     if (location.pathname.startsWith("/app")) {
       return <Navigate to="/app/login" replace />;
     }
-    return <Navigate to="/login" replace />;
+    if (location.pathname.startsWith("/control/rp")) {
+      return <Navigate to="/control/rp/login" replace />;
+    }
+    if (location.pathname.startsWith("/control")) {
+      return <Navigate to="/control/login" replace />;
+    }
+    return <Navigate to="/" replace />;
   }
 
   // Ghost Mode Restrictions
@@ -60,214 +68,168 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
   return children;
 }
 
+function GhostModeSync() {
+  const location = useLocation();
+  const shouldBeGhost = location.pathname.startsWith("/control/rp");
+  const current = localStorage.getItem("isGhostMode") === "true";
+  if (shouldBeGhost !== current) {
+    if (shouldBeGhost) localStorage.setItem("isGhostMode", "true");
+    else localStorage.removeItem("isGhostMode");
+  }
+  return null;
+}
+
+function DashboardLayout() {
+  return (
+    <ProtectedRoute>
+      <AppShell>
+        <Outlet />
+      </AppShell>
+    </ProtectedRoute>
+  );
+}
+
 export default function App() {
   return (
     <AuthProvider>
+      <GhostModeSync />
       <Routes>
         <Route path="/verify" element={<PublicVerifyPage />} />
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <Dashboard />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/state"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <StateReportPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/rto"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <RtoReportPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/oem"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <OemReportPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/dealer"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <DealerReportPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/users/states"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <StatesPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/users/states/:code/rto"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <ManageRTOsPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/users/oems"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <OEMsPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/users/dealers"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <ErrorBoundary>
-                  <DealersPage />
-                </ErrorBoundary>
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/audit"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <AuditLogPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/users/system"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <ErrorBoundary>
-                  <SystemUsersPage />
-                </ErrorBoundary>
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <SettingsPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/qr-generation"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <ErrorBoundary>
-                  <QRGenerationPage />
-                </ErrorBoundary>
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/inventory"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <ErrorBoundary>
-                  <InventoryPage />
-                </ErrorBoundary>
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/activate-qr"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <ErrorBoundary>
-                  <ActivateQrPage />
-                </ErrorBoundary>
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/search-qr"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <SearchQrPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/search-cert"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <SearchCertPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/download"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <DownloadPage />
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/certificate"
-          element={
-            <ProtectedRoute>
-              <AppShell>
-                <ErrorBoundary>
-                  <CertificateGeneratorPage />
-                </ErrorBoundary>
-              </AppShell>
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/dealer-registration" element={<LandingPage mode="dealer-registration" />} />
+        <Route path="/login" element={<Navigate to="/control/login" replace />} />
+        <Route path="/control/login" element={<Login />} />
+        <Route path="/control/rp/login" element={<Login />} />
+
+        <Route path="/control" element={<DashboardLayout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="reports/state" element={<StateReportPage />} />
+          <Route path="reports/rto" element={<RtoReportPage />} />
+          <Route path="reports/passing-rto" element={<PassingRtoReportPage />} />
+          <Route path="reports/oem" element={<OemReportPage />} />
+          <Route path="reports/dealer" element={<DealerReportPage />} />
+          <Route path="users/states" element={<StatesPage />} />
+          <Route path="users/states/:code/rto" element={<ManageRTOsPage />} />
+          <Route path="users/oems" element={<OEMsPage />} />
+          <Route
+            path="users/dealers"
+            element={
+              <ErrorBoundary>
+                <DealersPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route path="audit" element={<AuditLogPage />} />
+          <Route
+            path="users/system"
+            element={
+              <ErrorBoundary>
+                <SystemUsersPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route
+            path="qr-generation"
+            element={
+              <ErrorBoundary>
+                <QRGenerationPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="inventory"
+            element={
+              <ErrorBoundary>
+                <InventoryPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="activate-qr"
+            element={
+              <ErrorBoundary>
+                <ActivateQrPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route path="search-qr" element={<SearchQrPage />} />
+          <Route path="search-cert" element={<SearchCertPage />} />
+          <Route path="download" element={<DownloadPage />} />
+          <Route
+            path="certificate"
+            element={
+              <ErrorBoundary>
+                <CertificateGeneratorPage />
+              </ErrorBoundary>
+            }
+          />
+        </Route>
+
+        <Route path="/control/rp" element={<DashboardLayout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="reports/state" element={<StateReportPage />} />
+          <Route path="reports/rto" element={<RtoReportPage />} />
+          <Route path="reports/passing-rto" element={<PassingRtoReportPage />} />
+          <Route path="reports/oem" element={<OemReportPage />} />
+          <Route path="reports/dealer" element={<DealerReportPage />} />
+          <Route path="users/states" element={<StatesPage />} />
+          <Route path="users/states/:code/rto" element={<ManageRTOsPage />} />
+          <Route path="users/oems" element={<OEMsPage />} />
+          <Route
+            path="users/dealers"
+            element={
+              <ErrorBoundary>
+                <DealersPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route path="audit" element={<AuditLogPage />} />
+          <Route
+            path="users/system"
+            element={
+              <ErrorBoundary>
+                <SystemUsersPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route
+            path="qr-generation"
+            element={
+              <ErrorBoundary>
+                <QRGenerationPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="inventory"
+            element={
+              <ErrorBoundary>
+                <InventoryPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="activate-qr"
+            element={
+              <ErrorBoundary>
+                <ActivateQrPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route path="search-qr" element={<SearchQrPage />} />
+          <Route path="search-cert" element={<SearchCertPage />} />
+          <Route path="download" element={<DownloadPage />} />
+          <Route
+            path="certificate"
+            element={
+              <ErrorBoundary>
+                <CertificateGeneratorPage />
+              </ErrorBoundary>
+            }
+          />
+        </Route>
       </Routes>
       <Routes>
         <Route path="/app" element={<MobileSplash />} />

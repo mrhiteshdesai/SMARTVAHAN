@@ -4,8 +4,9 @@ import { GoogleMap, useLoadScript, MarkerF, CircleF, Autocomplete } from "@react
 import Modal from "../../ui/Modal";
 import { 
   useDealers, useCreateDealer, useUpdateDealer, useDeleteDealer,
+  useDealerRegistrationRequests, useApproveDealerRegistrationRequest, useRejectDealerRegistrationRequest,
   useStates, useRTOs, useOEMs,
-  Dealer
+  Dealer, DealerRegistrationRequest
 } from "../../api/hooks";
 
 const libraries: ("places")[] = ["places"];
@@ -21,13 +22,17 @@ export default function DealersPage() {
   // Modal State
   const [openAdd, setOpenAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [approvalRequestId, setApprovalRequestId] = useState<string | null>(null);
 
   // Form State
   const [form, setForm] = useState({
     name: "",
+    contactPersonName: "",
+    email: "",
     phone: "",
     stateCode: "",
-    rtoCode: "",
+    passingRtosAll: true,
+    passingRtoCodes: [] as string[],
     oemCodes: [] as string[], 
     password: "",
     status: "ACTIVE" as "ACTIVE" | "INACTIVE",
@@ -40,7 +45,11 @@ export default function DealersPage() {
     radius: 15,
     tradeCertificateNo: "",
     tradeValidity: "",
-    gstNo: ""
+    gstNo: "",
+    tradeCertificateUrl: "",
+    gstCertificateUrl: "",
+    aadharNumber: "",
+    aadharCardUrl: ""
   });
 
   const [searchAddress, setSearchAddress] = useState("");
@@ -49,14 +58,26 @@ export default function DealersPage() {
   const { data: dealers = [], isLoading, error } = useDealers();
   const { data: states = [] } = useStates();
   const { data: allOEMs = [] } = useOEMs();
+  const {
+    data: registrationRequests = [],
+    isLoading: isRequestsLoading,
+    isError: isRequestsError,
+    error: requestsError,
+    refetch: refetchRegistrationRequests
+  } = useDealerRegistrationRequests("PENDING");
   
   // RTOs depend on selected state in form
   const { data: formRTOs = [] } = useRTOs(form.stateCode);
+  const sortedFormRTOs = useMemo(() => {
+    return [...formRTOs].sort((a, b) => a.code.localeCompare(b.code));
+  }, [formRTOs]);
 
   // Mutations
   const createDealer = useCreateDealer();
   const updateDealer = useUpdateDealer();
   const deleteDealer = useDeleteDealer();
+  const approveRegistrationRequest = useApproveDealerRegistrationRequest();
+  const rejectRegistrationRequest = useRejectDealerRegistrationRequest();
 
   // Derived Data
   const formOEMs = useMemo(() => {
@@ -111,6 +132,18 @@ export default function DealersPage() {
   }, [form.latitude, form.longitude, mapRef]);
 
   // --- Handlers ---
+  const handleFileChange = (field: 'tradeCertificateUrl' | 'gstCertificateUrl' | 'aadharCardUrl', e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setForm((prev) => ({ ...prev, [field]: "" }));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((prev) => ({ ...prev, [field]: String(reader.result || "") }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,9 +155,6 @@ export default function DealersPage() {
       if (editId && !(payload as any).password) {
         delete (payload as any).password;
       }
-
-      // Ensure rtoCode is null if "ALL" is selected, backend handles logic but we send "ALL"
-      // If not "ALL", ensure it's a valid code
       
       // Handle Date field
       const finalPayload = {
@@ -134,10 +164,13 @@ export default function DealersPage() {
 
       if (editId) {
         await updateDealer.mutateAsync({ id: editId, data: finalPayload });
+      } else if (approvalRequestId) {
+        await approveRegistrationRequest.mutateAsync({ id: approvalRequestId, data: finalPayload });
       } else {
         await createDealer.mutateAsync(finalPayload);
       }
       setOpenAdd(false);
+      setApprovalRequestId(null);
       resetForm();
     } catch (err) {
       console.error("Failed to save dealer:", err);
@@ -158,17 +191,32 @@ export default function DealersPage() {
 
   const openNew = () => {
     setEditId(null);
+    setApprovalRequestId(null);
     resetForm();
     setOpenAdd(true);
   };
 
   const openEdit = (dealer: Dealer) => {
     setEditId(dealer.id);
+    setApprovalRequestId(null);
+    const dealerAny: any = dealer as any;
+    const dealerPassingRtoCodes: string[] = Array.isArray(dealerAny.passingRtoCodes) ? dealerAny.passingRtoCodes : [];
+    const hasPassingConfig = dealerAny.passingRtosAll === true || dealerAny.passingRtosAll === false || dealerPassingRtoCodes.length > 0;
+    const mappedPassingRtosAll = hasPassingConfig
+      ? (dealerAny.passingRtosAll ?? true)
+      : (dealerAny.allRTOs ? true : false);
+    const mappedPassingRtoCodes = hasPassingConfig
+      ? dealerPassingRtoCodes
+      : (dealerAny.allRTOs ? [] : (dealerAny.rtoCode ? [String(dealerAny.rtoCode)] : []));
+
     setForm({
         name: dealer.name,
+        contactPersonName: dealerAny.contactPersonName || "",
+        email: dealerAny.email || "",
         phone: dealer.phone,
         stateCode: dealer.stateCode,
-        rtoCode: dealer.allRTOs ? "ALL" : (dealer.rtoCode || ""),
+        passingRtosAll: mappedPassingRtosAll,
+        passingRtoCodes: mappedPassingRtoCodes,
         oemCodes: dealer.oems?.map(o => o.code) || [], 
         password: "", // Don't fill password
         status: dealer.status,
@@ -181,20 +229,71 @@ export default function DealersPage() {
         radius: dealer.radius || 15,
         tradeCertificateNo: dealer.tradeCertificateNo || "",
         tradeValidity: dealer.tradeValidity ? new Date(dealer.tradeValidity).toISOString().split('T')[0] : "",
-        gstNo: dealer.gstNo || ""
+        gstNo: dealer.gstNo || "",
+        tradeCertificateUrl: (dealer as any).tradeCertificateUrl || "",
+        gstCertificateUrl: (dealer as any).gstCertificateUrl || "",
+        aadharNumber: (dealer as any).aadharNumber || "",
+        aadharCardUrl: (dealer as any).aadharCardUrl || ""
     });
     setSearchAddress(dealer.locationAddress || "");
     setOpenAdd(true);
   };
 
+  const openApprove = (req: DealerRegistrationRequest) => {
+    setEditId(null);
+    setApprovalRequestId(req.id);
+    resetForm();
+    setForm((prev) => ({
+      ...prev,
+      name: (req as any).dealerName || req.name || "",
+      contactPersonName: [req.firstName, req.lastName].filter(Boolean).join(" ").trim() || req.name || "",
+      email: (req as any).email || "",
+      phone: req.phone || "",
+      stateCode: (req.stateCode as any) || "",
+      locationAddress: (req.locationAddress as any) || "",
+      city: (req.city as any) || "",
+      zip: (req.zip as any) || "",
+      latitude: (req.latitude as any) ?? prev.latitude,
+      longitude: (req.longitude as any) ?? prev.longitude,
+      radius: (req.radius as any) ?? prev.radius,
+      passingRtosAll: Array.isArray((req as any).passingRtoCodes) ? ((req as any).passingRtoCodes.length === 0) : true,
+      passingRtoCodes: Array.isArray((req as any).passingRtoCodes) ? ((req as any).passingRtoCodes as any) : [],
+      oemCodes: Array.isArray((req as any).oemCodes) ? ((req as any).oemCodes as any) : [],
+      gstNo: (req.gstNo as any) || "",
+      tradeCertificateNo: (req.tradeCertificateNo as any) || "",
+      tradeValidity: req.tradeValidity ? String(req.tradeValidity).split("T")[0] : "",
+      aadharNumber: (req.aadharNumber as any) || "",
+      tradeCertificateUrl: (req.tradeCertificateUrl as any) || "",
+      gstCertificateUrl: (req.gstCertificateUrl as any) || "",
+      aadharCardUrl: (req.aadharCardUrl as any) || "",
+      status: "ACTIVE",
+      password: ""
+    }));
+    setSearchAddress((req.locationAddress as any) || "");
+    setOpenAdd(true);
+  };
+
   const resetForm = () => {
     setForm({
-      name: "", phone: "", stateCode: "", rtoCode: "", oemCodes: [], password: "",
+      name: "",
+      contactPersonName: "",
+      email: "",
+      phone: "",
+      stateCode: "",
+      oemCodes: [],
+      password: "",
+      passingRtosAll: true,
+      passingRtoCodes: [],
       status: "ACTIVE",
-      locationAddress: "", city: "", state: "", zip: "",
       latitude: 20.5937, longitude: 78.9629,
       radius: 15,
-      tradeCertificateNo: "", tradeValidity: "", gstNo: ""
+      tradeCertificateNo: "",
+      tradeValidity: "",
+      gstNo: "",
+      tradeCertificateUrl: "",
+      gstCertificateUrl: "",
+      aadharNumber: "",
+      aadharCardUrl: ""
     });
     setSearchAddress("");
   };
@@ -291,6 +390,116 @@ export default function DealersPage() {
             </button>
             </div>
         </div>
+
+        <div className="border rounded-lg bg-amber-50/40 p-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-gray-800">Pending Dealer Registration Requests</div>
+            <div className="flex items-center gap-2">
+              <div className="text-xs text-amber-700 bg-amber-100 border border-amber-200 px-2 py-1 rounded">
+                {registrationRequests.length} pending
+              </div>
+              <button
+                type="button"
+                onClick={() => refetchRegistrationRequests()}
+                className="text-xs px-2 py-1 rounded border bg-white hover:bg-gray-50"
+                disabled={isRequestsLoading}
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {isRequestsLoading ? (
+            <div className="text-sm text-gray-500 mt-3">Loading dealer registration requests...</div>
+          ) : isRequestsError ? (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3 mt-3">
+              Failed to load pending requests. Login as SUPER_ADMIN or ADMIN and try again.
+              <div className="text-xs text-red-600 mt-1">
+                {String((requestsError as any)?.message || "Request failed")}
+              </div>
+            </div>
+          ) : registrationRequests.length === 0 ? (
+            <div className="text-sm text-gray-600 mt-3">
+              No pending dealer registration requests yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto mt-3 bg-white rounded border">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-gray-50 text-gray-700 font-medium border-b">
+                  <tr>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Phone</th>
+                    <th className="px-4 py-3">State</th>
+                    <th className="px-4 py-3">City</th>
+                    <th className="px-4 py-3">Requested Brand</th>
+                    <th className="px-4 py-3">Passing RTO Request</th>
+                    <th className="px-4 py-3">Location</th>
+                    <th className="px-4 py-3">Submitted</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {registrationRequests.map((r) => (
+                    <tr key={r.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{r.name}</td>
+                      <td className="px-4 py-3">{r.phone}</td>
+                      <td className="px-4 py-3">{r.stateCode || "-"}</td>
+                      <td className="px-4 py-3">{r.city || "-"}</td>
+                      <td className="px-4 py-3">
+                        {(r.oemCodes || []).length
+                          ? (r.oemCodes || [])
+                              .map((c) => {
+                                const o = allOEMs.find((x) => x.code === c);
+                                return o ? o.name : c;
+                              })
+                              .join(", ")
+                          : "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {Array.isArray((r as any).passingRtoCodes) && (r as any).passingRtoCodes.length
+                          ? (r as any).passingRtoCodes.join(", ")
+                          : "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {r.locationAddress || "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {r.createdAt ? new Date(r.createdAt).toLocaleString() : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openApprove(r)}
+                            className="px-3 py-1.5 rounded border bg-white hover:bg-gray-50 text-sm"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!confirm("Reject this dealer registration request?")) return;
+                              const note = prompt("Rejection note (optional):") || undefined;
+                              try {
+                                await rejectRegistrationRequest.mutateAsync({ id: r.id, note });
+                              } catch (e) {
+                                console.error(e);
+                                alert("Failed to reject request.");
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-sm"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
         
         {/* Filters & Search Row */}
         <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border">
@@ -356,7 +565,7 @@ export default function DealersPage() {
               <th className="px-4 py-3">Phone (User ID)</th>
               <th className="px-4 py-3">State</th>
               <th className="px-4 py-3">City</th>
-              <th className="px-4 py-3">RTO</th>
+              <th className="px-4 py-3">Passing RTO</th>
               <th className="px-4 py-3">OEMs</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3 text-right">Actions</th>
@@ -376,7 +585,15 @@ export default function DealersPage() {
                   <td className="px-4 py-3">{d.phone}</td>
                   <td className="px-4 py-3">{d.stateCode}</td>
                   <td className="px-4 py-3">{d.city}</td>
-                  <td className="px-4 py-3">{d.allRTOs ? "All RTOs" : d.rtoCode}</td>
+                  <td className="px-4 py-3">
+                    {(d as any).passingRtosAll
+                      ? "All RTOs"
+                      : Array.isArray((d as any).passingRtoCodes) && (d as any).passingRtoCodes.length
+                        ? (d as any).passingRtoCodes.join(", ")
+                        : d.allRTOs
+                          ? "All RTOs"
+                          : d.rtoCode || "-"}
+                  </td>
                   <td className="px-4 py-3 max-w-[200px] truncate" title={d.oems?.map(o => o.name).join(", ")}>
                     {d.oems?.map(o => o.code).join(", ") || "-"}
                   </td>
@@ -407,8 +624,11 @@ export default function DealersPage() {
       {/* Modal */}
       <Modal
         open={openAdd}
-        onClose={() => setOpenAdd(false)}
-        title={editId ? "Edit Dealer" : "Add New Dealer"}
+        onClose={() => {
+          setOpenAdd(false);
+          setApprovalRequestId(null);
+        }}
+        title={editId ? "Edit Dealer" : approvalRequestId ? "Approve Dealer Registration" : "Add New Dealer"}
         maxWidth="max-w-6xl"
       >
         <form onSubmit={handleSave} className="flex flex-col h-[80vh]">
@@ -456,34 +676,112 @@ export default function DealersPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Authorised State</label>
-                <select
-                  required
-                  value={form.stateCode}
-                  onChange={e => setForm({...form, stateCode: e.target.value, rtoCode: "", oemCodes: []})}
+                <label className="block text-sm font-medium mb-1">Contact Person Name</label>
+                <input
+                  value={(form as any).contactPersonName}
+                  onChange={e => setForm({...form, contactPersonName: e.target.value})}
                   className="w-full border rounded px-3 py-2"
-                >
-                  <option value="">Select State</option>
-                  {states.map(s => (
-                    <option key={s.code} value={s.code}>{s.name}</option>
-                  ))}
-                </select>
+                  placeholder="First + Last name"
+                />
               </div>
-
               <div>
-                <label className="block text-sm font-medium mb-1">Passing RTO</label>
-                <select
-                  value={form.rtoCode}
-                  onChange={e => setForm({...form, rtoCode: e.target.value})}
+                <label className="block text-sm font-medium mb-1">Email ID</label>
+                <input
+                  type="email"
+                  value={(form as any).email}
+                  onChange={e => setForm({...form, email: e.target.value})}
                   className="w-full border rounded px-3 py-2"
-                  disabled={!form.stateCode}
-                >
-                  <option value="">Select RTO</option>
-                  <option value="ALL">All RTOs</option>
-                  {[...formRTOs].sort((a, b) => a.code.localeCompare(b.code)).map(r => (
-                    <option key={r.code} value={r.code}>{r.code} - {r.name}</option>
-                  ))}
-                </select>
+                  placeholder="name@email.com"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Authorised State</label>
+              <select
+                required
+                value={form.stateCode}
+                onChange={e => setForm({...form, stateCode: e.target.value, oemCodes: [], passingRtosAll: true, passingRtoCodes: []})}
+                className="w-full border rounded px-3 py-2"
+              >
+                <option value="">Select State</option>
+                {states.map(s => (
+                  <option key={s.code} value={s.code}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Passing RTO</label>
+              <div className={`border rounded p-3 ${!form.stateCode ? "bg-gray-50" : "bg-white"}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs text-gray-500">Select allowed Passing RTOs for this dealer.</div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.passingRtosAll}
+                      onChange={(e) => {
+                        const nextAll = e.target.checked;
+                        setForm((prev) => ({
+                          ...prev,
+                          passingRtosAll: nextAll,
+                          passingRtoCodes: nextAll ? [] : prev.passingRtoCodes
+                        }));
+                      }}
+                      className="rounded border-gray-300"
+                      disabled={!form.stateCode}
+                    />
+                    All Passing RTOs
+                  </label>
+                </div>
+
+                {!form.stateCode ? (
+                  <div className="text-sm text-gray-400 mt-2">Select a state to choose Passing RTOs.</div>
+                ) : form.passingRtosAll ? (
+                  <div className="text-sm text-gray-600 mt-2">All RTOs under this state are allowed.</div>
+                ) : (
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-gray-500">{form.passingRtoCodes.length} selected</div>
+                      <button
+                        type="button"
+                        className="text-xs text-blue-600 hover:text-blue-700"
+                        onClick={() => {
+                          const allCodes = sortedFormRTOs.map((r) => r.code);
+                          setForm((prev) => ({ ...prev, passingRtoCodes: allCodes }));
+                        }}
+                        disabled={sortedFormRTOs.length === 0}
+                      >
+                        Select all
+                      </button>
+                    </div>
+                    <div className="border rounded p-2 h-40 overflow-y-auto bg-white mt-2">
+                      {sortedFormRTOs.length === 0 ? (
+                        <div className="text-sm text-gray-400 p-1">No RTOs found for selected state.</div>
+                      ) : (
+                        sortedFormRTOs.map((r) => (
+                          <label key={r.code} className="flex items-center gap-2 p-1 hover:bg-gray-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={form.passingRtoCodes.includes(r.code)}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setForm((prev) => ({
+                                  ...prev,
+                                  passingRtoCodes: checked
+                                    ? Array.from(new Set([...prev.passingRtoCodes, r.code]))
+                                    : prev.passingRtoCodes.filter((c) => c !== r.code)
+                                }));
+                              }}
+                              className="rounded border-gray-300"
+                            />
+                            <span className="text-sm">{r.code} - {r.name}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -548,7 +846,19 @@ export default function DealersPage() {
                             onChange={(e) => handleFileChange('tradeCertificateUrl', e)}
                             className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                         />
-                        {form.tradeCertificateUrl && <span className="text-xs text-green-600 mt-1 block">File Selected</span>}
+                        {form.tradeCertificateUrl ? (
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-xs text-green-600 block">File Selected</span>
+                            <a
+                              href={form.tradeCertificateUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-blue-700 underline"
+                            >
+                              View
+                            </a>
+                          </div>
+                        ) : null}
                     </div>
                 </div>
 
@@ -573,7 +883,19 @@ export default function DealersPage() {
                             onChange={(e) => handleFileChange('gstCertificateUrl', e)}
                             className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                         />
-                        {form.gstCertificateUrl && <span className="text-xs text-green-600 mt-1 block">File Selected</span>}
+                        {form.gstCertificateUrl ? (
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-xs text-green-600 block">File Selected</span>
+                            <a
+                              href={form.gstCertificateUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-blue-700 underline"
+                            >
+                              View
+                            </a>
+                          </div>
+                        ) : null}
                     </div>
                 </div>
 
@@ -598,7 +920,19 @@ export default function DealersPage() {
                             onChange={(e) => handleFileChange('aadharCardUrl', e)}
                             className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                         />
-                        {form.aadharCardUrl && <span className="text-xs text-green-600 mt-1 block">File Selected</span>}
+                        {form.aadharCardUrl ? (
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-xs text-green-600 block">File Selected</span>
+                            <a
+                              href={form.aadharCardUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-blue-700 underline"
+                            >
+                              View
+                            </a>
+                          </div>
+                        ) : null}
                     </div>
                 </div>
             </div>

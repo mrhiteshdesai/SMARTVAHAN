@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { HashRouter } from "react-router-dom";
+import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "./index.css";
@@ -16,6 +16,7 @@ const searchParams = new URLSearchParams(window.location.search);
 // 3. Query Param: ?ghost=true (for testing)
 const isGhost = 
   hostname.startsWith("rp.") || 
+  pathname.startsWith("/control/rp") ||
   pathname.startsWith("/rp") || 
   pathname.startsWith("/ghost") || 
   searchParams.get("ghost") === "true";
@@ -37,14 +38,18 @@ if (isGhost) {
   }
 }
 
+if (pathname === "/rp" || pathname.startsWith("/rp/")) {
+  const rest = pathname.substring("/rp".length);
+  window.location.replace(`/control/rp${rest}${window.location.search}${window.location.hash}`);
+}
+
 // Handle QR Code Legacy URL Redirection
 // Pattern: /{STATE}/{OEM}/{PRODUCT}/qr={VALUE}
-// We redirect this to /#/verify?url={FULL_URL} so HashRouter can handle it
+// We redirect this to /verify?url={FULL_URL} so BrowserRouter can handle it
 const path = window.location.pathname;
 if (path.includes("/qr=") && !path.includes("/verify")) {
   const fullUrl = window.location.href;
-  // Redirect to base path with hash
-  window.location.replace(`/#/verify?url=${encodeURIComponent(fullUrl)}`);
+  window.location.replace(`/verify?url=${encodeURIComponent(fullUrl)}`);
 }
 
 function hexToRgb(hex: string) {
@@ -86,6 +91,10 @@ async function bootstrapBranding() {
   }
 
   try {
+    const authRaw = localStorage.getItem("sv_auth");
+    if (!authRaw) {
+      return;
+    }
     const res = await api.get("/settings");
     const remote = res.data;
     try {
@@ -112,9 +121,9 @@ createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <HashRouter>
+        <BrowserRouter>
           <App />
-        </HashRouter>
+        </BrowserRouter>
       </QueryClientProvider>
     </ErrorBoundary>
   </React.StrictMode>

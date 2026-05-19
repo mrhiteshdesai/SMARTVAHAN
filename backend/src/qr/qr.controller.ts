@@ -6,6 +6,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UserRole } from '@prisma/client';
 import * as fs from 'fs';
+import { pipeline } from 'stream';
 
 @Controller('api/qr')
 export class QrController {
@@ -29,6 +30,22 @@ export class QrController {
       const userId = req.user?.userId || 'system-admin';
       const baseUrl = req.get('origin') || process.env.BASE_URL || 'https://smartvahan.com';
       return this.qrService.regenerateBatch(body, userId, baseUrl);
+  }
+
+  @Post('regenerate-v2/eligible')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.GHOST_ADMIN)
+  async eligibleForRegenerationV2(@Body() body: any) {
+    return this.qrService.getEligibleCountForRegenerationV2(body);
+  }
+
+  @Post('regenerate-v2')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.GHOST_ADMIN)
+  async regenerateBatchV2(@Body() body: any, @Req() req: any) {
+    const userId = req.user?.userId || 'system-admin';
+    const baseUrl = req.get('origin') || process.env.BASE_URL || 'https://smartvahan.com';
+    return this.qrService.regenerateBatchV2(body, userId, baseUrl);
   }
 
   @Post('bulk-replacement')
@@ -106,11 +123,29 @@ export class QrController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN, UserRole.GHOST_ADMIN)
   async downloadBatch(@Param('batchId') batchId: string, @Res() res: Response, @Req() req: any) {
-      const file = await this.qrService.getBatchFile(batchId, req.user);
-      if (file.isUrl) {
-          res.redirect(file.path);
-      } else {
-          res.download(file.path, file.filename);
+      const download = await this.qrService.getBatchDownload(batchId, req.user);
+
+      if (download.type === 'local') {
+        res.download(download.path, download.filename);
+        return;
       }
+
+      if (download.type === 'redirect') {
+        res.redirect(download.url);
+        return;
+      }
+
+      res.setHeader('Content-Type', download.contentType || 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${download.filename}"`);
+      if (typeof download.contentLength === 'number') {
+        res.setHeader('Content-Length', String(download.contentLength));
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        pipeline(download.stream, res, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
   }
 }

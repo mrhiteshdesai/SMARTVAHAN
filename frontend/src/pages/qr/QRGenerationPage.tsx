@@ -52,6 +52,10 @@ export const QRGenerationPage = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [eligibleCount, setEligibleCount] = useState<number | null>(null);
+  const [eligibleRange, setEligibleRange] = useState<{ firstSerial: number | null; lastSerial: number | null } | null>(null);
+  const [eligibleLoading, setEligibleLoading] = useState(false);
+  const [eligibleError, setEligibleError] = useState("");
 
   // Data Hooks
   const { data: states = [] } = useStates();
@@ -72,6 +76,61 @@ export const QRGenerationPage = () => {
   
   const generateBatch = useGenerateBatch();
   const regenerateBatch = useRegenerateBatch();
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const canCheck =
+      isGhostMode &&
+      Boolean(stateCode) &&
+      Boolean(oemCode) &&
+      Boolean(productCode) &&
+      Boolean(startSerial) &&
+      Boolean(quantity) &&
+      !isGenerating &&
+      isGenerateModalOpen;
+
+    if (!canCheck) {
+      setEligibleCount(null);
+      setEligibleRange(null);
+      setEligibleError("");
+      setEligibleLoading(false);
+      return;
+    }
+
+    setEligibleLoading(true);
+    setEligibleError("");
+
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.post("/qr/regenerate-v2/eligible", {
+          stateCode,
+          oemCode,
+          productCode,
+          quantity: Number(quantity),
+          startSerial: String(startSerial)
+        });
+        if (cancelled) return;
+        const payload = res.data?.data;
+        setEligibleCount(payload?.eligibleCount ?? 0);
+        setEligibleRange({
+          firstSerial: payload?.firstSerial ?? null,
+          lastSerial: payload?.lastSerial ?? null
+        });
+      } catch (e: any) {
+        if (cancelled) return;
+        setEligibleCount(null);
+        setEligibleRange(null);
+        setEligibleError(e.response?.data?.message || "Failed to fetch eligible count");
+      } finally {
+        if (!cancelled) setEligibleLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [isGhostMode, stateCode, oemCode, productCode, startSerial, quantity, isGenerating, isGenerateModalOpen]);
 
   // Filter OEMs based on selected state for the dropdown
   const availableOems = useMemo(() => {
@@ -127,6 +186,14 @@ export const QRGenerationPage = () => {
     if (isGhostMode && !startSerial) {
         setErrorMsg("Start Serial is required for Regeneration");
         return;
+    }
+    if (isGhostMode && eligibleLoading) {
+      setErrorMsg("Checking eligible codes. Please wait...");
+      return;
+    }
+    if (isGhostMode && eligibleCount === 0) {
+      setErrorMsg("No eligible USED QR codes found for the given Start Serial and Quantity");
+      return;
     }
 
     setIsGenerating(true);
@@ -471,6 +538,25 @@ export const QRGenerationPage = () => {
                 <p className="text-xs text-gray-500">Max 1,000 per batch</p>
             </div>
 
+            {isGhostMode && (
+              <div className="rounded-md border bg-gray-50 px-3 py-2 text-sm">
+                {eligibleLoading ? (
+                  <div className="text-gray-600">Checking eligible USED QR codes...</div>
+                ) : eligibleError ? (
+                  <div className="text-red-600">{eligibleError}</div>
+                ) : eligibleCount !== null ? (
+                  <div className="text-gray-800">
+                    Eligible to regenerate: <span className="font-semibold">{eligibleCount}</span>
+                    {eligibleRange?.firstSerial !== null && eligibleRange?.lastSerial !== null ? (
+                      <span className="text-gray-600"> (Serial {eligibleRange?.firstSerial} to {eligibleRange?.lastSerial})</span>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="text-gray-600">Enter Start Serial to see eligible count</div>
+                )}
+              </div>
+            )}
+
             <div className="flex justify-end gap-3 pt-4 border-t mt-4">
                 <button 
                     className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
@@ -482,7 +568,7 @@ export const QRGenerationPage = () => {
                 <button 
                     className={`px-4 py-2 ${isGhostMode ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-md transition-colors flex items-center gap-2 ${isGenerating ? 'opacity-70 cursor-not-allowed' : ''}`}
                     onClick={handleGenerate}
-                    disabled={isGenerating}
+                    disabled={isGenerating || (isGhostMode && eligibleCount === 0 && !eligibleLoading && !!startSerial)}
                 >
                     {isGenerating && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
                     {isGenerating ? "Processing..." : (isGhostMode ? "Regenerate Batch" : "Generate Batch")}

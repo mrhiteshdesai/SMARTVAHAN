@@ -1,8 +1,8 @@
 import axios from 'axios';
 
-const isDev = import.meta.env.DEV;
+const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
 const api = axios.create({
-  baseURL: isDev ? 'http://localhost:3000/api' : '/api',
+  baseURL,
 });
 
 api.interceptors.request.use(

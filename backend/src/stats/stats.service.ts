@@ -159,10 +159,12 @@ export class StatsService {
                 batch: { ...whereBatch, productCode: p }
             }
         });
-        const used = await this.prisma.qRCode.count({
+        const used = await this.prisma.certificate.count({
             where: {
-                batch: { ...whereBatch, productCode: p },
-                certificate: { isNot: null }
+                ...certWhere,
+                qrCode: {
+                    batch: { ...whereBatch, productCode: p }
+                }
             }
         });
         row4[p] = { issued, used };

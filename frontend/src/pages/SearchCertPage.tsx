@@ -2,34 +2,41 @@ import { useState, useMemo } from "react";
 import { useStates, useOEMs, OEM, useRTOs } from "../api/hooks";
 import api from "../api/client";
 
+type CertificateView = {
+  certificateNumber: string;
+  vehicleMake: string;
+  vehicleCategory: string;
+  fuelType: string;
+  passingRto: string;
+  registrationRto: string;
+  series?: string | null;
+  manufacturingYear: string;
+  chassisNumber: string;
+  engineNumber: string;
+  ownerName: string;
+  ownerContact: string;
+  vehicleNumber: string;
+  generatedAt: string;
+  locationText?: string | null;
+  pdfUrl: string | null;
+  qr: {
+    serialNumber: number;
+    value: string;
+    stateCode: string;
+    oemCode: string;
+    productCode: string;
+    batchId: string;
+  };
+};
+
 type SearchCertResponse = {
   success: boolean;
-  data: {
-    certificateNumber: string;
-    vehicleMake: string;
-    vehicleCategory: string;
-    fuelType: string;
-    passingRto: string;
-    registrationRto: string;
-    series?: string | null;
-    manufacturingYear: string;
-    chassisNumber: string;
-    engineNumber: string;
-    ownerName: string;
-    ownerContact: string;
-    vehicleNumber: string;
-    generatedAt: string;
-    locationText?: string | null;
-    pdfUrl: string | null;
-    qr: {
-      serialNumber: number;
-      value: string;
-      stateCode: string;
-      oemCode: string;
-      productCode: string;
-      batchId: string;
-    };
-  };
+  data:
+    | CertificateView
+    | {
+        serialNumber: number;
+        certificates: CertificateView[];
+      };
 };
 
 export default function SearchCertPage() {
@@ -47,6 +54,7 @@ export default function SearchCertPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SearchCertResponse | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
 
@@ -61,6 +69,7 @@ export default function SearchCertPage() {
     e.preventDefault();
     setError(null);
     setResult(null);
+    setSelectedIndex(0);
     if (!stateCode || !oemCode) {
       setError("Please select State and OEM.");
       return;
@@ -123,11 +132,22 @@ export default function SearchCertPage() {
     }
   };
 
+  const isMultiResult = (
+    data: SearchCertResponse["data"]
+  ): data is { serialNumber: number; certificates: CertificateView[] } => {
+    return Array.isArray((data as any)?.certificates);
+  };
+
   const handleOpenPdf = () => {
-    const pdfUrl = result?.data.pdfUrl;
+    if (!result?.data) return;
+    const certificates = isMultiResult(result.data) ? result.data.certificates : [result.data];
+    const pdfUrl = certificates[selectedIndex]?.pdfUrl;
     if (!pdfUrl) return;
     window.open(pdfUrl, "_blank");
   };
+
+  const certificates = result?.data ? (isMultiResult(result.data) ? result.data.certificates : [result.data]) : [];
+  const selectedCertificate = certificates[selectedIndex] || null;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
@@ -305,88 +325,111 @@ export default function SearchCertPage() {
           </div>
         )}
 
-        {result && (
+        {result && certificates.length > 0 && (
           <div className="space-y-4">
+            {isGhostMode && certificates.length > 1 && (
+              <div className="rounded-md border bg-gray-50 p-3">
+                <div className="text-sm font-medium text-gray-800 mb-2">
+                  Certificates for Serial {"certificates" in result.data ? result.data.serialNumber : selectedCertificate?.qr.serialNumber}
+                </div>
+                <div className="flex flex-col gap-2">
+                  {certificates.map((c, idx) => (
+                    <button
+                      key={`${c.certificateNumber}-${idx}`}
+                      type="button"
+                      onClick={() => setSelectedIndex(idx)}
+                      className={`text-left rounded-md border px-3 py-2 text-sm ${idx === selectedIndex ? "bg-white border-primary" : "bg-white hover:bg-gray-50"}`}
+                    >
+                      <div className="font-semibold text-gray-900">{c.certificateNumber}</div>
+                      <div className="text-xs text-gray-600">
+                        QR: {c.qr.value} • Generated: {new Date(c.generatedAt).toLocaleString()}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3 text-sm text-gray-700">
               <div>
                 <div className="text-xs font-medium text-gray-500">Certificate Number</div>
-                <div className="font-semibold">{result.data.certificateNumber}</div>
+                <div className="font-semibold">{selectedCertificate?.certificateNumber}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Vehicle Number</div>
-                <div>{result.data.vehicleNumber}</div>
+                <div>{selectedCertificate?.vehicleNumber}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Owner Name</div>
-                <div>{result.data.ownerName}</div>
+                <div>{selectedCertificate?.ownerName}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Owner Contact</div>
-                <div>{result.data.ownerContact}</div>
+                <div>{selectedCertificate?.ownerContact}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">State</div>
-                <div>{result.data.qr.stateCode}</div>
+                <div>{selectedCertificate?.qr.stateCode}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">OEM</div>
-                <div>{result.data.qr.oemCode}</div>
+                <div>{selectedCertificate?.qr.oemCode}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Product</div>
-                <div>{result.data.qr.productCode}</div>
+                <div>{selectedCertificate?.qr.productCode}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">QR Serial</div>
-                <div>{result.data.qr.serialNumber}</div>
+                <div>{selectedCertificate?.qr.serialNumber}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Vehicle Make</div>
-                <div>{result.data.vehicleMake}</div>
+                <div>{selectedCertificate?.vehicleMake}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Vehicle Category</div>
-                <div>{result.data.vehicleCategory}</div>
+                <div>{selectedCertificate?.vehicleCategory}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Fuel Type</div>
-                <div>{result.data.fuelType}</div>
+                <div>{selectedCertificate?.fuelType}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Passing RTO</div>
-                <div>{result.data.passingRto}</div>
+                <div>{selectedCertificate?.passingRto}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Registration RTO</div>
-                <div>{result.data.registrationRto}</div>
+                <div>{selectedCertificate?.registrationRto}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Series</div>
-                <div>{result.data.series || "-"}</div>
+                <div>{selectedCertificate?.series || "-"}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Manufacturing Year</div>
-                <div>{result.data.manufacturingYear}</div>
+                <div>{selectedCertificate?.manufacturingYear}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Chassis Number</div>
-                <div>{result.data.chassisNumber}</div>
+                <div>{selectedCertificate?.chassisNumber}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Engine Number</div>
-                <div>{result.data.engineNumber}</div>
+                <div>{selectedCertificate?.engineNumber}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Generated At</div>
-                <div>{new Date(result.data.generatedAt).toLocaleString()}</div>
+                <div>{selectedCertificate?.generatedAt ? new Date(selectedCertificate.generatedAt).toLocaleString() : "-"}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">Location</div>
-                <div>{result.data.locationText || "-"}</div>
+                <div>{selectedCertificate?.locationText || "-"}</div>
               </div>
             </div>
 
-            {result.data.pdfUrl && (
+            {selectedCertificate?.pdfUrl && (
               <div className="pt-2">
                 <button
                   type="button"

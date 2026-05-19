@@ -8,7 +8,7 @@ export default function StatesPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [openAdd, setOpenAdd] = useState(false);
-  const [form, setForm] = useState<State & { username?: string; password?: string }>({ name: "", code: "", username: "", password: "" });
+  const [form, setForm] = useState<State & { username?: string; password?: string }>({ name: "", code: "", showOnHomepage: true, username: "", password: "" });
   const [isEdit, setIsEdit] = useState(false);
 
   // Queries
@@ -36,7 +36,7 @@ export default function StatesPage() {
         await createState.mutateAsync(form);
       }
       setOpenAdd(false);
-      setForm({ name: "", code: "" });
+      setForm({ name: "", code: "", showOnHomepage: true });
       setIsEdit(false);
     } catch (err) {
       const message =
@@ -65,7 +65,7 @@ export default function StatesPage() {
   };
 
   const onManageRTOs = (stateCode: string) => {
-    navigate(`/users/states/${encodeURIComponent(stateCode)}/rto`);
+    navigate(`${encodeURIComponent(stateCode)}/rto`);
   };
 
   if (isLoading) return <div>Loading...</div>;
@@ -82,7 +82,7 @@ export default function StatesPage() {
             <div className="flex items-center gap-2">
             <button
                 onClick={() => {
-                setForm({ name: "", code: "", username: "", password: "" });
+                setForm({ name: "", code: "", showOnHomepage: true, username: "", password: "" });
                 setIsEdit(false);
                 setOpenAdd(true);
                 }}
@@ -204,6 +204,16 @@ export default function StatesPage() {
               placeholder="e.g. MH"
             />
           </div>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.showOnHomepage !== false}
+              onChange={(e) => setForm({ ...form, showOnHomepage: e.target.checked })}
+              className="h-4 w-4"
+            />
+            Show on Home Page
+          </label>
 
           <div className="p-4 bg-gray-50 rounded-md space-y-3 border">
             <div className="text-sm font-semibold text-gray-700">State Admin Credentials</div>

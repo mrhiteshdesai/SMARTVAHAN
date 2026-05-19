@@ -114,6 +114,64 @@ export class CertificatesService {
         throw new BadRequestException('Invalid QR Code Format: Missing State/OEM/Product/Value');
       }
     }
+    const certificate = await this.prisma.certificate.findUnique({
+      where: { qrValue: qrValue! },
+      include: { qrCode: { include: { batch: { include: { oem: true, state: true, product: true } } } } }
+    });
+    if (certificate) {
+      const batch = certificate.qrCode.batch;
+      if (batch.state.code !== qrState || batch.oem.code !== qrOem || batch.product.code !== qrProduct) {
+        throw new BadRequestException('Security Alert: QR metadata mismatch');
+      }
+
+      let pdfUrl: string | null = null;
+      if (certificate.pdfPath) {
+        if (certificate.pdfPath.startsWith('http')) {
+          pdfUrl = certificate.pdfPath;
+        } else {
+          const idx = certificate.pdfPath.indexOf('uploads');
+          if (idx >= 0) {
+            pdfUrl = '/' + certificate.pdfPath.substring(idx).replace(/\\/g, '/');
+          }
+        }
+      }
+
+      return {
+        success: true,
+        status: 'VALID',
+        data: {
+          certificateNumber: certificate.certificateNumber,
+          vehicleMake: certificate.vehicleMake,
+          vehicleCategory: certificate.vehicleCategory,
+          fuelType: certificate.fuelType,
+          passingRto: certificate.passingRto,
+          registrationRto: certificate.registrationRto,
+          series: certificate.series,
+          manufacturingYear: certificate.manufacturingYear,
+          chassisNumber: certificate.chassisNumber,
+          engineNumber: certificate.engineNumber,
+          ownerName: certificate.ownerName,
+          ownerContact: certificate.ownerContact,
+          photoFrontLeft: certificate.photoFrontLeft,
+          photoBackRight: certificate.photoBackRight,
+          photoNumberPlate: certificate.photoNumberPlate,
+          photoRc: certificate.photoRc,
+          pdfUrl,
+          vehicleNumber: certificate.vehicleNumber,
+          generatedAt: certificate.generatedAt,
+          locationText: certificate.locationText,
+          qr: {
+            serialNumber: certificate.qrCode.serialNumber,
+            value: certificate.qrValue,
+            stateCode: batch.state.code,
+            oemCode: batch.oem.code,
+            productCode: batch.product.code,
+            batchId: batch.batchId
+          }
+        }
+      };
+    }
+
     const qrCode = await this.prisma.qRCode.findUnique({
       where: { value: qrValue! },
       include: { batch: { include: { oem: true, state: true, product: true } } }
@@ -137,67 +195,17 @@ export class CertificatesService {
         }
       };
     }
-    const certificate = await this.prisma.certificate.findUnique({
-      where: { qrCodeId: qrCode.id }
-    });
-    if (!certificate) {
-      return {
-        success: true,
-        status: 'UNUSED',
-        data: {
-          id: qrCode.id,
-          serialNumber: qrCode.serialNumber,
-          value: qrCode.value,
-          stateCode: qrCode.batch.state.code,
-          oemCode: qrCode.batch.oem.code,
-          productCode: qrCode.batch.product.code,
-          batchId: qrCode.batch.batchId
-        }
-      };
-    }
-    let pdfUrl: string | null = null;
-    if (certificate.pdfPath) {
-      if (certificate.pdfPath.startsWith('http')) {
-        pdfUrl = certificate.pdfPath;
-      } else {
-        const idx = certificate.pdfPath.indexOf('uploads');
-        if (idx >= 0) {
-          pdfUrl = '/' + certificate.pdfPath.substring(idx).replace(/\\/g, '/');
-        }
-      }
-    }
     return {
       success: true,
-      status: 'VALID',
+      status: 'USED',
       data: {
-        certificateNumber: certificate.certificateNumber,
-        vehicleMake: certificate.vehicleMake,
-        vehicleCategory: certificate.vehicleCategory,
-        fuelType: certificate.fuelType,
-        passingRto: certificate.passingRto,
-        registrationRto: certificate.registrationRto,
-        series: certificate.series,
-        manufacturingYear: certificate.manufacturingYear,
-        chassisNumber: certificate.chassisNumber,
-        engineNumber: certificate.engineNumber,
-        ownerName: certificate.ownerName,
-        ownerContact: certificate.ownerContact,
-        photoFrontLeft: certificate.photoFrontLeft,
-        photoBackRight: certificate.photoBackRight,
-        photoNumberPlate: certificate.photoNumberPlate,
-        photoRc: certificate.photoRc,
-        pdfUrl,
-        vehicleNumber: certificate.vehicleNumber,
-        generatedAt: certificate.generatedAt,
-        locationText: certificate.locationText,
-        qr: {
-          serialNumber: qrCode.serialNumber,
-          value: qrCode.value,
-          stateCode: qrCode.batch.state.code,
-          oemCode: qrCode.batch.oem.code,
-          productCode: qrCode.batch.product.code,
-          batchId: qrCode.batch.batchId
-        }
+        id: qrCode.id,
+        serialNumber: qrCode.serialNumber,
+        value: qrCode.value,
+        stateCode: qrCode.batch.state.code,
+        oemCode: qrCode.batch.oem.code,
+        productCode: qrCode.batch.product.code,
+        batchId: qrCode.batch.batchId
       }
     };
   }
@@ -229,7 +237,10 @@ export class CertificatesService {
             product: true
           }
         },
-        certificate: true
+        certificates: {
+          orderBy: { generatedAt: 'desc' },
+          take: 5
+        }
       },
       orderBy: {
         createdAt: 'desc'
@@ -244,7 +255,8 @@ export class CertificatesService {
     const fullUrl = `${cleanBase}/${qrCode.batch.state.code}/${qrCode.batch.oem.code}/${qrCode.batch.product.code}/qr=${qrCode.value}`;
     const qrImageDataUrl = await QRCode.toDataURL(fullUrl, { errorCorrectionLevel: 'H', margin: 1 });
 
-    if (!qrCode.certificate) {
+    const matchingCertificate = qrCode.certificates.find((c: any) => c.qrValue === qrCode.value) || null;
+    if (!matchingCertificate) {
       return {
         success: true,
         status: 'UNUSED',
@@ -262,10 +274,10 @@ export class CertificatesService {
     }
 
     let pdfUrl: string | null = null;
-    if (qrCode.certificate.pdfPath) {
-      const idx = qrCode.certificate.pdfPath.indexOf('uploads');
+    if (matchingCertificate.pdfPath) {
+      const idx = matchingCertificate.pdfPath.indexOf('uploads');
       if (idx >= 0) {
-        pdfUrl = '/' + qrCode.certificate.pdfPath.substring(idx).replace(/\\/g, '/');
+        pdfUrl = '/' + matchingCertificate.pdfPath.substring(idx).replace(/\\/g, '/');
       }
     }
 
@@ -281,9 +293,9 @@ export class CertificatesService {
         productCode: qrCode.batch.product.code,
         batchId: qrCode.batch.batchId,
         certificate: {
-          certificateNumber: qrCode.certificate.certificateNumber,
-          vehicleNumber: qrCode.certificate.vehicleNumber,
-          generatedAt: qrCode.certificate.generatedAt,
+          certificateNumber: matchingCertificate.certificateNumber,
+          vehicleNumber: matchingCertificate.vehicleNumber,
+          generatedAt: matchingCertificate.generatedAt,
           pdfUrl
         }
       }
@@ -308,47 +320,125 @@ export class CertificatesService {
       throw new BadRequestException('state and oem are required');
     }
 
+    const toPdfUrl = (pdfPath: string | null) => {
+      if (!pdfPath) return null;
+      if (pdfPath.startsWith('http')) return pdfPath;
+      const idx = pdfPath.indexOf('uploads');
+      if (idx >= 0) return '/' + pdfPath.substring(idx).replace(/\\/g, '/');
+      return null;
+    };
+
+    const mapCertificate = (certificate: any) => ({
+      certificateNumber: certificate.certificateNumber,
+      vehicleMake: certificate.vehicleMake,
+      vehicleCategory: certificate.vehicleCategory,
+      fuelType: certificate.fuelType,
+      passingRto: certificate.passingRto,
+      registrationRto: certificate.registrationRto,
+      series: certificate.series,
+      manufacturingYear: certificate.manufacturingYear,
+      chassisNumber: certificate.chassisNumber,
+      engineNumber: certificate.engineNumber,
+      ownerName: certificate.ownerName,
+      ownerContact: certificate.ownerContact,
+      vehicleNumber: certificate.vehicleNumber,
+      generatedAt: certificate.generatedAt,
+      locationText: certificate.locationText,
+      pdfUrl: toPdfUrl(certificate.pdfPath),
+      qr: {
+        serialNumber: certificate.qrCode.serialNumber,
+        value: certificate.qrValue,
+        stateCode: certificate.qrCode.batch.state.code,
+        oemCode: certificate.qrCode.batch.oem.code,
+        productCode: certificate.qrCode.batch.product.code,
+        batchId: certificate.qrCode.batch.batchId
+      }
+    });
+
     let certificate = null as any;
     let qrCode = null as any;
 
     if (params.by === 'QR_SERIAL') {
       const serialNumber = Number(params.serial);
-      if (!params.serial) {
-        throw new BadRequestException('serial is required for QR_SERIAL search');
-      }
-      if (!Number.isFinite(serialNumber) || serialNumber <= 0) {
-        throw new BadRequestException('Serial must be a positive number');
+      if (!params.serial) throw new BadRequestException('serial is required for QR_SERIAL search');
+      if (!Number.isFinite(serialNumber) || serialNumber <= 0) throw new BadRequestException('Serial must be a positive number');
+
+      if (isGhost) {
+        const certificates = await this.prisma.certificate.findMany({
+          where: {
+            qrCode: {
+              serialNumber,
+              batch: {
+                stateCode: state,
+                oemCode: oem
+              }
+            }
+          },
+          include: {
+            qrCode: {
+              include: {
+                batch: {
+                  include: {
+                    state: true,
+                    oem: true,
+                    product: true
+                  }
+                }
+              }
+            }
+          },
+          orderBy: {
+            generatedAt: 'desc'
+          }
+        });
+
+        if (certificates.length === 0) {
+          throw new NotFoundException('Certificate not found for given QR Serial');
+        }
+
+        return {
+          success: true,
+          data: {
+            serialNumber,
+            certificates: certificates.map(mapCertificate)
+          }
+        };
       }
 
-      qrCode = await this.prisma.qRCode.findFirst({
+      certificate = await this.prisma.certificate.findFirst({
         where: {
-          serialNumber,
-          batch: {
-            stateCode: state,
-            oemCode: oem,
-            isGhost: isGhost
+          count: { not: 0 },
+          qrCode: {
+            serialNumber,
+            batch: {
+              stateCode: state,
+              oemCode: oem
+            }
           }
         },
         include: {
-          certificate: true,
-          batch: {
+          qrCode: {
             include: {
-              state: true,
-              oem: true,
-              product: true
+              batch: {
+                include: {
+                  state: true,
+                  oem: true,
+                  product: true
+                }
+              }
             }
           }
         },
         orderBy: {
-          createdAt: 'desc'
+          generatedAt: 'asc'
         }
       });
 
-      if (!qrCode || !qrCode.certificate) {
-        throw new NotFoundException('Certificate not found for given QR Code');
+      if (!certificate) {
+        throw new NotFoundException('Certificate not found for given QR Serial');
       }
 
-      certificate = qrCode.certificate;
+      qrCode = certificate.qrCode;
     } else if (params.by === 'VEHICLE') {
       const registrationRto = params.registrationRto?.trim();
       const series = params.series?.trim();
@@ -360,13 +450,8 @@ export class CertificatesService {
         where: {
           registrationRto,
           series,
-          qrCode: {
-            batch: {
-              stateCode: state,
-              oemCode: oem,
-              isGhost: isGhost
-            }
-          }
+          ...(isGhost ? { count: 0 } : { NOT: { count: 0 } }),
+          qrCode: { batch: { stateCode: state, oemCode: oem } }
         },
         include: {
           qrCode: {
@@ -400,13 +485,8 @@ export class CertificatesService {
       certificate = await this.prisma.certificate.findFirst({
         where: {
           certificateNumber,
-          qrCode: {
-            batch: {
-              stateCode: state,
-              oemCode: oem,
-              isGhost: isGhost
-            }
-          }
+          ...(isGhost ? { count: 0 } : { NOT: { count: 0 } }),
+          qrCode: { batch: { stateCode: state, oemCode: oem } }
         },
         include: {
           qrCode: {
@@ -435,42 +515,9 @@ export class CertificatesService {
       throw new BadRequestException('Invalid search mode');
     }
 
-    let pdfUrl: string | null = null;
-    if (certificate.pdfPath) {
-      const idx = certificate.pdfPath.indexOf('uploads');
-      if (idx >= 0) {
-        pdfUrl = '/' + certificate.pdfPath.substring(idx).replace(/\\/g, '/');
-      }
-    }
-
     return {
       success: true,
-      data: {
-        certificateNumber: certificate.certificateNumber,
-        vehicleMake: certificate.vehicleMake,
-        vehicleCategory: certificate.vehicleCategory,
-        fuelType: certificate.fuelType,
-        passingRto: certificate.passingRto,
-        registrationRto: certificate.registrationRto,
-        series: certificate.series,
-        manufacturingYear: certificate.manufacturingYear,
-        chassisNumber: certificate.chassisNumber,
-        engineNumber: certificate.engineNumber,
-        ownerName: certificate.ownerName,
-        ownerContact: certificate.ownerContact,
-        vehicleNumber: certificate.vehicleNumber,
-        generatedAt: certificate.generatedAt,
-        locationText: certificate.locationText,
-        pdfUrl,
-        qr: {
-          serialNumber: qrCode.serialNumber,
-          value: qrCode.value,
-          stateCode: qrCode.batch.state.code,
-          oemCode: qrCode.batch.oem.code,
-          productCode: qrCode.batch.product.code,
-          batchId: qrCode.batch.batchId
-        }
-      }
+      data: mapCertificate({ ...certificate, qrCode })
     };
   }
 
@@ -504,6 +551,12 @@ export class CertificatesService {
       }
     }
 
+    if (isGhost) {
+      where.count = 0;
+    } else {
+      where.NOT = { ...(where.NOT || {}), count: 0 };
+    }
+
     const qrWhere: any = {};
     const batchWhere: any = {};
     if (params.state) {
@@ -512,9 +565,6 @@ export class CertificatesService {
     if (params.oem) {
       batchWhere.oemCode = params.oem;
     }
-    
-    // Ghost Filter
-    batchWhere.isGhost = isGhost;
 
     if (Object.keys(batchWhere).length > 0) {
       qrWhere.batch = {
@@ -698,6 +748,13 @@ export class CertificatesService {
 
     // 4. QR Serial Validation (Existence)
     // Validate {ENCRYPTED_UNIQUE_SERIAL} -> We use 'value' as the unique identifier
+    const existingCertificate = await this.prisma.certificate.findUnique({
+      where: { qrValue }
+    });
+    if (existingCertificate) {
+      throw new BadRequestException('QR Code already used');
+    }
+
     const qrCode = await this.prisma.qRCode.findUnique({
       where: { value: qrValue },
       include: {
@@ -772,6 +829,13 @@ export class CertificatesService {
             if (dbUser.oemCode) authorizedOems = [dbUser.oemCode];
             if (dbUser.stateCode) authorizedState = dbUser.stateCode;
         }
+    }
+
+    const existingCertificate = await this.prisma.certificate.findUnique({
+      where: { qrValue }
+    });
+    if (existingCertificate) {
+      throw new BadRequestException('QR Code already used');
     }
 
     const qrCode = await this.prisma.qRCode.findUnique({
@@ -876,6 +940,14 @@ export class CertificatesService {
                 tradeValidity: dealer.tradeValidity ? dealer.tradeValidity.toISOString() : null,
                 aadharNumber: dealer.aadharNumber || null
             };
+
+            const passingRto = String(vehicleDetails?.passingRto || '').trim();
+            if (passingRto && dealer.passingRtosAll === false) {
+                const allowed = Array.isArray(dealer.passingRtoCodes) ? dealer.passingRtoCodes : [];
+                if (!allowed.includes(passingRto)) {
+                    throw new BadRequestException(`Not authorized for Passing RTO: ${passingRto}`);
+                }
+            }
         } else {
             console.log("Dealer not found for ID:", dealerId);
         }
@@ -1050,8 +1122,8 @@ export class CertificatesService {
 
         // 6. Save to DB
         
-        // Determine count based on Ghost Mode (Original=1, Ghost=0)
-        const count = qrCode.batch.isGhost ? 0 : 1;
+        const isGhostMode = Boolean(data.isGhostMode);
+        const count = (isGhostMode || qrCode.batch.isGhost) ? 0 : 1;
 
         console.log("Starting Transaction for Certificate Creation...");
 
@@ -1066,6 +1138,7 @@ export class CertificatesService {
             data: {
                 certificateNumber: certNumber,
                 qrCodeId: qrCode.id,
+                qrValue: qrCode.value,
                 vehicleMake: vehicleDetails.vehicleMake,
                 vehicleCategory: vehicleDetails.vehicleCategory,
                 fuelType: vehicleDetails.fuelType,

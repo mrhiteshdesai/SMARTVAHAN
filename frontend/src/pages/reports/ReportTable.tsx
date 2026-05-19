@@ -36,6 +36,32 @@ export default function ReportTable({ title, data, isLoading, columns }: ReportT
     });
   }, [data, search, columns]);
 
+  const totals = React.useMemo(() => {
+    const out: Record<string, number | null> = {};
+    for (const col of columns) {
+      let sum = 0;
+      let anyNumeric = false;
+      for (const row of filteredData) {
+        const val = row?.[col];
+        if (val === null || val === undefined || val === "") continue;
+        const num = typeof val === "number" ? val : Number(val);
+        if (Number.isFinite(num)) {
+          sum += num;
+          anyNumeric = true;
+        }
+      }
+      out[col] = anyNumeric ? sum : null;
+    }
+    return out;
+  }, [columns, filteredData]);
+
+  const totalLabelColumn = React.useMemo(() => {
+    for (const col of columns) {
+      if (totals[col] === null) return col;
+    }
+    return columns[0];
+  }, [columns, totals]);
+
   if (isLoading) {
     return <div className="p-8 text-center text-gray-500">Loading report data...</div>;
   }
@@ -86,16 +112,36 @@ export default function ReportTable({ title, data, isLoading, columns }: ReportT
                 </td>
               </tr>
             ) : (
-              filteredData.map((row, idx) => (
-                <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-center text-gray-400">{idx + 1}</td>
-                  {columns.map((col) => (
-                    <td key={col} className="px-4 py-3">
-                      {row[col] ?? '-'}
-                    </td>
-                  ))}
+              <>
+                {filteredData.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-center text-gray-400">{idx + 1}</td>
+                    {columns.map((col) => (
+                      <td key={col} className="px-4 py-3">
+                        {row[col] ?? '-'}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+                <tr className="bg-gray-50 font-semibold border-t">
+                  <td className="px-4 py-3 text-center text-gray-400"></td>
+                  {columns.map((col) => {
+                    const t = totals[col];
+                    if (t === null) {
+                      return (
+                        <td key={col} className="px-4 py-3">
+                          {col === totalLabelColumn ? "Grand Total" : ""}
+                        </td>
+                      );
+                    }
+                    return (
+                      <td key={col} className="px-4 py-3">
+                        {t}
+                      </td>
+                    );
+                  })}
                 </tr>
-              ))
+              </>
             )}
           </tbody>
         </table>

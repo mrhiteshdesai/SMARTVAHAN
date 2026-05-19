@@ -449,6 +449,239 @@ export class QrService {
     return batch;
   }
 
+  async getEligibleCountForRegenerationV2(data: any) {
+    const { stateCode, oemCode, productCode, quantity, startSerial } = data;
+    if (!stateCode || !oemCode || !productCode || !quantity || !startSerial) {
+      throw new BadRequestException('Missing required fields: stateCode, oemCode, productCode, quantity, startSerial');
+    }
+
+    const qty = Number(quantity);
+    if (isNaN(qty) || !Number.isInteger(qty) || qty <= 0) {
+      throw new BadRequestException('Quantity must be a positive integer');
+    }
+
+    const startSerialNum = parseInt(startSerial);
+    if (isNaN(startSerialNum)) {
+      throw new BadRequestException('Start Serial must be a number');
+    }
+
+    const eligible = await this.prisma.qRCode.findMany({
+      where: {
+        batch: {
+          stateCode,
+          oemCode,
+          productCode,
+          isGhost: false
+        },
+        serialNumber: { gte: startSerialNum },
+        status: 1
+      },
+      orderBy: { serialNumber: 'asc' },
+      take: qty,
+      select: { serialNumber: true }
+    });
+
+    return {
+      success: true,
+      data: {
+        eligibleCount: eligible.length,
+        firstSerial: eligible.length > 0 ? eligible[0].serialNumber : null,
+        lastSerial: eligible.length > 0 ? eligible[eligible.length - 1].serialNumber : null
+      }
+    };
+  }
+
+  async regenerateBatchV2(data: any, userId: string, baseUrl: string) {
+    const { stateCode, oemCode, productCode, quantity, startSerial } = data;
+    if (!stateCode || !oemCode || !productCode || !quantity || !startSerial) {
+      throw new BadRequestException('Missing required fields: stateCode, oemCode, productCode, quantity, startSerial');
+    }
+
+    const qty = Number(quantity);
+    if (isNaN(qty) || !Number.isInteger(qty) || qty <= 0) {
+      throw new BadRequestException('Quantity must be a positive integer');
+    }
+
+    const startSerialNum = parseInt(startSerial);
+    if (isNaN(startSerialNum)) {
+      throw new BadRequestException('Start Serial must be a number');
+    }
+
+    const state = await this.prisma.state.findUnique({ where: { code: stateCode } });
+    const oem = await this.prisma.oEM.findUnique({ where: { code: oemCode } });
+    const product = await this.prisma.product.findUnique({ where: { code: productCode } });
+    if (!state || !oem || !product) {
+      throw new BadRequestException('Invalid State, OEM or Product code');
+    }
+
+    const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+    const eligibleQrs = await this.prisma.qRCode.findMany({
+      where: {
+        batch: {
+          stateCode,
+          oemCode,
+          productCode,
+          isGhost: false
+        },
+        serialNumber: { gte: startSerialNum },
+        status: 1
+      },
+      include: {
+        batch: true
+      },
+      orderBy: { serialNumber: 'asc' },
+      take: qty
+    });
+
+    if (eligibleQrs.length === 0) {
+      throw new NotFoundException(`No used QR codes found starting from serial ${startSerial} for this State/OEM/Product`);
+    }
+
+    let runBatchId = this.generateBatchId();
+    while (await this.prisma.batch.findUnique({ where: { batchId: runBatchId } })) {
+      runBatchId = this.generateBatchId();
+    }
+    const batch = await this.prisma.batch.create({
+      data: {
+        batchId: runBatchId,
+        userId,
+        stateCode,
+        oemCode,
+        productCode,
+        quantity: eligibleQrs.length,
+        startSerial: eligibleQrs[0].serialNumber.toString(),
+        endSerial: eligibleQrs[eligibleQrs.length - 1].serialNumber.toString(),
+        status: 'PROCESSING',
+        filePath: '',
+        isGhost: true
+      }
+    });
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const updates: Array<{
+        id: string;
+        serialNumber: number;
+        oldQrValue: string;
+        newQrValue: string;
+        originalBatchId: string;
+        originalBatchCreatedAt: Date;
+        originalBatchStartSerial: string | null;
+        originalBatchQuantity: number;
+      }> = [];
+      const reservedValues = new Set<string>();
+
+      for (const qr of eligibleQrs) {
+        const newQrValue = await this.generateUniqueQrValueWithClient(tx, productCode, reservedValues);
+        const fullUrl = `${cleanBaseUrl}/${stateCode}/${oemCode}/${productCode}/qr=${newQrValue}`;
+
+        await tx.qRCode.update({
+          where: { id: qr.id },
+          data: {
+            value: newQrValue,
+            fullUrl,
+            status: 0
+          }
+        });
+
+        updates.push({
+          id: qr.id,
+          serialNumber: qr.serialNumber,
+          oldQrValue: qr.value,
+          newQrValue,
+          originalBatchId: qr.batch.batchId,
+          originalBatchCreatedAt: qr.batch.createdAt,
+          originalBatchStartSerial: qr.batch.startSerial || null,
+          originalBatchQuantity: qr.batch.quantity
+        });
+      }
+
+      const run = await tx.qRRegenerationRun.create({
+        data: {
+          stateCode,
+          oemCode,
+          productCode,
+          startSerial: startSerialNum,
+          requestedQuantity: qty,
+          eligibleCount: eligibleQrs.length,
+          regeneratedCount: updates.length,
+          createdBy: userId
+        }
+      });
+
+      await tx.qRRegeneration.createMany({
+        data: updates.map((u) => ({
+          runId: run.id,
+          stateCode,
+          oemCode,
+          productCode,
+          serialNumber: u.serialNumber,
+          oldQrValue: u.oldQrValue,
+          newQrValue: u.newQrValue,
+          regeneratedBy: userId
+        }))
+      });
+
+      return { run, updates };
+    });
+
+    try {
+      const { filePath, processedCount } = await this.generateGhostReprintPdfV2(
+        updated.updates.map((u) => ({
+          stateCode,
+          oemCode,
+          productCode,
+          serialNumber: u.serialNumber,
+          qrValue: u.newQrValue,
+          originalBatchId: u.originalBatchId,
+          originalBatchCreatedAt: u.originalBatchCreatedAt,
+          originalBatchStartSerial: u.originalBatchStartSerial,
+          originalBatchQuantity: u.originalBatchQuantity
+        })),
+        stateCode,
+        oemCode,
+        productCode,
+        cleanBaseUrl
+      );
+
+      await this.prisma.batch.update({
+        where: { id: batch.id },
+        data: {
+          status: 'COMPLETED',
+          filePath,
+          quantity: processedCount
+        }
+      });
+
+      await this.prisma.qRRegenerationRun.update({
+        where: { id: updated.run.id },
+        data: { filePath }
+      });
+    } catch (e) {
+      await this.prisma.batch.update({
+        where: { id: batch.id },
+        data: { status: 'FAILED' }
+      });
+      throw e;
+    }
+
+    await this.auditService.logAction(
+      userId,
+      'REGENERATE_BATCH_V2',
+      'BATCH',
+      runBatchId,
+      `Regenerated (V2) ${eligibleQrs.length} QR codes for ${stateCode}-${oemCode}-${productCode} starting at ${startSerial}`
+    );
+
+    return {
+      success: true,
+      data: {
+        batchId: runBatchId,
+        regeneratedCount: eligibleQrs.length
+      }
+    };
+  }
+
   async generateBulkReplacementPdf(serials: number[], stateCode: string, oemCode: string, baseUrl: string): Promise<{ filePath: string, count: number, skipped: number }> {
       // 1. Fetch QRs
       const qrs = await this.prisma.qRCode.findMany({
@@ -635,6 +868,50 @@ export class QrService {
       };
   }
 
+  private extractKeyFromPublicUrl(fileUrl: string): { key: string; filename: string } | null {
+    try {
+      const u = new URL(fileUrl);
+      const key = decodeURIComponent(u.pathname.replace(/^\//, ''));
+      if (!key) return null;
+      const filename = key.split('/').pop() || 'file';
+      return { key, filename };
+    } catch {
+      return null;
+    }
+  }
+
+  async getBatchDownload(batchId: string, user?: any): Promise<
+    | { type: 'local'; path: string; filename: string }
+    | { type: 'stream'; filename: string; contentType?: string; contentLength?: number; stream: NodeJS.ReadableStream }
+    | { type: 'redirect'; url: string; filename: string }
+  > {
+    const file = await this.getBatchFile(batchId, user);
+
+    if (!file.isUrl) {
+      return { type: 'local', path: file.path, filename: file.filename };
+    }
+
+    const parsed = this.extractKeyFromPublicUrl(file.path);
+    if (parsed?.key) {
+      const object = await this.s3Service.getObjectStream(parsed.key);
+      if (object?.body) {
+        return {
+          type: 'stream',
+          filename: parsed.filename,
+          contentType: object.contentType,
+          contentLength: object.contentLength,
+          stream: object.body
+        };
+      }
+    }
+
+    return {
+      type: 'redirect',
+      url: file.path.startsWith('http://') ? `https://${file.path.slice('http://'.length)}` : file.path,
+      filename: file.filename
+    };
+  }
+
   async reactivateQr(data: { stateCode: string; oemCode: string; serialNumber: number }, userId: string, isGhost: boolean = false) {
     const { stateCode, oemCode, serialNumber } = data;
     
@@ -653,7 +930,7 @@ export class QrService {
       },
       include: {
         batch: true,
-        certificate: true
+        certificates: true
       }
     });
 
@@ -666,11 +943,9 @@ export class QrService {
     // - Reset QR Status to 0
     
     await this.prisma.$transaction(async (tx) => {
-        if (qr.certificate) {
-            await tx.certificate.delete({
-                where: { id: qr.certificate.id }
-            });
-        }
+        await tx.certificate.deleteMany({
+          where: { qrCodeId: qr.id, qrValue: qr.value }
+        });
         
         await tx.qRCode.update({
             where: { id: qr.id },
@@ -707,5 +982,122 @@ export class QrService {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
     return `${day}${month}${year}`;
+  }
+
+  private async generateUniqueQrValueWithClient(client: any, productCode: string, reserved: Set<string>) {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const random = crypto.randomBytes(10).toString('hex').toUpperCase();
+      const candidate = `${productCode}${random}`;
+      if (reserved.has(candidate)) continue;
+      const exists = await client.qRCode.findUnique({ where: { value: candidate } });
+      if (!exists) {
+        reserved.add(candidate);
+        return candidate;
+      }
+    }
+    throw new Error('Failed to generate unique QR value');
+  }
+
+  private async generateGhostReprintPdfV2(
+    pages: Array<{
+      stateCode: string;
+      oemCode: string;
+      productCode: string;
+      serialNumber: number;
+      qrValue: string;
+      originalBatchId: string;
+      originalBatchCreatedAt: Date;
+      originalBatchStartSerial: string | null;
+      originalBatchQuantity: number;
+    }>,
+    stateCode: string,
+    oemCode: string,
+    productCode: string,
+    baseUrl: string
+  ): Promise<{ filePath: string; processedCount: number }> {
+    const width = 708.66;
+    const height = 1077.16;
+    const margin = 56.7;
+
+    const doc = new PDFDocument({
+      size: [width, height],
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      autoFirstPage: false
+    });
+
+    const dateObj = new Date();
+    const dateDMY = this.formatDateDDMMYYYY(dateObj);
+    const fileName = `Reprint-${stateCode}-${oemCode}-${productCode}-${pages.length}-${dateDMY}.pdf`;
+    const filePath = path.join(process.cwd(), 'uploads', 'QR', stateCode, oemCode, fileName);
+
+    const baseDir = path.dirname(filePath);
+    if (!fs.existsSync(baseDir)) {
+      fs.mkdirSync(baseDir, { recursive: true });
+    }
+
+    const writeStream = fs.createWriteStream(filePath);
+    doc.pipe(writeStream);
+
+    const sorted = [...pages].sort((a, b) => a.serialNumber - b.serialNumber);
+
+    for (let i = 0; i < sorted.length; i++) {
+      const p = sorted[i];
+      doc.addPage();
+
+      const effectiveUrl = `${baseUrl}/${p.stateCode}/${p.oemCode}/${p.productCode}/qr=${p.qrValue}`;
+      const qrDataUrl = await QRCode.toDataURL(effectiveUrl, { errorCorrectionLevel: 'H', margin: 1 });
+      const base64Data = qrDataUrl.replace(/^data:image\/png;base64,/, "");
+
+      const usableWidth = width - (margin * 2);
+      const headerY = margin + 20;
+
+      doc.font('Helvetica-Bold')
+        .fontSize(75)
+        .text(`${p.stateCode}-${p.oemCode}-${p.productCode}`, 0, headerY, { align: 'center', width });
+
+      const qrY = headerY + 100;
+      const qrSize = usableWidth;
+      doc.image(Buffer.from(base64Data, 'base64'), margin, qrY, { width: qrSize, height: qrSize });
+
+      const serialY = qrY + qrSize + 30;
+      doc.font('Helvetica-Bold').fontSize(90).text(`${p.serialNumber}`, 0, serialY, { align: 'center', width });
+
+      const footer2Y = height - margin - 40;
+      const footer1Y = footer2Y - 70;
+      const dateYMD = p.originalBatchCreatedAt.toISOString().split('T')[0].replace(/-/g, '');
+
+      const start = p.originalBatchStartSerial ? Number(p.originalBatchStartSerial) : NaN;
+      const pageNo = Number.isFinite(start) ? (p.serialNumber - start + 1) : 1;
+      const total = p.originalBatchQuantity || 1;
+      const footer1 = `${dateYMD}-${p.originalBatchId}-(${pageNo}/${total})`;
+      doc.font('Helvetica').fontSize(45).text(footer1, 0, footer1Y, { align: 'center', width });
+
+      doc.font('Helvetica-Bold')
+        .fontSize(30)
+        .text("SADAK SURAKSHA JEEVAN RAKSHA", 0, footer2Y, { align: 'center', width });
+    }
+
+    doc.end();
+
+    await new Promise((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+
+    let finalFilePath = filePath;
+    const s3Key = `qr-batches/reprints/${stateCode}/${oemCode}/${fileName}`;
+    const s3Url = await this.s3Service.uploadFile(filePath, s3Key);
+    if (s3Url) {
+      finalFilePath = s3Url;
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        this.logger.error("Failed to delete local Reprint PDF after S3 upload", e);
+      }
+    }
+
+    return { filePath: finalFilePath, processedCount: sorted.length };
   }
 }

@@ -18,6 +18,25 @@ type SettingsState = {
   awsSecretKey: string;
   awsRegion: string;
   awsBucket: string;
+
+  homePageContent?: {
+    heroTitle?: string;
+    heroSubtitle?: string;
+    heroPrimaryCtaText?: string;
+    heroPrimaryCtaHref?: string;
+    heroSecondaryCtaText?: string;
+    heroSecondaryCtaHref?: string;
+    aboutTitle?: string;
+    aboutBody?: string;
+    statesTitle?: string;
+    oemsTitle?: string;
+    statsTitle?: string;
+    contactTitle?: string;
+    contactSubtitle?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    contactAddress?: string;
+  };
 };
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -30,6 +49,24 @@ const DEFAULT_SETTINGS: SettingsState = {
   awsSecretKey: "",
   awsRegion: "ap-south-1",
   awsBucket: "",
+  homePageContent: {
+    heroTitle: "SMARTVAHAN",
+    heroSubtitle: "Centralized MIS for QR-based certification and inventory management.",
+    heroPrimaryCtaText: "Open Dashboard",
+    heroPrimaryCtaHref: "/control",
+    heroSecondaryCtaText: "Public Verification",
+    heroSecondaryCtaHref: "/verify",
+    aboutTitle: "About SmartVahan",
+    aboutBody: "",
+    statesTitle: "Authorised States",
+    oemsTitle: "OEMs Served",
+    statsTitle: "Live Statistics",
+    contactTitle: "Contact",
+    contactSubtitle: "Send us a message and we’ll get back to you.",
+    contactEmail: "",
+    contactPhone: "",
+    contactAddress: ""
+  }
 };
 
 // Helper to convert Hex to RGB space-separated
@@ -42,7 +79,7 @@ function hexToRgb(hex: string) {
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"branding" | "integrations" | "cloud" | "mobile">("branding");
+  const [activeTab, setActiveTab] = useState<"branding" | "integrations" | "cloud" | "mobile" | "home">("branding");
   const [settings, setSettings] = useState<SettingsState>(DEFAULT_SETTINGS);
 
   // Fetch settings from API
@@ -152,6 +189,7 @@ export default function SettingsPage() {
     { id: "integrations", label: "Integrations" },
     { id: "cloud", label: "Cloud Settings" },
     { id: "mobile", label: "Mobile App Config" },
+    { id: "home", label: "Home Page" }
   ] as const;
 
   return (
@@ -241,6 +279,247 @@ export default function SettingsPage() {
                       <option value="YYYY-MM-DD">YYYY-MM-DD (e.g. 2024-01-31)</option>
                       <option value="DD-MMM-YYYY">DD-MMM-YYYY (e.g. 31-Jan-2024)</option>
                     </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "home" && (
+            <div className="max-w-2xl space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Home Page</h3>
+                <p className="text-sm text-gray-500">Controls the public landing page content.</p>
+              </div>
+
+              <div className="grid gap-4">
+                <div className="rounded-lg border p-4 bg-white space-y-3">
+                  <div className="text-sm font-semibold text-gray-700">Hero</div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Title</label>
+                    <input
+                      value={settings.homePageContent?.heroTitle || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          homePageContent: { ...(prev.homePageContent || {}), heroTitle: e.target.value }
+                        }))
+                      }
+                      className="w-full border rounded px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Subtitle</label>
+                    <textarea
+                      value={settings.homePageContent?.heroSubtitle || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          homePageContent: { ...(prev.homePageContent || {}), heroSubtitle: e.target.value }
+                        }))
+                      }
+                      className="w-full border rounded px-3 py-2 min-h-[90px]"
+                    />
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Primary CTA Text</label>
+                      <input
+                        value={settings.homePageContent?.heroPrimaryCtaText || ""}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            homePageContent: { ...(prev.homePageContent || {}), heroPrimaryCtaText: e.target.value }
+                          }))
+                        }
+                        className="w-full border rounded px-3 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Primary CTA Link</label>
+                      <input
+                        value={settings.homePageContent?.heroPrimaryCtaHref || ""}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            homePageContent: { ...(prev.homePageContent || {}), heroPrimaryCtaHref: e.target.value }
+                          }))
+                        }
+                        className="w-full border rounded px-3 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Secondary CTA Text</label>
+                      <input
+                        value={settings.homePageContent?.heroSecondaryCtaText || ""}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            homePageContent: { ...(prev.homePageContent || {}), heroSecondaryCtaText: e.target.value }
+                          }))
+                        }
+                        className="w-full border rounded px-3 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Secondary CTA Link</label>
+                      <input
+                        value={settings.homePageContent?.heroSecondaryCtaHref || ""}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            homePageContent: { ...(prev.homePageContent || {}), heroSecondaryCtaHref: e.target.value }
+                          }))
+                        }
+                        className="w-full border rounded px-3 py-2"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-4 bg-white space-y-3">
+                  <div className="text-sm font-semibold text-gray-700">About</div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Title</label>
+                    <input
+                      value={settings.homePageContent?.aboutTitle || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          homePageContent: { ...(prev.homePageContent || {}), aboutTitle: e.target.value }
+                        }))
+                      }
+                      className="w-full border rounded px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Body</label>
+                    <textarea
+                      value={settings.homePageContent?.aboutBody || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          homePageContent: { ...(prev.homePageContent || {}), aboutBody: e.target.value }
+                        }))
+                      }
+                      className="w-full border rounded px-3 py-2 min-h-[140px]"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-4 bg-white space-y-3">
+                  <div className="text-sm font-semibold text-gray-700">Section Titles</div>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">States Section</label>
+                      <input
+                        value={settings.homePageContent?.statesTitle || ""}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            homePageContent: { ...(prev.homePageContent || {}), statesTitle: e.target.value }
+                          }))
+                        }
+                        className="w-full border rounded px-3 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">OEMs Section</label>
+                      <input
+                        value={settings.homePageContent?.oemsTitle || ""}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            homePageContent: { ...(prev.homePageContent || {}), oemsTitle: e.target.value }
+                          }))
+                        }
+                        className="w-full border rounded px-3 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Stats Section</label>
+                      <input
+                        value={settings.homePageContent?.statsTitle || ""}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            homePageContent: { ...(prev.homePageContent || {}), statsTitle: e.target.value }
+                          }))
+                        }
+                        className="w-full border rounded px-3 py-2"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-4 bg-white space-y-3">
+                  <div className="text-sm font-semibold text-gray-700">Contact</div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Title</label>
+                    <input
+                      value={settings.homePageContent?.contactTitle || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          homePageContent: { ...(prev.homePageContent || {}), contactTitle: e.target.value }
+                        }))
+                      }
+                      className="w-full border rounded px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Subtitle</label>
+                    <input
+                      value={settings.homePageContent?.contactSubtitle || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          homePageContent: { ...(prev.homePageContent || {}), contactSubtitle: e.target.value }
+                        }))
+                      }
+                      className="w-full border rounded px-3 py-2"
+                    />
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Email</label>
+                      <input
+                        value={settings.homePageContent?.contactEmail || ""}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            homePageContent: { ...(prev.homePageContent || {}), contactEmail: e.target.value }
+                          }))
+                        }
+                        className="w-full border rounded px-3 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Phone</label>
+                      <input
+                        value={settings.homePageContent?.contactPhone || ""}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            homePageContent: { ...(prev.homePageContent || {}), contactPhone: e.target.value }
+                          }))
+                        }
+                        className="w-full border rounded px-3 py-2"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Address</label>
+                    <textarea
+                      value={settings.homePageContent?.contactAddress || ""}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          homePageContent: { ...(prev.homePageContent || {}), contactAddress: e.target.value }
+                        }))
+                      }
+                      className="w-full border rounded px-3 py-2 min-h-[90px]"
+                    />
                   </div>
                 </div>
               </div>

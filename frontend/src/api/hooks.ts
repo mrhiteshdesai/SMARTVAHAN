@@ -5,6 +5,7 @@ import api from "./client";
 export type State = {
   code: string;
   name: string;
+  showOnHomepage?: boolean;
 };
 
 export function useStates() {
@@ -123,6 +124,7 @@ export type OEM = {
   copDocument?: string;
   copValidity?: string;
   authorizedStates?: string[];
+  showOnHomepage?: boolean;
 };
 
 export function useOEMs() {
@@ -182,10 +184,14 @@ export function useDeleteOEM() {
 export type Dealer = {
   id: string;
   name: string;
+  contactPersonName?: string;
+  email?: string;
   phone: string;
   stateCode: string;
   rtoCode?: string;
   allRTOs?: boolean;
+  passingRtosAll?: boolean;
+  passingRtoCodes?: string[];
   status: "ACTIVE" | "INACTIVE";
   oems: OEM[];
   locationAddress?: string;
@@ -197,6 +203,35 @@ export type Dealer = {
   tradeCertificateNo?: string;
   tradeValidity?: string; // ISO Date string
   gstNo?: string;
+};
+
+export type DealerRegistrationRequest = {
+  id: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  name: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  dealerName?: string | null;
+  phone: string;
+  stateCode?: string | null;
+  locationAddress?: string | null;
+  city?: string | null;
+  zip?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  radius?: number | null;
+  oemCodes?: string[];
+  passingRtoCodes?: string[];
+  gstNo?: string | null;
+  tradeCertificateNo?: string | null;
+  tradeValidity?: string | null;
+  aadharNumber?: string | null;
+  tradeCertificateUrl?: string | null;
+  gstCertificateUrl?: string | null;
+  aadharCardUrl?: string | null;
+  note?: string | null;
+  createdAt?: string;
 };
 
 export function useDealers() {
@@ -232,6 +267,45 @@ export function useUpdateDealer() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dealers"] });
     },
+  });
+}
+
+export function useDealerRegistrationRequests(status: "PENDING" | "APPROVED" | "REJECTED" = "PENDING") {
+  return useQuery({
+    queryKey: ["dealer-registration-requests", status],
+    queryFn: async () => {
+      const res = await api.get<DealerRegistrationRequest[]>("/dealers/registration-requests", {
+        params: { status }
+      });
+      return res.data;
+    }
+  });
+}
+
+export function useApproveDealerRegistrationRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const res = await api.post(`/dealers/registration-requests/${id}/approve`, data);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dealer-registration-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["dealers"] });
+    }
+  });
+}
+
+export function useRejectDealerRegistrationRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, note }: { id: string; note?: string }) => {
+      const res = await api.post(`/dealers/registration-requests/${id}/reject`, { note });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dealer-registration-requests"] });
+    }
   });
 }
 
@@ -378,7 +452,7 @@ export function useRegenerateBatch() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (data: any) => {
-            const res = await api.post("/qr/regenerate", data);
+            const res = await api.post("/qr/regenerate-v2", data);
             return res.data;
         },
         onSuccess: () => {

@@ -32,6 +32,11 @@ export class CertificatesController {
     if (req.user && (req.user.role === 'DEALER' || req.user.role === 'DEALER_USER')) {
       (body as any).dealerId = req.user.userId;
     }
+    const isGhostMode = req.headers['x-ghost-mode'] === 'true';
+    if (isGhostMode && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'GHOST_ADMIN') {
+      throw new ForbiddenException('Ghost Mode is restricted to Super Admin');
+    }
+    (body as any).isGhostMode = isGhostMode;
     return this.certificatesService.createCertificate(body);
   }
 

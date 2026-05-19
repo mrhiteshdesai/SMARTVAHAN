@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Ghost Mode Security Check
       const isGhostMode = localStorage.getItem("isGhostMode") === "true";
-      if (isGhostMode && data.user.role !== "GHOST_ADMIN") {
+      if (isGhostMode && data.user.role !== "GHOST_ADMIN" && data.user.role !== "SUPER_ADMIN") {
         console.error("Access Denied: Ghost Dashboard requires Ghost Admin credentials.");
         return false;
       }
@@ -68,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Enforce Ghost Mode Security on Session Load/Change
   useEffect(() => {
     const isGhostMode = localStorage.getItem("isGhostMode") === "true";
-    if (user && isGhostMode && user.role !== "GHOST_ADMIN") {
+    if (user && isGhostMode && user.role !== "GHOST_ADMIN" && user.role !== "SUPER_ADMIN") {
         console.warn("Session invalid for Ghost Dashboard. Logging out.");
         signOut();
     }

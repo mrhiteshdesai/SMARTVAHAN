@@ -38,6 +38,10 @@ export class OemsController {
             createOemDto.authorizedStates = [createOemDto.authorizedStates];
         }
     }
+
+    if (typeof createOemDto.showOnHomepage === 'string') {
+      createOemDto.showOnHomepage = createOemDto.showOnHomepage === 'true';
+    }
     
     const userId = req.user?.userId;
     return this.oemsService.create(createOemDto, userId);
@@ -77,6 +81,10 @@ export class OemsController {
         } catch (e) {
             updateOemDto.authorizedStates = [updateOemDto.authorizedStates];
         }
+    }
+
+    if (typeof updateOemDto.showOnHomepage === 'string') {
+      updateOemDto.showOnHomepage = updateOemDto.showOnHomepage === 'true';
     }
 
     return this.oemsService.update(id, updateOemDto);

@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { LayoutDashboard, Users, CheckCircle2, QrCode, AlertTriangle } from "lucide-react";
 import { GoogleMap, HeatmapLayerF, useJsApiLoader } from '@react-google-maps/api';
+import type { Library } from '@googlemaps/js-api-loader';
 
 class DashboardErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
@@ -31,7 +32,7 @@ class DashboardErrorBoundary extends React.Component<{ children: React.ReactNode
   }
 }
 
-const libraries: ("visualization" | "places" | "drawing" | "geometry" | "localContext")[] = ["visualization"];
+const libraries: Library[] = ["visualization"];
 
 function DashboardMap({ apiKey, data }: { apiKey: string, data: any[] }) {
   const { isLoaded, loadError } = useJsApiLoader({
@@ -94,7 +95,8 @@ function DashboardMap({ apiKey, data }: { apiKey: string, data: any[] }) {
 
 function DashboardContent() {
   const { user } = useAuth();
-  const isRestricted = user?.role === 'OEM_ADMIN' || user?.role === 'DEALER_USER' || user?.role === 'DEALER';
+  const roleValue = user?.role ? String(user.role) : "";
+  const isRestricted = roleValue === 'OEM_ADMIN' || roleValue === 'DEALER_USER' || roleValue === 'DEALER';
 
   const [stateCode, setStateCode] = useState("");
   const [oemCode, setOemCode] = useState("");
@@ -129,7 +131,7 @@ function DashboardContent() {
           <p className="text-sm text-gray-500">System overview and statistics</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {user?.role !== 'STATE_ADMIN' && user?.role !== 'DEALER_USER' && user?.role !== 'DEALER' && (
+          {roleValue !== 'STATE_ADMIN' && roleValue !== 'DEALER_USER' && roleValue !== 'DEALER' && (
             <select 
               className="rounded-md border px-3 py-2 text-sm bg-white"
               value={stateCode}
@@ -139,7 +141,7 @@ function DashboardContent() {
               {states?.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
             </select>
           )}
-          {user?.role !== 'OEM_ADMIN' && user?.role !== 'DEALER_USER' && user?.role !== 'DEALER' && (
+          {roleValue !== 'OEM_ADMIN' && roleValue !== 'DEALER_USER' && roleValue !== 'DEALER' && (
             <select 
               className="rounded-md border px-3 py-2 text-sm bg-white"
               value={oemCode}

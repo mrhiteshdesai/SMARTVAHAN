@@ -194,6 +194,41 @@ class ApiClient {
 
 final api = ApiClient();
 
+class DealerBottomNav extends StatelessWidget {
+  final int currentIndex;
+
+  const DealerBottomNav({super.key, required this.currentIndex});
+
+  void _go(BuildContext context, int idx) {
+    final routes = <int, String>{
+      0: '/home',
+      1: '/history',
+      2: '/profile',
+      3: '/support',
+    };
+    final target = routes[idx];
+    if (target == null) return;
+    Navigator.of(context).pushNamedAndRemoveUntil(target, (route) => false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BottomNavigationBar(
+      currentIndex: currentIndex,
+      type: BottomNavigationBarType.fixed,
+      selectedItemColor: const Color(0xFF12314D),
+      unselectedItemColor: const Color(0xFF91A8BD),
+      onTap: (i) => _go(context, i),
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
+        BottomNavigationBarItem(icon: Icon(Icons.history_outlined), label: 'History'),
+        BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
+        BottomNavigationBarItem(icon: Icon(Icons.support_agent_outlined), label: 'Support'),
+      ],
+    );
+  }
+}
+
 class SmartvahanApp extends StatelessWidget {
   const SmartvahanApp({super.key});
 
@@ -221,6 +256,8 @@ class SmartvahanApp extends StatelessWidget {
         '/scan': (_) => const ScanScreen(),
         '/form': (_) => const FormScreen(),
         '/history': (_) => const HistoryScreen(),
+        '/profile': (_) => const ProfileScreen(),
+        '/support': (_) => const SupportScreen(),
         '/success': (_) => const CertificateSuccessScreen(),
       },
     );
@@ -703,6 +740,28 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                           ),
+                          const SizedBox(height: 14),
+                          Center(
+                            child: GestureDetector(
+                              onTap: () async {
+                                final uri = Uri.parse(
+                                  'https://smartvahan.net/dealer-registration',
+                                );
+                                await launchUrl(
+                                  uri,
+                                  mode: LaunchMode.externalApplication,
+                                );
+                              },
+                              child: const Text(
+                                'Want to be a dealer? Submit Request',
+                                style: TextStyle(
+                                  color: Color(0xFF00417B),
+                                  fontWeight: FontWeight.w600,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -825,20 +884,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.qr_code_scanner_outlined),
-              title: const Text('Scan QR'),
-              onTap: () {
-                Navigator.of(context).pushNamed('/scan');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history_outlined),
-              title: const Text('History'),
-              onTap: () {
-                Navigator.of(context).pushNamed('/history');
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.logout_outlined),
               title: const Text('Logout'),
               onTap: () async {
@@ -864,6 +909,7 @@ class _HomeScreenState extends State<HomeScreen> {
           SafeArea(child: _HomeContent()),
         ],
       ),
+      bottomNavigationBar: const DealerBottomNav(currentIndex: 0),
     );
   }
 }
@@ -975,44 +1021,6 @@ class _HomeContentState extends State<_HomeContent> {
                     ],
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 110,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildActionButton(
-                      'SLD',
-                      isActive: false,
-                      color: const Color(0xFF91A8BD),
-                      icon: Icons.speed,
-                      badge: true,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildActionButton(
-                      'VLTD',
-                      isActive: false,
-                      color: const Color(0xFF91A8BD),
-                      icon: Icons.gps_fixed,
-                      badge: true,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildActionButton(
-                      'History',
-                      isActive: true,
-                      icon: Icons.history,
-                      onTap: () {
-                        Navigator.of(context).pushNamed('/history');
-                      },
-                    ),
-                  ),
-                ],
               ),
             ),
             const SizedBox(height: 24),
@@ -3466,6 +3474,335 @@ class HistoryScreen extends StatefulWidget {
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshProfile();
+  }
+
+  Future<void> _refreshProfile() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final res = await api.get('/auth/me');
+      if (res.data != null && res.data is Map) {
+        ApiSession.user = res.data as Map<String, dynamic>;
+        await ApiSession.saveToStorage();
+      }
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Failed to load profile';
+      });
+    }
+  }
+
+  String _stringVal(dynamic v) {
+    if (v == null) return '-';
+    final s = v.toString().trim();
+    return s.isEmpty ? '-' : s;
+  }
+
+  String _oemsLabel(dynamic oems) {
+    if (oems is List) {
+      final parts = oems.map((e) {
+        if (e is Map) return _stringVal(e['code'] ?? e['name']);
+        return _stringVal(e);
+      }).where((e) => e != '-').toList();
+      return parts.isEmpty ? '-' : parts.join(', ');
+    }
+    return _stringVal(oems);
+  }
+
+  Widget _tile(String label, String value, {IconData? icon}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          if (icon != null)
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFF12314D).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: const Color(0xFF12314D)),
+            ),
+          if (icon != null) const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Color(0xFF12314D),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final u = ApiSession.user;
+    final dealerName = _stringVal(u?['name']);
+    final phone = _stringVal(u?['phone']);
+    final email = _stringVal(u?['email']);
+    final state = _stringVal(u?['stateName'] ?? u?['stateCode']);
+    final brands = _oemsLabel(u?['oems']);
+    final passingRtosAll = (u?['passingRtosAll'] == true);
+    final passingRtoCodes = u?['passingRtoCodes'];
+    final passingRtos = passingRtosAll
+        ? 'All'
+        : passingRtoCodes is List
+            ? passingRtoCodes.map((e) => _stringVal(e)).where((e) => e != '-').join(', ')
+            : '-';
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF12314D),
+        foregroundColor: Colors.white,
+        title: const Text('Profile'),
+        actions: [
+          IconButton(
+            onPressed: _loading ? null : _refreshProfile,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _tile('Dealer Name', dealerName, icon: Icons.badge_outlined),
+                      const SizedBox(height: 12),
+                      _tile('User ID (Phone)', phone, icon: Icons.phone_android_outlined),
+                      const SizedBox(height: 12),
+                      _tile('Email', email, icon: Icons.email_outlined),
+                      const SizedBox(height: 12),
+                      _tile('Authorised State', state, icon: Icons.map_outlined),
+                      const SizedBox(height: 12),
+                      _tile('Authorised Brand(s)', brands, icon: Icons.directions_car_outlined),
+                      const SizedBox(height: 12),
+                      _tile('Passing RTO', passingRtos, icon: Icons.apartment_outlined),
+                    ],
+                  ),
+                ),
+      bottomNavigationBar: const DealerBottomNav(currentIndex: 2),
+    );
+  }
+}
+
+class SupportScreen extends StatelessWidget {
+  const SupportScreen({super.key});
+
+  Future<void> _openWhatsApp() async {
+    final uri = Uri.parse('https://wa.me/?text=Hello%20SmartVahan%20Support');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Widget _categoryTile(IconData icon, String title) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF12314D).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: const Color(0xFF12314D)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: Color(0xFF12314D),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const Icon(Icons.chevron_right, color: Color(0xFF91A8BD)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF12314D),
+        foregroundColor: Colors.white,
+        title: const Text('Support'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              "We're here to help you move forward. Choose your preferred way to get in touch with our specialist team.",
+              style: TextStyle(color: Color(0xFF91A8BD), fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF7F8FA),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF13546).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.chat_bubble_outline, color: Color(0xFFF13546)),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Chat with us',
+                    style: TextStyle(
+                      color: Color(0xFF12314D),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Get instant answers to your technical queries and application status updates directly on WhatsApp.',
+                    style: TextStyle(color: Color(0xFF91A8BD), fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: _openWhatsApp,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF13546),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('Open WhatsApp Chat', style: TextStyle(fontWeight: FontWeight.w800)),
+                          SizedBox(width: 10),
+                          Icon(Icons.arrow_forward),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: const [
+                      Icon(Icons.circle, size: 8, color: Color(0xFF10B981)),
+                      SizedBox(width: 8),
+                      Text('Typically responds in 5 mins', style: TextStyle(color: Color(0xFF91A8BD), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'COMMON CATEGORIES',
+              style: TextStyle(
+                color: Color(0xFF91A8BD),
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.1,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _categoryTile(Icons.settings_outlined, 'Installation Issues'),
+            const SizedBox(height: 10),
+            _categoryTile(Icons.download_outlined, 'Certificate Downloads'),
+            const SizedBox(height: 10),
+            _categoryTile(Icons.lock_outline, 'Account Access'),
+          ],
+        ),
+      ),
+      bottomNavigationBar: const DealerBottomNav(currentIndex: 3),
+    );
+  }
+}
+
 class _HistoryScreenState extends State<HistoryScreen> {
   DateTime? _fromDate;
   DateTime? _toDate;
@@ -3966,6 +4303,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ],
       ),
+      bottomNavigationBar: const DealerBottomNav(currentIndex: 1),
     );
   }
 }

@@ -56,3 +56,14 @@ export function useDealerReport(filters: ReportFilters, enabled: boolean = true)
     enabled,
   });
 }
+
+export function usePassingRtoReport(filters: ReportFilters, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["report-passing-rto", filters],
+    queryFn: async () => {
+      const res = await api.get<ReportRow[]>("/reports/passing-rto", { params: filters });
+      return res.data;
+    },
+    enabled,
+  });
+}

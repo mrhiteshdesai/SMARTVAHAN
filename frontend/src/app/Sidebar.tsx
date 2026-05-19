@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 
 const items = [
-  { path: "/", label: "Dashboard", icon: LayoutDashboard },
+  { path: "", label: "Dashboard", icon: LayoutDashboard },
   { path: "/qr-generation", label: "QR Generator", icon: QrCode },
   { path: "/inventory", label: "Inventory", icon: Package },
   { path: "/activate-qr", label: "Reactivate QR Code", icon: RefreshCcw },
@@ -40,6 +40,7 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [openUsers, setOpenUsers] = useState(false);
   const [openReports, setOpenReports] = useState(false);
+  const basePath = localStorage.getItem('isGhostMode') === 'true' ? '/control/rp' : '/control';
 
   const ItemClass = (isActive: boolean) =>
     `flex items-center gap-3 px-3 py-3 rounded-md text-sm ${
@@ -49,6 +50,7 @@ export default function Sidebar() {
   const hasAccess = (path: string) => {
     const role = user?.role;
     if (!role) return false;
+    const roleValue = role as string;
     
     // Ghost Mode Logic
     const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
@@ -63,37 +65,37 @@ export default function Sidebar() {
 
     // Special handling for DEALER role mapping if needed (DEALER vs DEALER_USER)
     // Assuming 'DEALER' is also a valid role string or mapped to 'DEALER_USER'
-    const isDealer = role === 'DEALER_USER' || role === 'DEALER';
+    const isDealer = roleValue === 'DEALER_USER' || roleValue === 'DEALER';
 
     switch (path) {
-        case "/": // Dashboard
+        case "": // Dashboard
             return true;
         case "/qr-generation":
-            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(role);
+            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue);
         case "/inventory":
-            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(role); // Dealer No Access
+            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue); // Dealer No Access
         case "/activate-qr":
-            return ["SUPER_ADMIN", "GHOST_ADMIN"].includes(role);
+            return ["SUPER_ADMIN", "GHOST_ADMIN"].includes(roleValue);
         case "/certificate":
             // "Certificate Generator"
-            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(role) || isDealer;
+            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue) || isDealer;
         case "/search-qr":
-            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(role);
+            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue);
         case "/search-cert":
-            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(role);
+            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue);
         case "/download":
             // SUB_ADMIN: No Access
-            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(role) || isDealer;
+            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(roleValue) || isDealer;
         case "/audit":
-            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(role);
+            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue);
         case "/settings":
-            return ["SUPER_ADMIN"].includes(role);
+            return ["SUPER_ADMIN"].includes(roleValue);
         case "reports-section":
              // SUB_ADMIN, DEALER: No Access
-             return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(role);
+             return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(roleValue);
         case "users-section":
              // Only SUPER_ADMIN and ADMIN
-             return ["SUPER_ADMIN", "ADMIN"].includes(role);
+             return ["SUPER_ADMIN", "ADMIN"].includes(roleValue);
         default:
             return true;
     }
@@ -120,7 +122,7 @@ export default function Sidebar() {
           {items.filter(item => hasAccess(item.path)).map((item) => {
             const Icon = item.icon;
             return (
-              <NavLink key={item.path} to={item.path} className={({ isActive }) => ItemClass(isActive)}>
+              <NavLink key={item.path || "dashboard"} to={`${basePath}${item.path || ""}`} className={({ isActive }) => ItemClass(isActive)}>
                 <Icon className="w-5 h-5" />
                 {!collapsed && <span>{item.label}</span>}
               </NavLink>
@@ -152,21 +154,25 @@ export default function Sidebar() {
                      */}
                      {user?.role !== 'OEM_ADMIN' && (
                          <>
-                            <NavLink to="/reports/state" className={({ isActive }) => ItemClass(isActive)}>
+                            <NavLink to={`${basePath}/reports/state`} className={({ isActive }) => ItemClass(isActive)}>
                                 <Map className="w-4 h-4" />
                                 <span>State Report</span>
                             </NavLink>
-                            <NavLink to="/reports/oem" className={({ isActive }) => ItemClass(isActive)}>
+                            <NavLink to={`${basePath}/reports/oem`} className={({ isActive }) => ItemClass(isActive)}>
                                 <Building2 className="w-4 h-4" />
                                 <span>OEM Report</span>
                             </NavLink>
                          </>
                      )}
-                     <NavLink to="/reports/rto" className={({ isActive }) => ItemClass(isActive)}>
+                     <NavLink to={`${basePath}/reports/rto`} className={({ isActive }) => ItemClass(isActive)}>
                         <FileBarChart2 className="w-4 h-4" />
-                        <span>RTO Report</span>
+                        <span>Reg. RTO Report</span>
                     </NavLink>
-                    <NavLink to="/reports/dealer" className={({ isActive }) => ItemClass(isActive)}>
+                    <NavLink to={`${basePath}/reports/passing-rto`} className={({ isActive }) => ItemClass(isActive)}>
+                        <FileBarChart2 className="w-4 h-4" />
+                        <span>Passing RTO Report</span>
+                    </NavLink>
+                    <NavLink to={`${basePath}/reports/dealer`} className={({ isActive }) => ItemClass(isActive)}>
                         <Users className="w-4 h-4" />
                         <span>Dealer Report</span>
                     </NavLink>
@@ -196,22 +202,22 @@ export default function Sidebar() {
                     {/* ADMIN: Only Dealers. SUPER_ADMIN: All */}
                     {user?.role !== 'ADMIN' && (
                         <>
-                        <NavLink to="/users/states" className={({ isActive }) => ItemClass(isActive)}>
+                        <NavLink to={`${basePath}/users/states`} className={({ isActive }) => ItemClass(isActive)}>
                             <Map className="w-4 h-4" />
                             <span>States</span>
                         </NavLink>
-                        <NavLink to="/users/oems" className={({ isActive }) => ItemClass(isActive)}>
+                        <NavLink to={`${basePath}/users/oems`} className={({ isActive }) => ItemClass(isActive)}>
                             <Building2 className="w-4 h-4" />
                             <span>OEMs</span>
                         </NavLink>
                         </>
                     )}
-                    <NavLink to="/users/dealers" className={({ isActive }) => ItemClass(isActive)}>
+                    <NavLink to={`${basePath}/users/dealers`} className={({ isActive }) => ItemClass(isActive)}>
                         <Users className="w-4 h-4" />
                         <span>Dealers</span>
                     </NavLink>
                     {user?.role !== 'ADMIN' && (
-                        <NavLink to="/users/system" className={({ isActive }) => ItemClass(isActive)}>
+                        <NavLink to={`${basePath}/users/system`} className={({ isActive }) => ItemClass(isActive)}>
                         <ShieldCheck className="w-4 h-4" />
                         <span>System Users</span>
                         </NavLink>

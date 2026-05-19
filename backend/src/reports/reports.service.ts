@@ -45,7 +45,7 @@ export class ReportsService {
     return this.prisma.$queryRawUnsafe(query);
   }
 
-  // 2. RTO Report
+  // 2. Reg. RTO Report
   async getRtoReport(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string, isGhost?: boolean }) {
     const { stateCode, oemCode, startDate, endDate, isGhost = false } = filters;
     let whereClause = 'WHERE 1=1';
@@ -59,13 +59,49 @@ export class ReportsService {
     // Ghost Filter
     whereClause += isGhost ? ` AND b."isGhost" = true` : ` AND b."isGhost" = false`;
 
-    // Group by Certificate.passingRto (or registrationRto). User usually means Passing RTO.
+    // Group by Certificate.registrationRto
+    const query = `
+      SELECT 
+        CASE 
+            WHEN r.name IS NOT NULL THEN CONCAT(r.name, ' (', c."registrationRto", ')')
+            ELSE c."registrationRto"
+        END as "Reg. RTO",
+        COUNT(CASE WHEN b."productCode" = 'C3' THEN 1 END)::int as "C3",
+        COUNT(CASE WHEN b."productCode" = 'C4' THEN 1 END)::int as "C4",
+        COUNT(CASE WHEN b."productCode" = 'CT' THEN 1 END)::int as "CT",
+        COUNT(CASE WHEN b."productCode" = 'CTAUTO' THEN 1 END)::int as "CTAUTO",
+        COUNT(*)::int as "Total"
+      FROM certificates c
+      JOIN qr_codes q ON c."qrCodeId" = q.id
+      JOIN batches b ON q."batchId" = b.id
+      LEFT JOIN rtos r ON c."registrationRto" = r."code"
+      ${whereClause}
+      GROUP BY c."registrationRto", r.name
+      ORDER BY c."registrationRto" ASC
+    `;
+
+    return this.prisma.$queryRawUnsafe(query);
+  }
+
+  // 2b. Passing RTO Report
+  async getPassingRtoReport(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string, isGhost?: boolean }) {
+    const { stateCode, oemCode, startDate, endDate, isGhost = false } = filters;
+    let whereClause = 'WHERE 1=1';
+
+    if (stateCode) whereClause += ` AND b."stateCode" = '${stateCode}'`;
+    if (oemCode) whereClause += ` AND b."oemCode" = '${oemCode}'`;
+    if (startDate && endDate) {
+      whereClause += ` AND c."generatedAt" >= '${startDate}'::timestamp AND c."generatedAt" <= '${endDate} 23:59:59'::timestamp`;
+    }
+
+    whereClause += isGhost ? ` AND b."isGhost" = true` : ` AND b."isGhost" = false`;
+
     const query = `
       SELECT 
         CASE 
             WHEN r.name IS NOT NULL THEN CONCAT(r.name, ' (', c."passingRto", ')')
             ELSE c."passingRto"
-        END as "RTO",
+        END as "Passing RTO",
         COUNT(CASE WHEN b."productCode" = 'C3' THEN 1 END)::int as "C3",
         COUNT(CASE WHEN b."productCode" = 'C4' THEN 1 END)::int as "C4",
         COUNT(CASE WHEN b."productCode" = 'CT' THEN 1 END)::int as "CT",

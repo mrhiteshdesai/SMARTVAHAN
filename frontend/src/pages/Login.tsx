@@ -28,7 +28,10 @@ export default function Login() {
     setError(null);
     const ok = await signIn(phone, password);
     setLoading(false);
-    if (ok) navigate("/", { replace: true });
+    if (ok) {
+      const isGhost = localStorage.getItem("isGhostMode") === "true";
+      navigate(isGhost ? "/control/rp" : "/control", { replace: true });
+    }
     else setError("Invalid credentials");
   };
 

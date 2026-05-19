@@ -12,6 +12,7 @@ export default function OEMsPage() {
     name: "",
     code: "",
     authorizedStates: [],
+    showOnHomepage: true,
     username: "",
     password: "",
     logo: "",
@@ -72,6 +73,7 @@ export default function OEMsPage() {
     formData.append('name', form.name);
     formData.append('code', form.code);
     formData.append('authorizedStates', JSON.stringify(form.authorizedStates));
+    formData.append('showOnHomepage', String(form.showOnHomepage !== false));
     
     if (form.copDocument) formData.append('copDocument', form.copDocument);
     if (form.copValidity) formData.append('copValidity', new Date(form.copValidity).toISOString());
@@ -93,7 +95,7 @@ export default function OEMsPage() {
         await createOEM.mutateAsync(formData);
       }
       setOpenAdd(false);
-      setForm({ name: "", code: "", authorizedStates: [], logo: "", logoFile: null, copDocument: "", copValidity: "" });
+      setForm({ name: "", code: "", authorizedStates: [], showOnHomepage: true, logo: "", logoFile: null, copDocument: "", copValidity: "" });
       setEditId(null);
     } catch (err) {
       console.error("Failed to save OEM:", err);
@@ -118,6 +120,7 @@ export default function OEMsPage() {
       name: oem.name,
       code: oem.code,
       authorizedStates: oem.authorizedStates,
+      showOnHomepage: oem.showOnHomepage !== false,
       logo: oem.logo, // Existing path/url
       logoFile: null,
       copDocument: oem.copDocument || "",
@@ -140,7 +143,7 @@ export default function OEMsPage() {
             <div className="flex items-center gap-2">
             <button
                 onClick={() => {
-                setForm({ name: "", code: "", authorizedStates: [], username: "", password: "", logo: "", copDocument: "", copValidity: "" });
+                setForm({ name: "", code: "", authorizedStates: [], showOnHomepage: true, username: "", password: "", logo: "", copDocument: "", copValidity: "" });
                 setEditId(null);
                 setOpenAdd(true);
                 }}
@@ -281,6 +284,16 @@ export default function OEMsPage() {
               placeholder="e.g. TATA"
             />
           </div>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.showOnHomepage !== false}
+              onChange={(e) => setForm({ ...form, showOnHomepage: e.target.checked })}
+              className="h-4 w-4"
+            />
+            Show on Home Page
+          </label>
 
           <div className="grid grid-cols-2 gap-4">
               <div>

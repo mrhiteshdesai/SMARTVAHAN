@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDealerReport, ReportFilters } from '../../api/reportsHooks';
 import ReportTable from './ReportTable';
 import ReportFiltersComponent, { FilterState } from './ReportFilters';
+import ReportCharts from './ReportCharts';
 import * as XLSX from 'xlsx';
 
 export default function DealerReportPage() {
@@ -48,12 +49,15 @@ export default function DealerReportPage() {
       />
 
       {hasApplied ? (
-        <ReportTable 
-          title="Dealer Report"
-          data={data || []}
-          isLoading={isLoading}
-          columns={['Dealer Name', 'City', 'C3', 'C4', 'CT', 'CTAUTO', 'Total']}
-        />
+        <>
+          <ReportCharts data={data || []} labelKey="Dealer Name" />
+          <ReportTable 
+            title="Dealer Report"
+            data={data || []}
+            isLoading={isLoading}
+            columns={['Dealer Name', 'City', 'C3', 'C4', 'CT', 'CTAUTO', 'Total']}
+          />
+        </>
       ) : (
         <div className="text-center text-gray-500 mt-10 p-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
           Select filters and click "Apply Filters" to view the report.

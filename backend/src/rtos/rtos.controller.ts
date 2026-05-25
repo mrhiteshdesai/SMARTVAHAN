@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, UseGuards } from '@nestjs/common';
 import { RtosService } from './rtos.service';
 import { PrismaService } from '../prisma.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('api/rtos')
 export class RtosController {
@@ -20,6 +21,7 @@ export class RtosController {
   }
 
   @Get('authorized')
+  @UseGuards(JwtAuthGuard)
   async findAuthorized(@Req() req: any, @Query('stateCode') stateCode?: string) {
     const user = req.user;
 

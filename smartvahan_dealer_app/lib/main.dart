@@ -2564,10 +2564,23 @@ class _FormScreenState extends State<FormScreen> {
     if (_lookupsLoaded) return;
 
     final stateCode = _qrArgs?['stateCode']?.toString();
+    final dealerStateCode = ApiSession.user?['stateCode']?.toString().trim();
+    final passingStateCode =
+        (dealerStateCode != null && dealerStateCode.isNotEmpty)
+        ? dealerStateCode
+        : stateCode;
     await LookupService.hydrateLookups(
       stateCode,
       dealerVersion: ApiSession.user?['dealerUpdatedAt']?.toString(),
     );
+    if (passingStateCode != null &&
+        passingStateCode.isNotEmpty &&
+        passingStateCode != stateCode) {
+      await LookupService.hydrateLookups(
+        passingStateCode,
+        dealerVersion: ApiSession.user?['dealerUpdatedAt']?.toString(),
+      );
+    }
 
     // Check if we have everything we need in cache
     final needCats = LookupService.vehicleCategories == null;
@@ -2575,25 +2588,25 @@ class _FormScreenState extends State<FormScreen> {
         (stateCode != null && stateCode.isNotEmpty) &&
         LookupService.getRtos(stateCode) == null;
     final needPassingRtos =
-        (stateCode != null && stateCode.isNotEmpty) &&
-        LookupService.getPassingRtos(stateCode) == null;
+        (passingStateCode != null && passingStateCode.isNotEmpty) &&
+        LookupService.getPassingRtos(passingStateCode) == null;
 
     if (!needCats && !needRtos && !needPassingRtos) {
       if (!mounted) return;
       final cachedRtos = (LookupService.getRtos(stateCode) ?? []).toList();
-      final cachedPassing = (LookupService.getPassingRtos(stateCode) ?? [])
-          .toList();
+      final cachedPassing =
+          (LookupService.getPassingRtos(passingStateCode) ?? []).toList();
 
       cachedRtos.sort((a, b) {
-        final rawA = a is Map ? (a['name'] ?? a['code'] ?? '') : a;
-        final rawB = b is Map ? (b['name'] ?? b['code'] ?? '') : b;
+        final rawA = a is Map ? (a['code'] ?? '') : a;
+        final rawB = b is Map ? (b['code'] ?? '') : b;
         return rawA.toString().toLowerCase().compareTo(
           rawB.toString().toLowerCase(),
         );
       });
       cachedPassing.sort((a, b) {
-        final rawA = a is Map ? (a['name'] ?? a['code'] ?? '') : a;
-        final rawB = b is Map ? (b['name'] ?? b['code'] ?? '') : b;
+        final rawA = a is Map ? (a['code'] ?? '') : a;
+        final rawB = b is Map ? (b['code'] ?? '') : b;
         return rawA.toString().toLowerCase().compareTo(
           rawB.toString().toLowerCase(),
         );
@@ -2630,11 +2643,11 @@ class _FormScreenState extends State<FormScreen> {
       if (needPassingRtos) {
         final rtoRes = await api.get(
           '/rtos/authorized',
-          queryParameters: {'stateCode': stateCode},
+          queryParameters: {'stateCode': passingStateCode},
         );
         if (rtoRes.data is List) {
           await LookupService.cachePassingRtos(
-            stateCode,
+            passingStateCode,
             List<dynamic>.from(rtoRes.data as List),
             dealerVersion: ApiSession.user?['dealerUpdatedAt']?.toString(),
           );
@@ -2652,17 +2665,17 @@ class _FormScreenState extends State<FormScreen> {
 
       if (!mounted) return;
       final rtos = LookupService.getRtos(stateCode) ?? [];
-      final passingRtos = LookupService.getPassingRtos(stateCode) ?? [];
+      final passingRtos = LookupService.getPassingRtos(passingStateCode) ?? [];
       rtos.sort((a, b) {
-        final rawA = a is Map ? (a['name'] ?? a['code'] ?? '') : a;
-        final rawB = b is Map ? (b['name'] ?? b['code'] ?? '') : b;
+        final rawA = a is Map ? (a['code'] ?? '') : a;
+        final rawB = b is Map ? (b['code'] ?? '') : b;
         return rawA.toString().toLowerCase().compareTo(
           rawB.toString().toLowerCase(),
         );
       });
       passingRtos.sort((a, b) {
-        final rawA = a is Map ? (a['name'] ?? a['code'] ?? '') : a;
-        final rawB = b is Map ? (b['name'] ?? b['code'] ?? '') : b;
+        final rawA = a is Map ? (a['code'] ?? '') : a;
+        final rawB = b is Map ? (b['code'] ?? '') : b;
         return rawA.toString().toLowerCase().compareTo(
           rawB.toString().toLowerCase(),
         );
@@ -3867,27 +3880,33 @@ class _FormScreenState extends State<FormScreen> {
                                 value: _passingRtoController.text.isNotEmpty
                                     ? _passingRtoController.text
                                     : null,
-                                items: _passingRtos
-                                    .map<DropdownMenuItem<String>>((e) {
-                                      String code = '';
-                                      String name = '';
-                                      if (e is Map) {
-                                        code =
-                                            e['code']?.toString() ??
-                                            e.toString();
-                                        name = e['name']?.toString() ?? '';
-                                      } else {
-                                        code = e.toString();
-                                      }
-                                      final label = name.trim().isNotEmpty
-                                          ? '$name ($code)'
-                                          : code;
-                                      return DropdownMenuItem(
+                                items: () {
+                                  final items = <DropdownMenuItem<String>>[];
+                                  final seen = <String>{};
+                                  for (final e in _passingRtos) {
+                                    String code = '';
+                                    String name = '';
+                                    if (e is Map) {
+                                      code = e['code']?.toString() ?? '';
+                                      name = e['name']?.toString() ?? '';
+                                    } else {
+                                      code = e.toString();
+                                    }
+                                    code = code.trim();
+                                    if (code.isEmpty) continue;
+                                    if (!seen.add(code)) continue;
+                                    final label = name.trim().isNotEmpty
+                                        ? '$code - $name'
+                                        : code;
+                                    items.add(
+                                      DropdownMenuItem(
                                         value: code,
                                         child: Text(label),
-                                      );
-                                    })
-                                    .toList(),
+                                      ),
+                                    );
+                                  }
+                                  return items;
+                                }(),
                                 label: 'Passing RTO / पासिंग आर.टी.ओ.',
                                 onChanged: (val) {
                                   if (val != null) {
@@ -3897,30 +3916,53 @@ class _FormScreenState extends State<FormScreen> {
                                 validator: (v) =>
                                     v == null || v.isEmpty ? 'Required' : null,
                               ),
+                              if (!_loadingLookups &&
+                                  _lookupsLoaded &&
+                                  _passingRtos.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.only(bottom: 12),
+                                  child: Text(
+                                    'No Passing RTO authorized for this dealer.',
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ),
 
                               _buildFormDropdown<String>(
                                 value:
                                     _registrationRtoController.text.isNotEmpty
                                     ? _registrationRtoController.text
                                     : null,
-                                items: _rtos.map<DropdownMenuItem<String>>((e) {
-                                  String code = '';
-                                  String name = '';
-                                  if (e is Map) {
-                                    code =
-                                        e['code']?.toString() ?? e.toString();
-                                    name = e['name']?.toString() ?? '';
-                                  } else {
-                                    code = e.toString();
+                                items: () {
+                                  final items = <DropdownMenuItem<String>>[];
+                                  final seen = <String>{};
+                                  for (final e in _rtos) {
+                                    String code = '';
+                                    String name = '';
+                                    if (e is Map) {
+                                      code = e['code']?.toString() ?? '';
+                                      name = e['name']?.toString() ?? '';
+                                    } else {
+                                      code = e.toString();
+                                    }
+                                    code = code.trim();
+                                    if (code.isEmpty) continue;
+                                    if (!seen.add(code)) continue;
+                                    final label = name.trim().isNotEmpty
+                                        ? '$code - $name'
+                                        : code;
+                                    items.add(
+                                      DropdownMenuItem(
+                                        value: code,
+                                        child: Text(label),
+                                      ),
+                                    );
                                   }
-                                  final label = name.trim().isNotEmpty
-                                      ? '$name ($code)'
-                                      : code;
-                                  return DropdownMenuItem(
-                                    value: code,
-                                    child: Text(label),
-                                  );
-                                }).toList(),
+                                  return items;
+                                }(),
                                 label: 'Registration RTO / पंजीकरण आर.टी.ओ.',
                                 onChanged: (val) {
                                   if (val != null) {

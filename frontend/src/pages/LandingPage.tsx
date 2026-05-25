@@ -464,6 +464,9 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
     data: passingRtos = [],
     isLoading: isPassingRtosLoading,
     isFetching: isPassingRtosFetching,
+    isError: isPassingRtosError,
+    error: passingRtosError,
+    refetch: refetchPassingRtos,
   } = useQuery({
     queryKey: ["public-passing-rtos", dealerStateCode],
     queryFn: async () => {
@@ -472,7 +475,8 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
       });
       return res.data;
     },
-    enabled: isDealerRegistration && Boolean(dealerStateCode)
+    enabled: isDealerRegistration && Boolean(dealerStateCode),
+    retry: 1,
   });
   const sortedPassingRtos = useMemo(() => {
     const list = Array.isArray(passingRtos) ? [...passingRtos] : [];
@@ -1797,6 +1801,32 @@ a{text-decoration:none;color:inherit;}
                         <div className="geo-err">Select a state to load Passing RTOs.</div>
                       ) : isPassingRtosLoading || isPassingRtosFetching ? (
                         <div className="geo-pill">Loading Passing RTOs…</div>
+                      ) : isPassingRtosError ? (
+                        <div className="geo-err">
+                          Failed to load Passing RTOs.{" "}
+                          <button
+                            type="button"
+                            onClick={() => refetchPassingRtos()}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              padding: 0,
+                              color: "var(--red)",
+                              textDecoration: "underline",
+                              cursor: "pointer",
+                              fontWeight: 800,
+                            }}
+                          >
+                            Retry
+                          </button>
+                          {passingRtosError
+                            ? (
+                                <div style={{ marginTop: 6, opacity: 0.85 }}>
+                                  {String((passingRtosError as any)?.message || passingRtosError)}
+                                </div>
+                              )
+                            : null}
+                        </div>
                       ) : sortedPassingRtos.length === 0 ? (
                         <div className="geo-err">No Passing RTOs found for the selected state.</div>
                       ) : null}
@@ -2192,7 +2222,12 @@ a{text-decoration:none;color:inherit;}
 
               <div className="f-grp">
                 <label>{isDealerRegistration ? "Notes / Message" : "Message"}</label>
-                <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Tell us about your requirements..." required />
+                <textarea
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Tell us about your requirements..."
+                  required={!isDealerRegistration}
+                />
               </div>
 
               {submit.isError ? <div style={{ color: "var(--red)", marginBottom: 10, fontSize: 13 }}>Failed to submit. Try again.</div> : null}

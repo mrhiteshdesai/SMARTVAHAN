@@ -12,9 +12,9 @@ export class RtosService {
 
   async findAll(stateCode?: string): Promise<RTO[]> {
     if (stateCode) {
-        return this.prisma.rTO.findMany({ where: { stateCode } });
+        return this.prisma.rTO.findMany({ where: { stateCode }, orderBy: { name: 'asc' } });
     }
-    return this.prisma.rTO.findMany();
+    return this.prisma.rTO.findMany({ orderBy: { name: 'asc' } });
   }
 
   async findOne(code: string): Promise<RTO | null> {

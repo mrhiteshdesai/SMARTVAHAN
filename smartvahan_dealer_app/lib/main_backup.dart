@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -268,7 +269,7 @@ class _SplashScreenState extends State<SplashScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
-                Icons.directions_car_filled,
+                LucideIcons.car,
                 color: Colors.white,
                 size: 64,
               ),
@@ -392,7 +393,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(
-                    Icons.directions_car_filled,
+                    LucideIcons.car,
                     color: Colors.white,
                     size: 56,
                   ),
@@ -573,7 +574,7 @@ class HomeScreen extends StatelessWidget {
         title: const Text('SMARTVAHAN'),
         centerTitle: true,
         actions: [
-          IconButton(icon: const Icon(Icons.home_outlined), onPressed: () {}),
+          IconButton(icon: const Icon(LucideIcons.house), onPressed: () {}),
         ],
       ),
       drawer: Drawer(
@@ -603,21 +604,21 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.qr_code_scanner),
+              leading: const Icon(LucideIcons.scan_qr_code),
               title: const Text('Scan QR'),
               onTap: () {
                 Navigator.of(context).pushNamed('/scan');
               },
             ),
             ListTile(
-              leading: const Icon(Icons.history),
+              leading: const Icon(LucideIcons.history),
               title: const Text('History'),
               onTap: () {
                 Navigator.of(context).pushNamed('/history');
               },
             ),
             ListTile(
-              leading: const Icon(Icons.logout),
+              leading: const Icon(LucideIcons.log_out),
               title: const Text('Logout'),
               onTap: () async {
                 await ApiSession.clearStorage();
@@ -693,7 +694,7 @@ class HomeScreen extends StatelessWidget {
                             borderRadius: BorderRadius.circular(24),
                           ),
                         ),
-                        icon: const Icon(Icons.qr_code_scanner),
+                        icon: const Icon(LucideIcons.scan_qr_code),
                         label: const Text(
                           'Scan QR',
                           style: TextStyle(fontSize: 16),
@@ -802,7 +803,7 @@ class _ScanScreenState extends State<ScanScreen> {
           foregroundColor: Colors.white,
           title: const Text('Scan QR'),
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
+            icon: const Icon(LucideIcons.arrow_left),
             onPressed: () {
               Navigator.of(context).pushNamedAndRemoveUntil(
                 '/home',
@@ -1414,7 +1415,7 @@ class _FormScreenState extends State<FormScreen> {
           foregroundColor: Colors.white,
           title: const Text('Fitment Form'),
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
+            icon: const Icon(LucideIcons.arrow_left),
             onPressed: () async {
               await LookupService.clearActiveSession();
               if (!mounted) return;
@@ -1874,12 +1875,12 @@ class _FormScreenState extends State<FormScreen> {
                                     labelText: 'Location (optional)',
                                     suffixIcon: _locationError != null
                                         ? const Icon(
-                                            Icons.location_off,
+                                            LucideIcons.map_pin_off,
                                             size: 18,
                                             color: Colors.redAccent,
                                           )
                                         : const Icon(
-                                            Icons.my_location,
+                                            LucideIcons.locate_fixed,
                                             size: 18,
                                             color: Color(0xFF12314D),
                                           ),
@@ -2050,7 +2051,7 @@ class _CertificateSuccessScreenState extends State<CertificateSuccessScreen> {
           foregroundColor: Colors.white,
           title: const Text('Certificate Generated'),
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
+            icon: const Icon(LucideIcons.arrow_left),
             onPressed: _goHome,
           ),
         ),
@@ -2071,7 +2072,7 @@ class _CertificateSuccessScreenState extends State<CertificateSuccessScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Icon(
-                      Icons.check_circle,
+                      LucideIcons.circle_check,
                       color: Colors.white,
                       size: 72,
                     ),
@@ -2434,7 +2435,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   controller: _searchController,
                   decoration: const InputDecoration(
                     labelText: 'Search (QR / Vehicle / OEM / Product)',
-                    prefixIcon: Icon(Icons.search),
+                    prefixIcon: Icon(LucideIcons.search),
                   ),
                 ),
                 const SizedBox(height: 8),

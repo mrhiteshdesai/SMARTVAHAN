@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException, UnauthorizedException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException, UnauthorizedException, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma.service';
 import { S3Service } from '../s3/s3.service';
@@ -902,6 +902,9 @@ export class CertificatesService {
     const systemName = data.systemName;
     const dealerId = data.dealerId || null;
     const qrCodeImageBase64 = data.qrCodeImage;
+    if (dealerId && String(locationText).trim().length === 0) {
+      throw new BadRequestException('Location is required to generate certificate');
+    }
 
     const vehicleDetails = data.vehicleDetails || {
         vehicleMake: data.vehicleMake,
@@ -946,6 +949,82 @@ export class CertificatesService {
                 const allowed = Array.isArray(dealer.passingRtoCodes) ? dealer.passingRtoCodes : [];
                 if (!allowed.includes(passingRto)) {
                     throw new BadRequestException(`Not authorized for Passing RTO: ${passingRto}`);
+                }
+            }
+
+            if (data.enforceGeofence === true) {
+                const dealerLat = dealer.latitude;
+                const dealerLng = dealer.longitude;
+                const radiusKm = dealer.radius;
+
+                if (dealerLat == null || dealerLng == null || radiusKm == null || Number(radiusKm) <= 0) {
+                    throw new BadRequestException('Dealer geofence is not configured. Please contact admin.');
+                }
+
+                let reqLat: number | null = null;
+                let reqLng: number | null = null;
+
+                const directLat = data.locationLat;
+                const directLng = data.locationLng;
+                if (typeof directLat === 'number' && isFinite(directLat)) reqLat = directLat;
+                if (typeof directLng === 'number' && isFinite(directLng)) reqLng = directLng;
+
+                if (reqLat == null || reqLng == null) {
+                    const txt = String(locationText || '');
+                    const rawPart = txt.includes('|') ? txt.split('|').slice(1).join('|').trim() : txt.trim();
+                    const latLongMatch =
+                        rawPart.match(/Lat:\s*(-?\d+(\.\d+)?)[, ]+\s*Long:\s*(-?\d+(\.\d+)?)/i) ||
+                        rawPart.match(/(-?\d+(\.\d+)?)[, ]+\s*(-?\d+(\.\d+)?)/);
+                    if (latLongMatch) {
+                        const latStr = latLongMatch[1];
+                        const lngStr = latLongMatch[3];
+                        const parsedLat = Number(latStr);
+                        const parsedLng = Number(lngStr);
+                        if (isFinite(parsedLat) && isFinite(parsedLng)) {
+                            reqLat = parsedLat;
+                            reqLng = parsedLng;
+                        }
+                    }
+                }
+
+                if (reqLat == null || reqLng == null) {
+                    throw new BadRequestException('Location coordinates are required for geofencing');
+                }
+
+                const toRad = (d: number) => (d * Math.PI) / 180;
+                const haversineKm = (
+                    lat1: number,
+                    lon1: number,
+                    lat2: number,
+                    lon2: number,
+                ) => {
+                    const R = 6371;
+                    const dLat = toRad(lat2 - lat1);
+                    const dLon = toRad(lon2 - lon1);
+                    const a =
+                        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                        Math.cos(toRad(lat1)) *
+                            Math.cos(toRad(lat2)) *
+                            Math.sin(dLon / 2) *
+                            Math.sin(dLon / 2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    return R * c;
+                };
+
+                const distanceKm = haversineKm(dealerLat, dealerLng, reqLat, reqLng);
+                if (distanceKm > Number(radiusKm)) {
+                    const allowedKm = Number(radiusKm);
+                    const roundedAllowedKm = Math.round(allowedKm * 100) / 100;
+                    const roundedDistanceKm = Math.round(distanceKm * 100) / 100;
+                    throw new HttpException(
+                        {
+                            code: 'GEOFENCE_OUTSIDE',
+                            message: `Outside allowed working radius. Allowed: ${roundedAllowedKm} KM.`,
+                            allowedKm: roundedAllowedKm,
+                            distanceKm: roundedDistanceKm,
+                        },
+                        HttpStatus.FORBIDDEN,
+                    );
                 }
             }
         } else {

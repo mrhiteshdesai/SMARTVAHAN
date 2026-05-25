@@ -1,7 +1,27 @@
 import { useState, useEffect } from "react";
-import { Save, Upload } from "lucide-react";
+import { Save, Upload, Plus, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import client from "../api/client";
+
+type MobileAppVersionStatus = "ACTIVE" | "DEPRECATED" | "BLOCKED";
+
+type MobileAppVersionEntry = {
+  platform: string;
+  versionName: string;
+  buildNumber: number;
+  status: MobileAppVersionStatus;
+  message?: string;
+  storeUrl?: string;
+};
+
+type MobileAppConfig = {
+  enabled: boolean;
+  allowIfNoVersion: boolean;
+  requireVersionHeaders: boolean;
+  defaultMessage: string;
+  defaultStoreUrl: string;
+  versions: MobileAppVersionEntry[];
+};
 
 type SettingsState = {
   // Branding
@@ -18,6 +38,8 @@ type SettingsState = {
   awsSecretKey: string;
   awsRegion: string;
   awsBucket: string;
+
+  mobileAppConfig?: MobileAppConfig;
 
   homePageContent?: {
     heroTitle?: string;
@@ -39,6 +61,15 @@ type SettingsState = {
   };
 };
 
+const DEFAULT_MOBILE_APP_CONFIG: MobileAppConfig = {
+  enabled: false,
+  allowIfNoVersion: true,
+  requireVersionHeaders: false,
+  defaultMessage: "Update required. Please update the SMARTVAHAN app to continue.",
+  defaultStoreUrl: "",
+  versions: [],
+};
+
 const DEFAULT_SETTINGS: SettingsState = {
   systemName: "SMARTVAHAN",
   systemLogo: "",
@@ -49,6 +80,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   awsSecretKey: "",
   awsRegion: "ap-south-1",
   awsBucket: "",
+  mobileAppConfig: DEFAULT_MOBILE_APP_CONFIG,
   homePageContent: {
     heroTitle: "SMARTVAHAN",
     heroSubtitle: "Centralized MIS for QR-based certification and inventory management.",
@@ -75,6 +107,34 @@ function hexToRgb(hex: string) {
   return result
     ? `${parseInt(result[1], 16)} ${parseInt(result[2], 16)} ${parseInt(result[3], 16)}`
     : "79 70 229";
+}
+
+function normalizeMobileAppConfig(raw: any): MobileAppConfig {
+  const cfg = raw && typeof raw === "object" ? raw : {};
+  const versionsRaw = Array.isArray(cfg.versions) ? cfg.versions : [];
+  const versions: MobileAppVersionEntry[] = versionsRaw
+    .map((v: any) => ({
+      platform: (v?.platform ?? "").toString().trim().toLowerCase(),
+      versionName: (v?.versionName ?? "").toString().trim(),
+      buildNumber: Number(v?.buildNumber ?? NaN),
+      status: ((v?.status ?? "ACTIVE").toString().trim().toUpperCase() as MobileAppVersionStatus) || "ACTIVE",
+      message: v?.message != null ? v.message.toString() : undefined,
+      storeUrl: v?.storeUrl != null ? v.storeUrl.toString() : undefined,
+    }))
+    .filter((v) => v.platform && v.versionName && Number.isFinite(v.buildNumber))
+    .map((v) => ({
+      ...v,
+      status: v.status === "ACTIVE" || v.status === "DEPRECATED" || v.status === "BLOCKED" ? v.status : "ACTIVE",
+    }));
+
+  return {
+    enabled: Boolean(cfg.enabled ?? DEFAULT_MOBILE_APP_CONFIG.enabled),
+    allowIfNoVersion: Boolean(cfg.allowIfNoVersion ?? DEFAULT_MOBILE_APP_CONFIG.allowIfNoVersion),
+    requireVersionHeaders: Boolean(cfg.requireVersionHeaders ?? DEFAULT_MOBILE_APP_CONFIG.requireVersionHeaders),
+    defaultMessage: (cfg.defaultMessage ?? DEFAULT_MOBILE_APP_CONFIG.defaultMessage).toString(),
+    defaultStoreUrl: (cfg.defaultStoreUrl ?? DEFAULT_MOBILE_APP_CONFIG.defaultStoreUrl).toString(),
+    versions,
+  };
 }
 
 export default function SettingsPage() {
@@ -104,8 +164,14 @@ export default function SettingsPage() {
   // Sync state when data loads
   useEffect(() => {
     if (remoteSettings) {
-      setSettings(prev => ({ ...prev, ...remoteSettings }));
-      applyVisuals(remoteSettings);
+      const normalizedMobile = normalizeMobileAppConfig((remoteSettings as any).mobileAppConfig);
+      const merged = {
+        ...DEFAULT_SETTINGS,
+        ...remoteSettings,
+        mobileAppConfig: normalizedMobile,
+      } as SettingsState;
+      setSettings(merged);
+      applyVisuals(merged);
       localStorage.setItem("sv_settings", JSON.stringify(remoteSettings));
     } else {
         // Fallback to local storage if API fails or first load
@@ -113,8 +179,10 @@ export default function SettingsPage() {
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
-                setSettings({ ...DEFAULT_SETTINGS, ...parsed });
-                applyVisuals(parsed);
+                const normalizedMobile = normalizeMobileAppConfig(parsed.mobileAppConfig);
+                const merged = { ...DEFAULT_SETTINGS, ...parsed, mobileAppConfig: normalizedMobile } as SettingsState;
+                setSettings(merged);
+                applyVisuals(merged);
             } catch (e) { console.error(e); }
         }
     }
@@ -182,6 +250,39 @@ export default function SettingsPage() {
 
   const saveSettings = () => {
     updateSettings.mutate(settings);
+  };
+
+  const mobile = settings.mobileAppConfig ?? DEFAULT_MOBILE_APP_CONFIG;
+
+  const updateMobile = (patch: Partial<MobileAppConfig>) => {
+    setSettings((prev) => ({
+      ...prev,
+      mobileAppConfig: {
+        ...(prev.mobileAppConfig ?? DEFAULT_MOBILE_APP_CONFIG),
+        ...patch,
+      },
+    }));
+  };
+
+  const updateMobileVersion = (index: number, patch: Partial<MobileAppVersionEntry>) => {
+    const next = mobile.versions.map((v, i) => (i === index ? { ...v, ...patch } : v));
+    updateMobile({ versions: next });
+  };
+
+  const addMobileVersion = () => {
+    const next: MobileAppVersionEntry = {
+      platform: "android",
+      versionName: "1.0",
+      buildNumber: 100,
+      status: "ACTIVE",
+      message: "",
+      storeUrl: "",
+    };
+    updateMobile({ versions: [...mobile.versions, next] });
+  };
+
+  const removeMobileVersion = (index: number) => {
+    updateMobile({ versions: mobile.versions.filter((_, i) => i !== index) });
   };
 
   const tabs = [
@@ -592,11 +693,186 @@ export default function SettingsPage() {
           )}
 
           {activeTab === "mobile" && (
-            <div className="max-w-xl space-y-6">
+            <div className="max-w-3xl space-y-6">
               <div>
-                <h3 className="text-lg font-semibold mb-4">Mobile App Configuration</h3>
-                <div className="p-8 border-2 border-dashed rounded-lg text-center text-gray-500">
-                  <p>Mobile App Configuration settings will be available in a future update.</p>
+                <h3 className="text-lg font-semibold mb-1">Mobile App Configuration</h3>
+                <p className="text-sm text-gray-500">
+                  Controls which mobile app versions are allowed to login and generate certificates.
+                </p>
+              </div>
+
+              <div className="rounded-lg border p-4 bg-white space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-700">Enforcement</div>
+                    <div className="text-xs text-gray-500">
+                      Applies only to requests that look like mobile clients (Flutter/Dart user-agent or app headers).
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={mobile.enabled}
+                      onChange={(e) => updateMobile({ enabled: e.target.checked })}
+                    />
+                    Enabled
+                  </label>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={mobile.allowIfNoVersion}
+                      onChange={(e) => updateMobile({ allowIfNoVersion: e.target.checked })}
+                    />
+                    <span>
+                      <div className="font-medium">Allow if no version</div>
+                      <div className="text-xs text-gray-500">
+                        Keeps older apps working until you decide to enforce version headers.
+                      </div>
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={mobile.requireVersionHeaders}
+                      onChange={(e) => updateMobile({ requireVersionHeaders: e.target.checked })}
+                    />
+                    <span>
+                      <div className="font-medium">Require version headers</div>
+                      <div className="text-xs text-gray-500">
+                        Blocks mobile requests that do not send platform/build headers.
+                      </div>
+                    </span>
+                  </label>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Default update message</label>
+                    <input
+                      value={mobile.defaultMessage}
+                      onChange={(e) => updateMobile({ defaultMessage: e.target.value })}
+                      className="w-full border rounded px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Default store URL</label>
+                    <input
+                      value={mobile.defaultStoreUrl}
+                      onChange={(e) => updateMobile({ defaultStoreUrl: e.target.value })}
+                      className="w-full border rounded px-3 py-2"
+                      placeholder="https://play.google.com/store/apps/details?id=..."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-white overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-700">Allowed Versions</div>
+                    <div className="text-xs text-gray-500">
+                      Only versions with status ACTIVE are allowed.
+                    </div>
+                  </div>
+                  <button
+                    onClick={addMobileVersion}
+                    className="flex items-center gap-2 text-sm px-3 py-2 rounded border bg-white hover:bg-gray-50"
+                    type="button"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Version
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-gray-700 bg-gray-50 border-b">
+                      <tr>
+                        <th className="text-left px-4 py-2">Platform</th>
+                        <th className="text-left px-4 py-2">Version</th>
+                        <th className="text-left px-4 py-2">Build</th>
+                        <th className="text-left px-4 py-2">Status</th>
+                        <th className="text-left px-4 py-2">Store URL</th>
+                        <th className="text-right px-4 py-2">Remove</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mobile.versions.length === 0 ? (
+                        <tr>
+                          <td className="px-4 py-4 text-gray-500" colSpan={6}>
+                            No versions configured. If enabled, enforcement will not block unless “Require version headers” is ON.
+                          </td>
+                        </tr>
+                      ) : (
+                        mobile.versions.map((v, idx) => (
+                          <tr key={`${v.platform}-${v.versionName}-${v.buildNumber}-${idx}`} className="border-b">
+                            <td className="px-4 py-2">
+                              <select
+                                value={v.platform}
+                                onChange={(e) => updateMobileVersion(idx, { platform: e.target.value })}
+                                className="border rounded px-2 py-1 w-36"
+                              >
+                                <option value="android">android</option>
+                                <option value="ios">ios</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-2">
+                              <input
+                                value={v.versionName}
+                                onChange={(e) => updateMobileVersion(idx, { versionName: e.target.value })}
+                                className="border rounded px-2 py-1 w-28"
+                              />
+                            </td>
+                            <td className="px-4 py-2">
+                              <input
+                                type="number"
+                                value={v.buildNumber}
+                                onChange={(e) =>
+                                  updateMobileVersion(idx, { buildNumber: Number(e.target.value || 0) })
+                                }
+                                className="border rounded px-2 py-1 w-24"
+                              />
+                            </td>
+                            <td className="px-4 py-2">
+                              <select
+                                value={v.status}
+                                onChange={(e) =>
+                                  updateMobileVersion(idx, { status: e.target.value as MobileAppVersionStatus })
+                                }
+                                className="border rounded px-2 py-1 w-36"
+                              >
+                                <option value="ACTIVE">ACTIVE</option>
+                                <option value="DEPRECATED">DEPRECATED</option>
+                                <option value="BLOCKED">BLOCKED</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-2">
+                              <input
+                                value={v.storeUrl || ""}
+                                onChange={(e) => updateMobileVersion(idx, { storeUrl: e.target.value })}
+                                className="border rounded px-2 py-1 w-[360px]"
+                                placeholder={mobile.defaultStoreUrl || "https://..."}
+                              />
+                            </td>
+                            <td className="px-4 py-2 text-right">
+                              <button
+                                type="button"
+                                onClick={() => removeMobileVersion(idx)}
+                                className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

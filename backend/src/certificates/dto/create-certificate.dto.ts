@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsObject } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsObject, IsNumber, IsBoolean } from 'class-validator';
 
 export class CreateCertificateDto {
   @IsString()
@@ -20,6 +20,18 @@ export class CreateCertificateDto {
   @IsString()
   @IsOptional()
   locationText?: string;
+
+  @IsNumber()
+  @IsOptional()
+  locationLat?: number;
+
+  @IsNumber()
+  @IsOptional()
+  locationLng?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  enforceGeofence?: boolean;
 
   @IsString()
   @IsOptional()

@@ -87,10 +87,65 @@ export class StatesService {
   }
 
   async update(code: string, data: any): Promise<State> {
-    return this.prisma.state.update({
-      where: { code },
-      data,
-    });
+    const {
+      username,
+      password,
+      authorizedBrands,
+      rtosCount,
+      _count,
+      createdAt,
+      updatedAt,
+      ...rest
+    } = data || {};
+
+    const stateUpdateData: Partial<State> = {};
+    if (typeof rest?.name === 'string') stateUpdateData.name = rest.name;
+    if (typeof rest?.showOnHomepage === 'boolean') stateUpdateData.showOnHomepage = rest.showOnHomepage;
+
+    const nextPassword = typeof password === 'string' ? password.trim() : '';
+    const shouldUpdatePassword = Boolean(username) && Boolean(nextPassword);
+
+    try {
+      if (!Object.keys(stateUpdateData).length && !shouldUpdatePassword) {
+        const state = await this.prisma.state.findUnique({ where: { code } });
+        if (!state) throw new BadRequestException('State not found');
+        return state;
+      }
+
+      return await this.prisma.$transaction(async (tx) => {
+        const updatedState = Object.keys(stateUpdateData).length
+          ? await tx.state.update({ where: { code }, data: stateUpdateData })
+          : await tx.state.findUniqueOrThrow({ where: { code } });
+
+        if (shouldUpdatePassword) {
+          const hashedPassword = await bcrypt.hash(nextPassword, 10);
+          const existing = await tx.user.findFirst({
+            where: { phone: String(username), role: UserRole.STATE_ADMIN, stateCode: code },
+          });
+          if (existing) {
+            await tx.user.update({ where: { id: existing.id }, data: { password: hashedPassword } });
+          } else {
+            await tx.user.create({
+              data: {
+                name: `${updatedState.name} Admin`,
+                phone: String(username),
+                password: hashedPassword,
+                role: UserRole.STATE_ADMIN,
+                stateCode: code,
+                status: 'ACTIVE',
+              },
+            });
+          }
+        }
+
+        return updatedState;
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2025') {
+        throw new BadRequestException('State not found');
+      }
+      throw e;
+    }
   }
 
   async remove(code: string): Promise<State> {

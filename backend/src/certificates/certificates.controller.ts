@@ -5,10 +5,14 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Public } from '../auth/public.decorator';
+import { SettingsService } from '../settings/settings.service';
 
 @Controller('api/certificates')
 export class CertificatesController {
-  constructor(private readonly certificatesService: CertificatesService) {}
+  constructor(
+    private readonly certificatesService: CertificatesService,
+    private readonly settingsService: SettingsService,
+  ) {}
 
   @Post('validate-qr')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -28,9 +32,13 @@ export class CertificatesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'ADMIN', 'DEALER_USER')
   async createCertificate(@Body() body: CreateCertificateDto, @Req() req: any) {
-    // Inject dealerId if the user is a dealer
-    if (req.user && (req.user.role === 'DEALER' || req.user.role === 'DEALER_USER')) {
+    await this.settingsService.enforceMobileAppVersion(req?.headers || {}, 'CERTIFICATE');
+    const isDealerUser = Boolean(
+      req.user && (req.user.role === 'DEALER' || req.user.role === 'DEALER_USER'),
+    );
+    if (isDealerUser) {
       (body as any).dealerId = req.user.userId;
+      (body as any).enforceGeofence = true;
     }
     const isGhostMode = req.headers['x-ghost-mode'] === 'true';
     if (isGhostMode && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'GHOST_ADMIN') {

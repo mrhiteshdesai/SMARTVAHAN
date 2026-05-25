@@ -307,6 +307,7 @@ model SystemSettings {
   awsRegion       String?
   awsBucket       String?
   homePageContent Json?
+  mobileAppConfig Json?
   updatedAt       DateTime @updatedAt
 
   @@map("system_settings")

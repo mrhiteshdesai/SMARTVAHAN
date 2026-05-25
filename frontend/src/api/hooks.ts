@@ -76,6 +76,18 @@ export function useRTOs(stateCode?: string) {
   });
 }
 
+export function useAuthorizedPassingRTOs(stateCode?: string) {
+  return useQuery({
+    queryKey: ["rtos-authorized", stateCode],
+    queryFn: async () => {
+      const params = stateCode ? { stateCode } : {};
+      const res = await api.get<RTO[]>("/rtos/authorized", { params });
+      return res.data;
+    },
+    enabled: true,
+  });
+}
+
 export function useCreateRTO() {
   const queryClient = useQueryClient();
   return useMutation({

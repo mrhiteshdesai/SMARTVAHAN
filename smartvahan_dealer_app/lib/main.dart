@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
-import 'dart:io';
 
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -13,10 +13,144 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:image/image.dart' as img;
 import 'package:share_plus/share_plus.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
+import 'platform/pdf_opener.dart';
+
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
+class AppMeta {
+  static String platform = '';
+  static String versionName = '';
+  static String buildNumber = '';
+
+  static Future<void> init() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      versionName = info.version;
+      buildNumber = info.buildNumber;
+    } catch (_) {
+      versionName = '';
+      buildNumber = '';
+    }
+    if (kIsWeb) {
+      platform = 'web';
+      return;
+    }
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        platform = 'android';
+        break;
+      case TargetPlatform.iOS:
+        platform = 'ios';
+        break;
+      case TargetPlatform.windows:
+        platform = 'windows';
+        break;
+      case TargetPlatform.macOS:
+        platform = 'macos';
+        break;
+      case TargetPlatform.linux:
+        platform = 'linux';
+        break;
+      case TargetPlatform.fuchsia:
+        platform = 'fuchsia';
+        break;
+    }
+  }
+}
+
+bool _updateDialogOpen = false;
+
+Future<void> showUpdateRequiredDialog({
+  required String message,
+  String? storeUrl,
+}) async {
+  if (_updateDialogOpen) return;
+  final ctx =
+      rootNavigatorKey.currentState?.overlay?.context ??
+      rootNavigatorKey.currentContext;
+  if (ctx == null) return;
+  _updateDialogOpen = true;
+  try {
+    await showDialog<void>(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Update Required'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final url = (storeUrl ?? '').trim();
+              if (url.isNotEmpty) {
+                await launchUrl(
+                  Uri.parse(url),
+                  mode: LaunchMode.externalApplication,
+                );
+              }
+            },
+            child: const Text('Update App'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  } finally {
+    _updateDialogOpen = false;
+  }
+}
+
+bool _geofenceDialogOpen = false;
+
+Future<void> showGeofenceBlockedDialog({
+  required String message,
+  double? allowedKm,
+  double? distanceKm,
+}) async {
+  if (_geofenceDialogOpen) return;
+  final ctx =
+      rootNavigatorKey.currentState?.overlay?.context ??
+      rootNavigatorKey.currentContext;
+  if (ctx == null) return;
+  _geofenceDialogOpen = true;
+  String details = message;
+  final a = allowedKm;
+  final d = distanceKm;
+  if (a != null && d != null) {
+    details =
+        '$message\n\nDistance: ${d.toStringAsFixed(2)} KM\nAllowed: ${a.toStringAsFixed(2)} KM';
+  }
+  try {
+    await showDialog<void>(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Outside Allowed Area'),
+        content: Text(details),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Geolocator.openLocationSettings();
+            },
+            child: const Text('Location Settings'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  } finally {
+    _geofenceDialogOpen = false;
+  }
+}
 
 class OutwardCurveClipper extends CustomClipper<Path> {
   @override
@@ -38,22 +172,140 @@ class OutwardCurveClipper extends CustomClipper<Path> {
   bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AppMeta.init();
   runApp(const SmartvahanApp());
 }
 
 class LookupService {
   static List<dynamic>? vehicleCategories;
   static final Map<String, List<dynamic>> _rtosCache = {};
+  static final Map<String, List<dynamic>> _passingRtosCache = {};
+  static const _keyRtosPrefix = 'cache_rtos_';
+  static const _keyRtosMetaPrefix = 'cache_rtos_meta_';
+  static const _keyPassingRtosPrefix = 'cache_passing_rtos_';
+  static const _keyPassingRtosMetaPrefix = 'cache_passing_rtos_meta_';
+  static const _cacheTtlMs = 24 * 60 * 60 * 1000;
+
+  static bool _isExpired(int cachedAtMs) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return (now - cachedAtMs) > _cacheTtlMs;
+  }
+
+  static Future<void> hydrateLookups(
+    String? stateCode, {
+    String? dealerVersion,
+  }) async {
+    if (stateCode == null || stateCode.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+
+    final rtosMetaStr = prefs.getString('$_keyRtosMetaPrefix$stateCode');
+    final rtosStr = prefs.getString('$_keyRtosPrefix$stateCode');
+    if (_rtosCache[stateCode] == null &&
+        rtosMetaStr != null &&
+        rtosStr != null) {
+      try {
+        final meta = jsonDecode(rtosMetaStr) as Map<String, dynamic>;
+        final cachedAt = (meta['cachedAt'] as num?)?.toInt() ?? 0;
+        if (cachedAt > 0 && !_isExpired(cachedAt)) {
+          final decoded = jsonDecode(rtosStr);
+          if (decoded is List) {
+            _rtosCache[stateCode] = List<dynamic>.from(decoded);
+          }
+        } else {
+          await prefs.remove('$_keyRtosMetaPrefix$stateCode');
+          await prefs.remove('$_keyRtosPrefix$stateCode');
+        }
+      } catch (_) {
+        await prefs.remove('$_keyRtosMetaPrefix$stateCode');
+        await prefs.remove('$_keyRtosPrefix$stateCode');
+      }
+    }
+
+    final passingMetaStr = prefs.getString(
+      '$_keyPassingRtosMetaPrefix$stateCode',
+    );
+    final passingStr = prefs.getString('$_keyPassingRtosPrefix$stateCode');
+    if (_passingRtosCache[stateCode] == null &&
+        passingMetaStr != null &&
+        passingStr != null) {
+      try {
+        final meta = jsonDecode(passingMetaStr) as Map<String, dynamic>;
+        final cachedAt = (meta['cachedAt'] as num?)?.toInt() ?? 0;
+        final cachedDealerVersion = meta['dealerVersion']?.toString();
+        final validDealerVersion =
+            dealerVersion == null ||
+            dealerVersion.isEmpty ||
+            cachedDealerVersion == dealerVersion;
+        if (cachedAt > 0 && !_isExpired(cachedAt) && validDealerVersion) {
+          final decoded = jsonDecode(passingStr);
+          if (decoded is List) {
+            _passingRtosCache[stateCode] = List<dynamic>.from(decoded);
+          }
+        } else {
+          await prefs.remove('$_keyPassingRtosMetaPrefix$stateCode');
+          await prefs.remove('$_keyPassingRtosPrefix$stateCode');
+        }
+      } catch (_) {
+        await prefs.remove('$_keyPassingRtosMetaPrefix$stateCode');
+        await prefs.remove('$_keyPassingRtosPrefix$stateCode');
+      }
+    }
+  }
 
   static List<dynamic>? getRtos(String? stateCode) {
     if (stateCode == null || stateCode.isEmpty) return [];
     return _rtosCache[stateCode];
   }
 
-  static void cacheRtos(String? stateCode, List<dynamic> data) {
+  static Future<void> cacheRtos(String? stateCode, List<dynamic> data) async {
     if (stateCode != null && stateCode.isNotEmpty) {
       _rtosCache[stateCode] = data;
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await prefs.setString('$_keyRtosPrefix$stateCode', jsonEncode(data));
+      await prefs.setString(
+        '$_keyRtosMetaPrefix$stateCode',
+        jsonEncode({'cachedAt': now}),
+      );
+    }
+  }
+
+  static List<dynamic>? getPassingRtos(String? stateCode) {
+    if (stateCode == null || stateCode.isEmpty) return [];
+    return _passingRtosCache[stateCode];
+  }
+
+  static Future<void> cachePassingRtos(
+    String? stateCode,
+    List<dynamic> data, {
+    String? dealerVersion,
+  }) async {
+    if (stateCode != null && stateCode.isNotEmpty) {
+      _passingRtosCache[stateCode] = data;
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await prefs.setString(
+        '$_keyPassingRtosPrefix$stateCode',
+        jsonEncode(data),
+      );
+      await prefs.setString(
+        '$_keyPassingRtosMetaPrefix$stateCode',
+        jsonEncode({'cachedAt': now, 'dealerVersion': dealerVersion}),
+      );
+    }
+  }
+
+  static Future<void> invalidatePassingRtosCache() async {
+    _passingRtosCache.clear();
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys();
+    for (final k in keys) {
+      if (k.startsWith(_keyPassingRtosPrefix) ||
+          k.startsWith(_keyPassingRtosMetaPrefix)) {
+        await prefs.remove(k);
+      }
     }
   }
 
@@ -174,7 +426,58 @@ class ApiClient {
           if (t != null && t.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $t';
           }
+          if (AppMeta.platform.isNotEmpty) {
+            options.headers['X-App-Platform'] = AppMeta.platform;
+          }
+          if (AppMeta.versionName.isNotEmpty) {
+            options.headers['X-App-Version'] = AppMeta.versionName;
+          }
+          if (AppMeta.buildNumber.isNotEmpty) {
+            options.headers['X-App-Build'] = AppMeta.buildNumber;
+          }
           handler.next(options);
+        },
+        onError: (e, handler) async {
+          final resp = e.response;
+          if (resp != null && resp.statusCode == 426) {
+            String message =
+                'Update required. Please update the SMARTVAHAN app to continue.';
+            String? storeUrl;
+            final data = resp.data;
+            if (data is Map) {
+              if (data['message'] != null) {
+                message = data['message'].toString();
+              }
+              if (data['storeUrl'] != null) {
+                storeUrl = data['storeUrl']?.toString();
+              }
+            }
+            await showUpdateRequiredDialog(
+              message: message,
+              storeUrl: storeUrl,
+            );
+          } else if (resp != null && resp.statusCode == 403) {
+            final data = resp.data;
+            if (data is Map && data['code']?.toString() == 'GEOFENCE_OUTSIDE') {
+              final msg =
+                  data['message']?.toString() ??
+                  'Outside allowed working radius.';
+              final allowed = data['allowedKm'];
+              final distance = data['distanceKm'];
+              final allowedKm = allowed is num
+                  ? allowed.toDouble()
+                  : double.tryParse('$allowed');
+              final distanceKm = distance is num
+                  ? distance.toDouble()
+                  : double.tryParse('$distance');
+              await showGeofenceBlockedDialog(
+                message: msg,
+                allowedKm: allowedKm,
+                distanceKm: distanceKm,
+              );
+            }
+          }
+          handler.next(e);
         },
       ),
     );
@@ -199,6 +502,22 @@ class DealerBottomNav extends StatelessWidget {
 
   const DealerBottomNav({super.key, required this.currentIndex});
 
+  Widget _navIcon(IconData icon, bool selected) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: selected
+            ? const Color(0xFF12314D).withOpacity(0.12)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(
+        icon,
+        color: selected ? const Color(0xFF12314D) : const Color(0xFF91A8BD),
+      ),
+    );
+  }
+
   void _go(BuildContext context, int idx) {
     final routes = <int, String>{
       0: '/home',
@@ -219,11 +538,23 @@ class DealerBottomNav extends StatelessWidget {
       selectedItemColor: const Color(0xFF12314D),
       unselectedItemColor: const Color(0xFF91A8BD),
       onTap: (i) => _go(context, i),
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.history_outlined), label: 'History'),
-        BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
-        BottomNavigationBarItem(icon: Icon(Icons.support_agent_outlined), label: 'Support'),
+      items: [
+        BottomNavigationBarItem(
+          icon: _navIcon(LucideIcons.house, currentIndex == 0),
+          label: 'Home',
+        ),
+        BottomNavigationBarItem(
+          icon: _navIcon(LucideIcons.history, currentIndex == 1),
+          label: 'My Certificates',
+        ),
+        BottomNavigationBarItem(
+          icon: _navIcon(LucideIcons.user, currentIndex == 2),
+          label: 'Profile',
+        ),
+        BottomNavigationBarItem(
+          icon: _navIcon(LucideIcons.headset, currentIndex == 3),
+          label: 'Support',
+        ),
       ],
     );
   }
@@ -246,6 +577,7 @@ class SmartvahanApp extends StatelessWidget {
 
     return MaterialApp(
       title: 'SMARTVAHAN Dealer',
+      navigatorKey: rootNavigatorKey,
       theme: baseTheme.copyWith(scaffoldBackgroundColor: Colors.white),
       debugShowCheckedModeBanner: false,
       initialRoute: '/splash',
@@ -353,7 +685,7 @@ class _SplashScreenState extends State<SplashScreen> {
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) {
                               return const Icon(
-                                Icons.directions_car_filled,
+                                LucideIcons.car,
                                 color: Colors.white,
                                 size: 120,
                               );
@@ -426,7 +758,7 @@ class _SplashScreenState extends State<SplashScreen> {
                             padding: EdgeInsets.zero,
                           ),
                           child: const Text(
-                            'LOGIN',
+                            'Get Started!',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -439,7 +771,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     GestureDetector(
                       onTap: () async {
                         final Uri url = Uri.parse(
-                          'https://smartvahan.net/register',
+                          'https://smartvahan.net/dealer-registration',
                         );
                         if (await canLaunchUrl(url)) {
                           await launchUrl(
@@ -609,7 +941,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 fit: BoxFit.contain,
                                 errorBuilder: (context, error, stackTrace) {
                                   return const Icon(
-                                    Icons.directions_car_filled_outlined,
+                                    LucideIcons.car,
                                     color: Colors.white,
                                     size: 120,
                                   );
@@ -667,9 +999,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       horizontal: 16,
                                       vertical: 16,
                                     ),
-                                    prefixIcon: Icon(
-                                      Icons.phone_android_outlined,
-                                    ),
+                                    prefixIcon: Icon(LucideIcons.smartphone),
                                   ),
                                 ),
                               ),
@@ -697,7 +1027,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       horizontal: 16,
                                       vertical: 16,
                                     ),
-                                    prefixIcon: Icon(Icons.lock_outline),
+                                    prefixIcon: Icon(LucideIcons.lock),
                                   ),
                                 ),
                               ),
@@ -729,7 +1059,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 elevation: 4,
                                 padding: EdgeInsets.zero,
                               ),
-                              icon: const Icon(Icons.login),
+                              icon: const Icon(LucideIcons.log_in),
                               label: Text(
                                 _loading ? 'SIGNING IN...' : 'LOGIN',
                                 style: const TextStyle(
@@ -792,10 +1122,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _refreshProfile() async {
     try {
+      final prevDealerVersion = ApiSession.user?['dealerUpdatedAt']?.toString();
       final res = await api.get('/auth/me');
       if (res.data != null && res.data is Map) {
         ApiSession.user = res.data as Map<String, dynamic>;
         await ApiSession.saveToStorage();
+        final nextDealerVersion = ApiSession.user?['dealerUpdatedAt']
+            ?.toString();
+        if (prevDealerVersion != null &&
+            prevDealerVersion.isNotEmpty &&
+            nextDealerVersion != null &&
+            nextDealerVersion.isNotEmpty &&
+            prevDealerVersion != nextDealerVersion) {
+          await LookupService.invalidatePassingRtosCache();
+        }
         if (mounted) setState(() {});
       }
     } catch (e) {
@@ -831,7 +1171,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('SMARTVAHAN'),
         centerTitle: true,
         actions: [
-          IconButton(icon: const Icon(Icons.home_outlined), onPressed: () {}),
+          IconButton(icon: const Icon(LucideIcons.house), onPressed: () {}),
         ],
       ),
       drawer: Drawer(
@@ -852,7 +1192,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) {
                       return const Icon(
-                        Icons.directions_car_filled,
+                        LucideIcons.car,
                         color: Colors.white,
                         size: 120,
                       );
@@ -884,7 +1224,37 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.logout_outlined),
+              leading: const Icon(LucideIcons.history),
+              title: const Text('My Certificates'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(
+                  context,
+                ).pushNamedAndRemoveUntil('/history', (route) => false);
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.user),
+              title: const Text('Profile'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(
+                  context,
+                ).pushNamedAndRemoveUntil('/profile', (route) => false);
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.headset),
+              title: const Text('Support'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(
+                  context,
+                ).pushNamedAndRemoveUntil('/support', (route) => false);
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.log_out),
               title: const Text('Logout'),
               onTap: () async {
                 await ApiSession.clearStorage();
@@ -922,11 +1292,90 @@ class _HomeContent extends StatefulWidget {
 class _HomeContentState extends State<_HomeContent> {
   Map<String, dynamic> _stats = {'CT': 0, 'C3': 0, 'C4': 0, 'CTAUTO': 0};
   bool _loading = true;
+  String? _locationLabel;
+
+  String _dealerName() {
+    final n = ApiSession.user?['name']?.toString().trim();
+    return (n == null || n.isEmpty) ? 'Dealer' : n;
+  }
+
+  String _timeGreeting() {
+    final h = DateTime.now().hour;
+    if (h >= 5 && h < 12) return 'Good Morning';
+    if (h >= 12 && h < 17) return 'Good Afternoon';
+    if (h >= 17 && h < 22) return 'Good Evening';
+    return 'Welcome';
+  }
 
   @override
   void initState() {
     super.initState();
     _fetchStats();
+    _fetchLocationLabel();
+  }
+
+  Future<void> _fetchLocationLabel() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        if (!mounted) return;
+        setState(() {
+          _locationLabel = 'Location unavailable';
+        });
+        return;
+      }
+
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.deniedForever ||
+          perm == LocationPermission.denied) {
+        if (!mounted) return;
+        setState(() {
+          _locationLabel = 'Location permission not granted';
+        });
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low,
+        timeLimit: const Duration(seconds: 6),
+      );
+
+      String label =
+          '${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
+      try {
+        final places = await placemarkFromCoordinates(
+          pos.latitude,
+          pos.longitude,
+        );
+        if (places.isNotEmpty) {
+          final p = places.first;
+          final city = (p.locality != null && p.locality!.trim().isNotEmpty)
+              ? p.locality!.trim()
+              : null;
+          final state =
+              (p.administrativeArea != null &&
+                  p.administrativeArea!.trim().isNotEmpty)
+              ? p.administrativeArea!.trim()
+              : null;
+          final parts = <String>[];
+          if (city != null) parts.add(city);
+          if (state != null) parts.add(state);
+          if (parts.isNotEmpty) label = parts.join(', ');
+        }
+      } catch (_) {}
+
+      if (!mounted) return;
+      setState(() {
+        _locationLabel = label;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _locationLabel = 'Location unavailable';
+      });
+    }
   }
 
   Future<void> _fetchStats() async {
@@ -971,10 +1420,104 @@ class _HomeContentState extends State<_HomeContent> {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 24,
+          bottom: 24,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF12314D), Color(0xFF1E2D6B)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.20),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${_timeGreeting()} ${_dealerName()}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Welcome to SMARTVAHAN — India’s Smart Reflective Tape Compliance Platform. Scan, generate & verify certificates with ease.',
+                              style: TextStyle(
+                                color: Color(0xFFE6EEF7),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          LucideIcons.badge_check,
+                          color: Color(0xFFFFD56A),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.map_pin,
+                        size: 16,
+                        color: Color(0xFFE6EEF7),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _locationLabel ?? 'Detecting location…',
+                          style: const TextStyle(
+                            color: Color(0xFFE6EEF7),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             Container(
               width: double.infinity,
               height: 180,
@@ -1004,7 +1547,7 @@ class _HomeContentState extends State<_HomeContent> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: const [
                       Icon(
-                        Icons.qr_code_scanner_rounded,
+                        LucideIcons.scan_qr_code,
                         color: Colors.white,
                         size: 72,
                       ),
@@ -1161,7 +1704,11 @@ class _HomeContentState extends State<_HomeContent> {
                 color: Colors.red,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.lock, color: Colors.white, size: 12),
+              child: const Icon(
+                LucideIcons.lock,
+                color: Colors.white,
+                size: 12,
+              ),
             ),
           ),
       ],
@@ -1176,22 +1723,30 @@ class ScanScreen extends StatefulWidget {
   State<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends State<ScanScreen> {
+class _ScanScreenState extends State<ScanScreen>
+    with SingleTickerProviderStateMixin {
   bool _handling = false;
+  bool _torchOn = false;
   final MobileScannerController _scannerController = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
     formats: const [BarcodeFormat.qrCode],
   );
+  late final AnimationController _scanAnimController;
 
   @override
   void initState() {
     super.initState();
+    _scanAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
   }
 
   @override
   void dispose() {
     _scannerController.dispose();
+    _scanAnimController.dispose();
     super.dispose();
   }
 
@@ -1211,7 +1766,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 color: Colors.red.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.close, color: Colors.red, size: 40),
+              child: const Icon(LucideIcons.x, color: Colors.red, size: 40),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -1325,6 +1880,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const scanBoxSize = 260.0;
     return WillPopScope(
       onWillPop: () async {
         Navigator.of(
@@ -1338,7 +1894,7 @@ class _ScanScreenState extends State<ScanScreen> {
           foregroundColor: Colors.white,
           title: const Text('Scan QR'),
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
+            icon: const Icon(LucideIcons.arrow_left),
             onPressed: () {
               Navigator.of(context).pushNamedAndRemoveUntil(
                 '/home',
@@ -1397,16 +1953,225 @@ class _ScanScreenState extends State<ScanScreen> {
                             },
                           ),
                           Center(
-                            child: Container(
-                              width: 260,
-                              height: 260,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.9),
-                                  width: 2,
-                                ),
+                            child: SizedBox(
+                              width: scanBoxSize,
+                              height: scanBoxSize,
+                              child: AnimatedBuilder(
+                                animation: _scanAnimController,
+                                builder: (context, _) {
+                                  final t = _scanAnimController.value;
+                                  final lineTop = t * (scanBoxSize - 4);
+                                  return Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white.withOpacity(
+                                              0.85,
+                                            ),
+                                            width: 2,
+                                          ),
+                                        ),
+                                      ),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: Stack(
+                                          children: [
+                                            Positioned(
+                                              left: 14,
+                                              right: 14,
+                                              top: lineTop,
+                                              child: Container(
+                                                height: 2.5,
+                                                decoration: BoxDecoration(
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                  gradient:
+                                                      const LinearGradient(
+                                                        colors: [
+                                                          Color(0x0000D1FF),
+                                                          Color(0xFF00D1FF),
+                                                          Color(0x0000D1FF),
+                                                        ],
+                                                      ),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: const Color(
+                                                        0xFF00D1FF,
+                                                      ).withOpacity(0.45),
+                                                      blurRadius: 14,
+                                                      spreadRadius: 1,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Positioned(
+                                        left: 0,
+                                        top: 0,
+                                        child: Container(
+                                          width: 38,
+                                          height: 38,
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                                const BorderRadius.only(
+                                                  topLeft: Radius.circular(20),
+                                                  bottomRight: Radius.circular(
+                                                    18,
+                                                  ),
+                                                ),
+                                            border: Border(
+                                              left: BorderSide(
+                                                color: const Color(
+                                                  0xFF00D1FF,
+                                                ).withOpacity(0.9),
+                                                width: 3,
+                                              ),
+                                              top: BorderSide(
+                                                color: const Color(
+                                                  0xFF00D1FF,
+                                                ).withOpacity(0.9),
+                                                width: 3,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
                               ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 16,
+                            right: 16,
+                            bottom: 16,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(
+                                      sigmaX: 14,
+                                      sigmaY: 14,
+                                    ),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.16),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.18),
+                                        ),
+                                      ),
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          onTap: () async {
+                                            try {
+                                              await _scannerController
+                                                  .toggleTorch();
+                                              if (mounted) {
+                                                setState(() {
+                                                  _torchOn = !_torchOn;
+                                                });
+                                              }
+                                            } catch (_) {}
+                                          },
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 12,
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  _torchOn
+                                                      ? LucideIcons
+                                                            .flashlight_off
+                                                      : LucideIcons.flashlight,
+                                                  color: Colors.white,
+                                                  size: 18,
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Text(
+                                                  _torchOn
+                                                      ? 'Torch ON'
+                                                      : 'Torch',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(18),
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(
+                                      sigmaX: 16,
+                                      sigmaY: 16,
+                                    ),
+                                    child: Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 12,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.14),
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.16),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: const [
+                                          Icon(
+                                            LucideIcons.sparkles,
+                                            color: Color(0xFFE6EEF7),
+                                            size: 18,
+                                          ),
+                                          SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              'Hold steady — scanner detects QR automatically. Tap torch if lighting is poor.',
+                                              style: TextStyle(
+                                                color: Color(0xFFE6EEF7),
+                                                fontSize: 12.5,
+                                                fontWeight: FontWeight.w600,
+                                                height: 1.3,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -1483,6 +2248,7 @@ class _FormScreenState extends State<FormScreen> {
   late final List<String> _years;
 
   List<dynamic> _rtos = [];
+  List<dynamic> _passingRtos = [];
   List<dynamic> _vehicleCategories = [];
   bool _loadingLookups = false;
   bool _lookupsLoaded = false;
@@ -1493,6 +2259,9 @@ class _FormScreenState extends State<FormScreen> {
   bool _isVerifying = false;
   bool _consentGiven = false;
   final _verifyScrollController = ScrollController();
+  bool _locationGateShown = false;
+  double? _locationLat;
+  double? _locationLng;
 
   final Map<String, String?> _photos = {
     'photoFrontLeft': null,
@@ -1550,7 +2319,7 @@ class _FormScreenState extends State<FormScreen> {
           if (!mounted) return;
           await _checkLostData();
           _loadLookups();
-          _autoFillLocation();
+          await _ensureLocationForCertificate(promptUser: true);
         } finally {
           if (mounted) {
             setState(() {
@@ -1560,6 +2329,153 @@ class _FormScreenState extends State<FormScreen> {
         }
       }
     });
+  }
+
+  Future<void> _showLocationGateDialog({
+    required String title,
+    required String message,
+    required bool canOpenLocationSettings,
+  }) async {
+    if (_locationGateShown) return;
+    _locationGateShown = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                if (canOpenLocationSettings) {
+                  await Geolocator.openLocationSettings();
+                } else {
+                  await Geolocator.openAppSettings();
+                }
+              },
+              child: const Text('Open Settings'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('Retry'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                Navigator.of(
+                  context,
+                ).pushNamedAndRemoveUntil('/home', (route) => false);
+              },
+              child: const Text('Back'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _locationGateShown = false;
+    }
+  }
+
+  Future<bool> _ensureLocationForCertificate({required bool promptUser}) async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _locationError = 'Location services are disabled';
+        if (mounted) setState(() {});
+        if (promptUser && mounted) {
+          await _showLocationGateDialog(
+            title: 'Location Required',
+            message:
+                'Please enable Location to generate certificates. Location is mandatory for tracking where the certificate is generated.',
+            canOpenLocationSettings: true,
+          );
+        }
+        return false;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _locationError = 'Location permission not granted';
+        if (mounted) setState(() {});
+        if (promptUser && mounted) {
+          await _showLocationGateDialog(
+            title: 'Location Permission Required',
+            message:
+                'Please allow Location permission to generate certificates. Location is mandatory for tracking where the certificate is generated.',
+            canOpenLocationSettings: false,
+          );
+        }
+        return false;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      String display =
+          '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+      try {
+        final placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          final city = (p.locality != null && p.locality!.trim().isNotEmpty)
+              ? p.locality!.trim()
+              : (p.subAdministrativeArea != null &&
+                    p.subAdministrativeArea!.trim().isNotEmpty)
+              ? p.subAdministrativeArea!.trim()
+              : null;
+          final state =
+              (p.administrativeArea != null && p.administrativeArea!.isNotEmpty)
+              ? p.administrativeArea!.trim()
+              : null;
+          final pin = (p.postalCode != null && p.postalCode!.trim().isNotEmpty)
+              ? p.postalCode!.trim()
+              : null;
+          final parts = <String>[];
+          if (city != null) parts.add(city);
+          if (state != null) parts.add(state);
+          if (pin != null) parts.add(pin);
+          if (parts.isNotEmpty) {
+            display = parts.join(', ');
+          }
+        }
+      } catch (_) {}
+
+      final raw =
+          '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+      final fullText = '$display | $raw';
+      _locationLat = position.latitude;
+      _locationLng = position.longitude;
+      if (_locationController.text != fullText) {
+        _locationController.text = fullText;
+      }
+      _locationError = null;
+      if (mounted) setState(() {});
+      return true;
+    } catch (_) {
+      _locationError = 'Failed to detect location';
+      if (mounted) setState(() {});
+      if (promptUser && mounted) {
+        await _showLocationGateDialog(
+          title: 'Location Required',
+          message:
+              'Unable to detect location. Please enable Location and try again.',
+          canOpenLocationSettings: true,
+        );
+      }
+      return false;
+    }
   }
 
   Future<void> _saveActiveSession() async {
@@ -1582,15 +2498,18 @@ class _FormScreenState extends State<FormScreen> {
     if (_manufacturingYearController.text.isEmpty) return false;
 
     if (_chassisNoController.text.isEmpty ||
-        _chassisNoController.text.length != 5)
+        _chassisNoController.text.length != 5) {
       return false;
+    }
     if (_engineNoController.text.isEmpty ||
-        _engineNoController.text.length != 5)
+        _engineNoController.text.length != 5) {
       return false;
+    }
     if (_ownerNameController.text.isEmpty) return false;
     if (_ownerContactController.text.isEmpty ||
-        _ownerContactController.text.length != 10)
+        _ownerContactController.text.length != 10) {
       return false;
+    }
     if (_locationController.text.isEmpty) return false;
 
     // Check photos
@@ -1641,88 +2560,48 @@ class _FormScreenState extends State<FormScreen> {
     } catch (_) {}
   }
 
-  Future<void> _autoFillLocation() async {
-    if (_locationRequested || _locationController.text.isNotEmpty) return;
-    _locationRequested = true;
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        return;
-      }
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          return;
-        }
-      }
-      if (permission == LocationPermission.deniedForever) {
-        return;
-      }
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-      String? locationText;
-      try {
-        final placemarks = await placemarkFromCoordinates(
-          position.latitude,
-          position.longitude,
-        );
-        if (placemarks.isNotEmpty) {
-          final p = placemarks.first;
-          final city = (p.locality != null && p.locality!.trim().isNotEmpty)
-              ? p.locality!.trim()
-              : (p.subAdministrativeArea != null &&
-                    p.subAdministrativeArea!.trim().isNotEmpty)
-              ? p.subAdministrativeArea!.trim()
-              : null;
-          final state =
-              (p.administrativeArea != null && p.administrativeArea!.isNotEmpty)
-              ? p.administrativeArea!.trim()
-              : null;
-          final pin = (p.postalCode != null && p.postalCode!.trim().isNotEmpty)
-              ? p.postalCode!.trim()
-              : null;
-          final parts = <String>[];
-          if (city != null) parts.add(city);
-          if (state != null) parts.add(state);
-          if (pin != null) parts.add(pin);
-          if (parts.isNotEmpty) {
-            locationText = parts.join(', ');
-          }
-        }
-      } catch (_) {}
-      locationText ??=
-          '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
-      if (!mounted) return;
-      if (_locationController.text.isEmpty) {
-        _locationController.text = locationText;
-      }
-      _locationError = null;
-      setState(() {});
-    } catch (_) {
-      if (!mounted) return;
-      _locationError = 'Failed to detect location';
-      setState(() {});
-    }
-  }
-
   Future<void> _loadLookups() async {
     if (_lookupsLoaded) return;
 
     final stateCode = _qrArgs?['stateCode']?.toString();
+    await LookupService.hydrateLookups(
+      stateCode,
+      dealerVersion: ApiSession.user?['dealerUpdatedAt']?.toString(),
+    );
 
     // Check if we have everything we need in cache
     final needCats = LookupService.vehicleCategories == null;
     final needRtos =
         (stateCode != null && stateCode.isNotEmpty) &&
         LookupService.getRtos(stateCode) == null;
+    final needPassingRtos =
+        (stateCode != null && stateCode.isNotEmpty) &&
+        LookupService.getPassingRtos(stateCode) == null;
 
-    if (!needCats && !needRtos) {
+    if (!needCats && !needRtos && !needPassingRtos) {
       if (!mounted) return;
+      final cachedRtos = (LookupService.getRtos(stateCode) ?? []).toList();
+      final cachedPassing = (LookupService.getPassingRtos(stateCode) ?? [])
+          .toList();
+
+      cachedRtos.sort((a, b) {
+        final rawA = a is Map ? (a['name'] ?? a['code'] ?? '') : a;
+        final rawB = b is Map ? (b['name'] ?? b['code'] ?? '') : b;
+        return rawA.toString().toLowerCase().compareTo(
+          rawB.toString().toLowerCase(),
+        );
+      });
+      cachedPassing.sort((a, b) {
+        final rawA = a is Map ? (a['name'] ?? a['code'] ?? '') : a;
+        final rawB = b is Map ? (b['name'] ?? b['code'] ?? '') : b;
+        return rawA.toString().toLowerCase().compareTo(
+          rawB.toString().toLowerCase(),
+        );
+      });
       setState(() {
         _vehicleCategories = LookupService.vehicleCategories!;
-        _rtos = LookupService.getRtos(stateCode) ?? [];
+        _rtos = cachedRtos;
+        _passingRtos = cachedPassing;
         _lookupsLoaded = true;
         _loadingLookups = false;
       });
@@ -1741,9 +2620,23 @@ class _FormScreenState extends State<FormScreen> {
           queryParameters: {'stateCode': stateCode},
         );
         if (rtoRes.data is List) {
-          LookupService.cacheRtos(
+          await LookupService.cacheRtos(
             stateCode,
             List<dynamic>.from(rtoRes.data as List),
+          );
+        }
+      }
+
+      if (needPassingRtos) {
+        final rtoRes = await api.get(
+          '/rtos/authorized',
+          queryParameters: {'stateCode': stateCode},
+        );
+        if (rtoRes.data is List) {
+          await LookupService.cachePassingRtos(
+            stateCode,
+            List<dynamic>.from(rtoRes.data as List),
+            dealerVersion: ApiSession.user?['dealerUpdatedAt']?.toString(),
           );
         }
       }
@@ -1759,14 +2652,25 @@ class _FormScreenState extends State<FormScreen> {
 
       if (!mounted) return;
       final rtos = LookupService.getRtos(stateCode) ?? [];
+      final passingRtos = LookupService.getPassingRtos(stateCode) ?? [];
       rtos.sort((a, b) {
-        String nameA = (a is Map ? a['code'] : a).toString();
-        String nameB = (b is Map ? b['code'] : b).toString();
-        return nameA.compareTo(nameB);
+        final rawA = a is Map ? (a['name'] ?? a['code'] ?? '') : a;
+        final rawB = b is Map ? (b['name'] ?? b['code'] ?? '') : b;
+        return rawA.toString().toLowerCase().compareTo(
+          rawB.toString().toLowerCase(),
+        );
+      });
+      passingRtos.sort((a, b) {
+        final rawA = a is Map ? (a['name'] ?? a['code'] ?? '') : a;
+        final rawB = b is Map ? (b['name'] ?? b['code'] ?? '') : b;
+        return rawA.toString().toLowerCase().compareTo(
+          rawB.toString().toLowerCase(),
+        );
       });
       setState(() {
         _vehicleCategories = LookupService.vehicleCategories ?? [];
         _rtos = rtos;
+        _passingRtos = passingRtos;
         _loadingLookups = false;
         _lookupsLoaded = true;
       });
@@ -1870,7 +2774,7 @@ class _FormScreenState extends State<FormScreen> {
                 color: Colors.red.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.close, color: Colors.red, size: 40),
+              child: const Icon(LucideIcons.x, color: Colors.red, size: 40),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -1912,6 +2816,10 @@ class _FormScreenState extends State<FormScreen> {
   }
 
   Future<void> _submitForm() async {
+    _locationRequested = true;
+    final ok = await _ensureLocationForCertificate(promptUser: true);
+    if (!ok) return;
+
     if (!_isVerifying) {
       final currentState = _formKey.currentState;
       if (currentState == null) return;
@@ -1968,6 +2876,8 @@ class _FormScreenState extends State<FormScreen> {
       'ownerDetails': ownerDetails,
       'photos': photos,
       'locationText': _locationController.text.trim(),
+      'locationLat': _locationLat,
+      'locationLng': _locationLng,
     };
 
     setState(() {
@@ -2311,10 +3221,12 @@ class _FormScreenState extends State<FormScreen> {
             ],
           ),
           child: DropdownButtonFormField<T>(
-            initialValue: value,
+            value: value,
             items: items,
             onChanged: onChanged,
             validator: validator,
+            isExpanded: true,
+            menuMaxHeight: 360,
             style: const TextStyle(fontSize: 14, color: Color(0xFF12314D)),
             decoration: InputDecoration(
               labelText: label,
@@ -2325,7 +3237,10 @@ class _FormScreenState extends State<FormScreen> {
                 vertical: 14,
               ),
             ),
-            icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF12314D)),
+            icon: const Icon(
+              LucideIcons.chevron_down,
+              color: Color(0xFF12314D),
+            ),
             dropdownColor: Colors.white,
           ),
         ),
@@ -2445,7 +3360,7 @@ class _FormScreenState extends State<FormScreen> {
                       gaplessPlayback: true,
                     ),
                   )
-                : const Icon(Icons.image, color: Colors.grey, size: 40),
+                : const Icon(LucideIcons.image, color: Colors.grey, size: 40),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -2466,7 +3381,7 @@ class _FormScreenState extends State<FormScreen> {
                 child: ElevatedButton.icon(
                   onPressed: () => _capturePhoto(key),
                   icon: Icon(
-                    hasPhoto ? Icons.check_circle : Icons.camera_alt,
+                    hasPhoto ? LucideIcons.circle_check : LucideIcons.camera,
                     color: hasPhoto ? Colors.green : const Color(0xFF12314D),
                     size: 18,
                   ),
@@ -2518,7 +3433,7 @@ class _FormScreenState extends State<FormScreen> {
                       gaplessPlayback: true,
                     ),
                   )
-                : const Icon(Icons.image_not_supported, color: Colors.grey),
+                : const Icon(LucideIcons.image_off, color: Colors.grey),
           ),
         ),
         const SizedBox(height: 4),
@@ -2677,7 +3592,7 @@ class _FormScreenState extends State<FormScreen> {
                       _isVerifying = false;
                     });
                   },
-                  icon: const Icon(Icons.edit, color: Colors.white),
+                  icon: const Icon(LucideIcons.pencil, color: Colors.white),
                   label: const Text(
                     'Edit Details',
                     style: TextStyle(
@@ -2711,7 +3626,10 @@ class _FormScreenState extends State<FormScreen> {
                   ),
                   icon: _submitting
                       ? const SizedBox.shrink()
-                      : const Icon(Icons.verified_user, color: Colors.white),
+                      : const Icon(
+                          LucideIcons.shield_check,
+                          color: Colors.white,
+                        ),
                   label: _submitting
                       ? const SizedBox(
                           width: 24,
@@ -2769,7 +3687,7 @@ class _FormScreenState extends State<FormScreen> {
           foregroundColor: Colors.white,
           title: Text(_isVerifying ? 'Verify Details' : 'Fitment Form'),
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
+            icon: const Icon(LucideIcons.arrow_left),
             onPressed: () async {
               if (_isVerifying) {
                 setState(() {
@@ -2838,6 +3756,45 @@ class _FormScreenState extends State<FormScreen> {
                             title: 'Vehicle Details',
                             subtitle: 'वाहन की सूची',
                             children: [
+                              if (_loadingLookups)
+                                const Padding(
+                                  padding: EdgeInsets.only(bottom: 12),
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Color(0xFF12314D),
+                                        ),
+                                      ),
+                                      SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          'Loading RTO options…',
+                                          style: TextStyle(
+                                            color: Color(0xFF12314D),
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              if (_lookupError != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: Text(
+                                    _lookupError!,
+                                    style: const TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ),
                               _buildFormDropdown<String>(
                                 value: _vehicleMakeController.text.isNotEmpty
                                     ? _vehicleMakeController.text
@@ -2910,18 +3867,27 @@ class _FormScreenState extends State<FormScreen> {
                                 value: _passingRtoController.text.isNotEmpty
                                     ? _passingRtoController.text
                                     : null,
-                                items: _rtos.map<DropdownMenuItem<String>>((e) {
-                                  String val = '';
-                                  if (e is Map) {
-                                    val = e['code']?.toString() ?? e.toString();
-                                  } else {
-                                    val = e.toString();
-                                  }
-                                  return DropdownMenuItem(
-                                    value: val,
-                                    child: Text(val),
-                                  );
-                                }).toList(),
+                                items: _passingRtos
+                                    .map<DropdownMenuItem<String>>((e) {
+                                      String code = '';
+                                      String name = '';
+                                      if (e is Map) {
+                                        code =
+                                            e['code']?.toString() ??
+                                            e.toString();
+                                        name = e['name']?.toString() ?? '';
+                                      } else {
+                                        code = e.toString();
+                                      }
+                                      final label = name.trim().isNotEmpty
+                                          ? '$name ($code)'
+                                          : code;
+                                      return DropdownMenuItem(
+                                        value: code,
+                                        child: Text(label),
+                                      );
+                                    })
+                                    .toList(),
                                 label: 'Passing RTO / पासिंग आर.टी.ओ.',
                                 onChanged: (val) {
                                   if (val != null) {
@@ -2938,15 +3904,21 @@ class _FormScreenState extends State<FormScreen> {
                                     ? _registrationRtoController.text
                                     : null,
                                 items: _rtos.map<DropdownMenuItem<String>>((e) {
-                                  String val = '';
+                                  String code = '';
+                                  String name = '';
                                   if (e is Map) {
-                                    val = e['code']?.toString() ?? e.toString();
+                                    code =
+                                        e['code']?.toString() ?? e.toString();
+                                    name = e['name']?.toString() ?? '';
                                   } else {
-                                    val = e.toString();
+                                    code = e.toString();
                                   }
+                                  final label = name.trim().isNotEmpty
+                                      ? '$name ($code)'
+                                      : code;
                                   return DropdownMenuItem(
-                                    value: val,
-                                    child: Text(val),
+                                    value: code,
+                                    child: Text(label),
                                   );
                                 }).toList(),
                                 label: 'Registration RTO / पंजीकरण आर.टी.ओ.',
@@ -3014,8 +3986,9 @@ class _FormScreenState extends State<FormScreen> {
                                 label: 'Chassis No / चेसिस नंबर',
                                 validator: (v) {
                                   if (v == null || v.isEmpty) return 'Required';
-                                  if (v.length != 5)
+                                  if (v.length != 5) {
                                     return 'Must be 5 characters';
+                                  }
                                   return null;
                                 },
                                 inputFormatters: [
@@ -3032,8 +4005,9 @@ class _FormScreenState extends State<FormScreen> {
                                 label: 'Engine No / इंजन नंबर',
                                 validator: (v) {
                                   if (v == null || v.isEmpty) return 'Required';
-                                  if (v.length != 5)
+                                  if (v.length != 5) {
                                     return 'Must be 5 characters';
+                                  }
                                   return null;
                                 },
                                 inputFormatters: [
@@ -3184,7 +4158,7 @@ class _FormScreenState extends State<FormScreen> {
                                 disabledBackgroundColor: Colors.grey[400],
                               ),
                               icon: const Icon(
-                                Icons.verified_user,
+                                LucideIcons.shield_check,
                                 color: Colors.white,
                               ),
                               label: const Text(
@@ -3262,25 +4236,7 @@ class _CertificateSuccessScreenState extends State<CertificateSuccessScreen> {
     }
     final url = _pdfUri.toString();
     try {
-      if (url.startsWith('http')) {
-        final dio = Dio();
-        final response = await dio.get<List<int>>(
-          url,
-          options: Options(responseType: ResponseType.bytes),
-        );
-        final data = response.data;
-        if (data == null || data.isEmpty) {
-          return;
-        }
-        final dir = await getTemporaryDirectory();
-        final file = File(
-          '${dir.path}/smartvahan_certificate_${DateTime.now().millisecondsSinceEpoch}.pdf',
-        );
-        await file.writeAsBytes(data, flush: true);
-        await OpenFilex.open(file.path, type: 'application/pdf');
-      } else {
-        await OpenFilex.open(url, type: 'application/pdf');
-      }
+      await openPdfFromUrl(url, filenameHint: 'smartvahan_certificate');
     } catch (_) {}
   }
 
@@ -3329,7 +4285,7 @@ class _CertificateSuccessScreenState extends State<CertificateSuccessScreen> {
           foregroundColor: Colors.white,
           title: const Text('Certificate Generated'),
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
+            icon: const Icon(LucideIcons.arrow_left),
             onPressed: _goHome,
           ),
         ),
@@ -3350,7 +4306,7 @@ class _CertificateSuccessScreenState extends State<CertificateSuccessScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Icon(
-                      Icons.check_circle_outline,
+                      LucideIcons.circle_check,
                       color: Colors.green,
                       size: 96,
                     ),
@@ -3385,7 +4341,10 @@ class _CertificateSuccessScreenState extends State<CertificateSuccessScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      icon: const Icon(Icons.download, color: Colors.white),
+                      icon: const Icon(
+                        LucideIcons.download,
+                        color: Colors.white,
+                      ),
                       label: const Text(
                         'Download',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -3402,7 +4361,7 @@ class _CertificateSuccessScreenState extends State<CertificateSuccessScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      icon: const Icon(Icons.share, color: Colors.white),
+                      icon: const Icon(LucideIcons.share, color: Colors.white),
                       label: const Text(
                         'Share',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -3424,7 +4383,7 @@ class _CertificateSuccessScreenState extends State<CertificateSuccessScreen> {
                         ),
                       ),
                       icon: const Icon(
-                        Icons.qr_code_scanner,
+                        LucideIcons.scan_qr_code,
                         color: Color(0xFFF13546),
                       ),
                       label: const Text(
@@ -3523,10 +4482,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String _oemsLabel(dynamic oems) {
     if (oems is List) {
-      final parts = oems.map((e) {
-        if (e is Map) return _stringVal(e['code'] ?? e['name']);
-        return _stringVal(e);
-      }).where((e) => e != '-').toList();
+      final parts = oems
+          .map((e) {
+            if (e is Map) return _stringVal(e['code'] ?? e['name']);
+            return _stringVal(e);
+          })
+          .where((e) => e != '-')
+          .toList();
       return parts.isEmpty ? '-' : parts.join(', ');
     }
     return _stringVal(oems);
@@ -3601,8 +4563,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final passingRtos = passingRtosAll
         ? 'All'
         : passingRtoCodes is List
-            ? passingRtoCodes.map((e) => _stringVal(e)).where((e) => e != '-').join(', ')
-            : '-';
+        ? passingRtoCodes
+              .map((e) => _stringVal(e))
+              .where((e) => e != '-')
+              .join(', ')
+        : '-';
 
     return Scaffold(
       appBar: AppBar(
@@ -3612,38 +4577,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           IconButton(
             onPressed: _loading ? null : _refreshProfile,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(LucideIcons.refresh_cw),
           ),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.red),
+          ? Center(
+              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _tile('Dealer Name', dealerName, icon: LucideIcons.badge),
+                  const SizedBox(height: 12),
+                  _tile('User ID (Phone)', phone, icon: LucideIcons.smartphone),
+                  const SizedBox(height: 12),
+                  _tile('Email', email, icon: LucideIcons.mail),
+                  const SizedBox(height: 12),
+                  _tile('Authorised State', state, icon: LucideIcons.map_pin),
+                  const SizedBox(height: 12),
+                  _tile('Authorised Brand(s)', brands, icon: LucideIcons.car),
+                  const SizedBox(height: 12),
+                  _tile(
+                    'Passing RTO',
+                    passingRtos,
+                    icon: LucideIcons.building_2,
                   ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _tile('Dealer Name', dealerName, icon: Icons.badge_outlined),
-                      const SizedBox(height: 12),
-                      _tile('User ID (Phone)', phone, icon: Icons.phone_android_outlined),
-                      const SizedBox(height: 12),
-                      _tile('Email', email, icon: Icons.email_outlined),
-                      const SizedBox(height: 12),
-                      _tile('Authorised State', state, icon: Icons.map_outlined),
-                      const SizedBox(height: 12),
-                      _tile('Authorised Brand(s)', brands, icon: Icons.directions_car_outlined),
-                      const SizedBox(height: 12),
-                      _tile('Passing RTO', passingRtos, icon: Icons.apartment_outlined),
-                    ],
-                  ),
-                ),
+                ],
+              ),
+            ),
       bottomNavigationBar: const DealerBottomNav(currentIndex: 2),
     );
   }
@@ -3692,7 +4658,6 @@ class SupportScreen extends StatelessWidget {
               ),
             ),
           ),
-          const Icon(Icons.chevron_right, color: Color(0xFF91A8BD)),
         ],
       ),
     );
@@ -3713,7 +4678,10 @@ class SupportScreen extends StatelessWidget {
           children: [
             const Text(
               "We're here to help you move forward. Choose your preferred way to get in touch with our specialist team.",
-              style: TextStyle(color: Color(0xFF91A8BD), fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: Color(0xFF91A8BD),
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 16),
             Container(
@@ -3725,28 +4693,47 @@ class SupportScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF13546).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(Icons.chat_bubble_outline, color: Color(0xFFF13546)),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Chat with us',
-                    style: TextStyle(
-                      color: Color(0xFF12314D),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 20,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Get instant answers to your technical queries and application status updates directly on WhatsApp.',
-                    style: TextStyle(color: Color(0xFF91A8BD), fontWeight: FontWeight.w600),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF13546).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          LucideIcons.message_circle,
+                          color: Color(0xFFF13546),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Chat with us',
+                              style: TextStyle(
+                                color: Color(0xFF12314D),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 20,
+                              ),
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              'Get answers to your technical queries and certificate-related support directly on WhatsApp.',
+                              style: TextStyle(
+                                color: Color(0xFF91A8BD),
+                                fontWeight: FontWeight.w600,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 14),
                   SizedBox(
@@ -3756,15 +4743,20 @@ class SupportScreen extends StatelessWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFF13546),
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         elevation: 0,
                       ),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text('Open WhatsApp Chat', style: TextStyle(fontWeight: FontWeight.w800)),
+                          Text(
+                            'Open WhatsApp Chat',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
                           SizedBox(width: 10),
-                          Icon(Icons.arrow_forward),
+                          Icon(LucideIcons.arrow_right),
                         ],
                       ),
                     ),
@@ -3772,10 +4764,28 @@ class SupportScreen extends StatelessWidget {
                   const SizedBox(height: 10),
                   Row(
                     children: const [
-                      Icon(Icons.circle, size: 8, color: Color(0xFF10B981)),
+                      Icon(
+                        LucideIcons.circle,
+                        size: 8,
+                        color: Color(0xFF10B981),
+                      ),
                       SizedBox(width: 8),
-                      Text('Typically responds in 5 mins', style: TextStyle(color: Color(0xFF91A8BD), fontWeight: FontWeight.w600)),
+                      Text(
+                        'Typically responds in 30 mins',
+                        style: TextStyle(
+                          color: Color(0xFF91A8BD),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Support Hours: 9 AM to 5 PM',
+                    style: TextStyle(
+                      color: Color(0xFF91A8BD),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -3790,11 +4800,11 @@ class SupportScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            _categoryTile(Icons.settings_outlined, 'Installation Issues'),
+            _categoryTile(LucideIcons.settings, 'Installation Issues'),
             const SizedBox(height: 10),
-            _categoryTile(Icons.download_outlined, 'Certificate Downloads'),
+            _categoryTile(LucideIcons.download, 'Certificate Downloads'),
             const SizedBox(height: 10),
-            _categoryTile(Icons.lock_outline, 'Account Access'),
+            _categoryTile(LucideIcons.lock, 'Account Access'),
           ],
         ),
       ),
@@ -3995,25 +5005,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
       return;
     }
     try {
-      if (url.startsWith('http')) {
-        final dio = Dio();
-        final response = await dio.get<List<int>>(
-          url,
-          options: Options(responseType: ResponseType.bytes),
-        );
-        final data = response.data;
-        if (data == null || data.isEmpty) {
-          return;
-        }
-        final dir = await getTemporaryDirectory();
-        final file = File(
-          '${dir.path}/smartvahan_history_${item.qrSerial}_${DateTime.now().millisecondsSinceEpoch}.pdf',
-        );
-        await file.writeAsBytes(data, flush: true);
-        await OpenFilex.open(file.path, type: 'application/pdf');
-      } else {
-        await OpenFilex.open(url, type: 'application/pdf');
-      }
+      await openPdfFromUrl(
+        url,
+        filenameHint: 'smartvahan_history_${item.qrSerial}',
+      );
     } catch (_) {}
   }
 
@@ -4039,7 +5034,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Row(
             children: [
               const Icon(
-                Icons.calendar_today_outlined,
+                LucideIcons.calendar,
                 color: Color(0xFF12314D),
                 size: 20,
               ),
@@ -4099,7 +5094,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF12314D),
         foregroundColor: Colors.white,
-        title: const Text('History'),
+        title: const Text('My Certificates'),
       ),
       body: Column(
         children: [
@@ -4165,7 +5160,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         fontSize: 14,
                       ),
                       prefixIcon: const Icon(
-                        Icons.search,
+                        LucideIcons.search,
                         color: Color(0xFF12314D),
                       ),
                       border: InputBorder.none,
@@ -4290,7 +5285,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     ),
                                     elevation: 0,
                                   ),
-                                  icon: const Icon(Icons.download, size: 18),
+                                  icon: const Icon(
+                                    LucideIcons.download,
+                                    size: 18,
+                                  ),
                                   label: const Text('Download Certificate'),
                                 ),
                               ),

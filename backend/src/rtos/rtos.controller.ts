@@ -15,13 +15,18 @@ export class RtosController {
   }
 
   @Get()
-  async findAll(@Req() req: any, @Query('stateCode') stateCode?: string) {
+  async findAll(@Query('stateCode') stateCode?: string) {
+    return this.rtosService.findAll(stateCode);
+  }
+
+  @Get('authorized')
+  async findAuthorized(@Req() req: any, @Query('stateCode') stateCode?: string) {
     const user = req.user;
 
     if (user && (user.role === 'DEALER_USER' || user.role === 'DEALER')) {
       const dealer = await this.prisma.dealer.findUnique({
         where: { id: user.userId },
-        select: { stateCode: true, passingRtosAll: true, passingRtoCodes: true }
+        select: { stateCode: true, passingRtosAll: true, passingRtoCodes: true },
       });
 
       if (!dealer) {

@@ -84,6 +84,9 @@ export class AuthService {
             stateCode: dealer.stateCode,
             stateName: dealer.state?.name,
             oems: dealer.oems.map(o => o.name).join(', '),
+            passingRtosAll: dealer.passingRtosAll,
+            passingRtoCodes: dealer.passingRtoCodes,
+            dealerUpdatedAt: dealer.updatedAt.toISOString(),
         };
       }
     } else {

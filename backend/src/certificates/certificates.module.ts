@@ -3,9 +3,10 @@ import { CertificatesService } from './certificates.service';
 import { CertificatesController } from './certificates.controller';
 import { PrismaService } from '../prisma.service';
 import { S3Module } from '../s3/s3.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [S3Module],
+  imports: [S3Module, SettingsModule],
   controllers: [CertificatesController],
   providers: [CertificatesService, PrismaService],
 })

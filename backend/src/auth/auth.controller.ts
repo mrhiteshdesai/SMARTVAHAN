@@ -2,15 +2,24 @@ import { Controller, Post, Body, UnauthorizedException, HttpCode, HttpStatus, Ip
 import { AuthService } from './auth.service';
 import { Public } from './public.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { SettingsService } from '../settings/settings.service';
 
 @Controller('api/auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private settingsService: SettingsService,
+  ) {}
 
   @Public()
   @HttpCode(HttpStatus.OK)
   @Post('login')
-  async login(@Body() signInDto: Record<string, any>, @Ip() ip: string) {
+  async login(
+    @Body() signInDto: Record<string, any>,
+    @Ip() ip: string,
+    @Req() req: any,
+  ) {
+    await this.settingsService.enforceMobileAppVersion(req?.headers || {}, 'LOGIN');
     const user = await this.authService.validateUser(signInDto.phone, signInDto.password);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials or inactive account');

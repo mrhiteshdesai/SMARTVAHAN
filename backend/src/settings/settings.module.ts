@@ -10,5 +10,6 @@ import { DealersModule } from '../dealers/dealers.module';
   imports: [PrismaModule, DealersModule],
   controllers: [SettingsController, PublicController],
   providers: [SettingsService],
+  exports: [SettingsService],
 })
 export class SettingsModule {}

@@ -329,14 +329,18 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
   const registrationOems = data?.data?.registrationOems || [];
   const dealerOemOptions = useMemo(() => {
     const base = registrationOems.length ? registrationOems : oems;
-    if (!dealerStateCode) return base;
+    if (!dealerStateCode) return [];
     return base.filter((o: any) => {
       if (!("authorizedStates" in o)) return true;
       return Array.isArray(o.authorizedStates) && o.authorizedStates.includes(dealerStateCode);
     });
   }, [dealerStateCode, oems, registrationOems]);
 
-  const { data: passingRtos = [] } = useQuery({
+  const {
+    data: passingRtos = [],
+    isLoading: isPassingRtosLoading,
+    isFetching: isPassingRtosFetching,
+  } = useQuery({
     queryKey: ["public-passing-rtos", dealerStateCode],
     queryFn: async () => {
       const res = await client.get<Array<{ code: string; name: string }>>("/rtos", {
@@ -346,6 +350,25 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
     },
     enabled: isDealerRegistration && Boolean(dealerStateCode)
   });
+  const sortedPassingRtos = useMemo(() => {
+    const list = Array.isArray(passingRtos) ? [...passingRtos] : [];
+    list.sort((a, b) => {
+      const an = String(a?.name || "");
+      const bn = String(b?.name || "");
+      const byName = an.localeCompare(bn, "en", { sensitivity: "base" });
+      if (byName !== 0) return byName;
+      return String(a?.code || "").localeCompare(String(b?.code || ""), "en", { sensitivity: "base" });
+    });
+    return list;
+  }, [passingRtos]);
+
+  useEffect(() => {
+    if (!isDealerRegistration) return;
+    setDealerPassingRtoCodes([]);
+    setDealerOemCodes([]);
+    setPassingRtoError("");
+    setOemError("");
+  }, [dealerStateCode, isDealerRegistration]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -1646,14 +1669,20 @@ a{text-decoration:none;color:inherit;}
                   <div className="f-grp">
                     <label>Passing RTO You Work In</label>
                     <div className="chk-wrap">
+                      {!dealerStateCode ? (
+                        <div className="geo-err">Select a state to load Passing RTOs.</div>
+                      ) : isPassingRtosLoading || isPassingRtosFetching ? (
+                        <div className="geo-pill">Loading Passing RTOs…</div>
+                      ) : null}
                       <div className="chk-grid">
-                        {passingRtos.map((r) => {
+                        {sortedPassingRtos.map((r) => {
                           const checked = dealerPassingRtoCodes.includes(r.code);
                           return (
                             <label key={r.code} className="chk-item">
                               <input
                                 type="checkbox"
                                 checked={checked}
+                                disabled={!dealerStateCode || isPassingRtosLoading || isPassingRtosFetching}
                                 onChange={(e) => {
                                   const next = e.target.checked
                                     ? Array.from(new Set([...dealerPassingRtoCodes, r.code]))
@@ -1679,6 +1708,7 @@ a{text-decoration:none;color:inherit;}
                   <div className="f-grp">
                     <label>OEMs You Work With</label>
                     <div className="chk-wrap">
+                      {!dealerStateCode ? <div className="geo-err">Select a state to load OEMs.</div> : null}
                       <div className="chk-grid">
                         {dealerOemOptions.map((o) => {
                           const checked = dealerOemCodes.includes(o.code);
@@ -1687,6 +1717,7 @@ a{text-decoration:none;color:inherit;}
                               <input
                                 type="checkbox"
                                 checked={checked}
+                                disabled={!dealerStateCode}
                                 onChange={(e) => {
                                   const next = e.target.checked
                                     ? Array.from(new Set([...dealerOemCodes, o.code]))

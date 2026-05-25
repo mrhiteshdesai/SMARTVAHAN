@@ -5,10 +5,12 @@ import { AuthService } from "./auth.service";
 import { AuthController } from "./auth.controller";
 import { JwtStrategy } from "./jwt.strategy";
 import { PrismaModule } from "../prisma.module";
+import { SettingsModule } from "../settings/settings.module";
 
 @Module({
   imports: [
     PrismaModule,
+    SettingsModule,
     PassportModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || "super-secret-key-change-in-production",

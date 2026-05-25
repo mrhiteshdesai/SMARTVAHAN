@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import api from "../api/client";
 import { Upload, CheckCircle, AlertCircle, Loader2, Camera, MapPin, ChevronRight, ChevronLeft, FileText, ExternalLink, Download } from "lucide-react";
-import { useRTOs, useVehicleCategories, useDealers } from "../api/hooks";
+import { useAuthorizedPassingRTOs, useRTOs, useVehicleCategories, useDealers } from "../api/hooks";
 import { useAuth } from "../auth/AuthContext";
 
 interface QRValidationResult {
@@ -64,7 +64,8 @@ export function CertificateGeneratorPage() {
   const [qrData, setQrData] = useState<QRValidationResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: rtos = [] } = useRTOs(qrData?.stateCode);
+  const { data: registrationRtos = [] } = useRTOs(qrData?.stateCode);
+  const { data: passingRtos = [] } = useAuthorizedPassingRTOs(qrData?.stateCode);
   const { data: vehicleCategories = [] } = useVehicleCategories();
 
   // Success State
@@ -613,7 +614,7 @@ export function CertificateGeneratorPage() {
                             className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                         >
                             <option value="">Select RTO</option>
-                            {[...rtos].sort((a, b) => a.code.localeCompare(b.code)).map(r => <option key={r.code} value={r.code}>{r.code} - {r.name}</option>)}
+                            {[...passingRtos].sort((a, b) => a.code.localeCompare(b.code)).map(r => <option key={r.code} value={r.code}>{r.code} - {r.name}</option>)}
                         </select>
                     </div>
                     <div>
@@ -624,7 +625,7 @@ export function CertificateGeneratorPage() {
                             className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                         >
                             <option value="">Select RTO</option>
-                            {[...rtos].sort((a, b) => a.code.localeCompare(b.code)).map(r => <option key={r.code} value={r.code}>{r.code} - {r.name}</option>)}
+                            {[...registrationRtos].sort((a, b) => a.code.localeCompare(b.code)).map(r => <option key={r.code} value={r.code}>{r.code} - {r.name}</option>)}
                         </select>
                     </div>
                     <div>

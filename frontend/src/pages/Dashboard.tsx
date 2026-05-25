@@ -3,8 +3,7 @@ import { useDashboardStats, useStates, useOEMs, useSystemSettings } from "../api
 import { useAuth } from "../auth/AuthContext";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { LayoutDashboard, Users, CheckCircle2, QrCode, AlertTriangle } from "lucide-react";
-import { GoogleMap, HeatmapLayerF, useJsApiLoader } from '@react-google-maps/api';
-import type { Library } from '@googlemaps/js-api-loader';
+import { GoogleMap, CircleF, useJsApiLoader } from '@react-google-maps/api';
 
 class DashboardErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
@@ -32,30 +31,41 @@ class DashboardErrorBoundary extends React.Component<{ children: React.ReactNode
   }
 }
 
-const libraries: Library[] = ["visualization"];
-
 function DashboardMap({ apiKey, data }: { apiKey: string, data: any[] }) {
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: apiKey,
-    libraries,
     preventGoogleFontsLoading: true
   });
 
-  const heatmapData = useMemo(() => {
-    try {
-        if (!isLoaded || !window.google || !data) return [];
-        return data
-            .filter((d: any) => d.lat && d.lng) // Filter invalid coordinates
-            .map((d: any) => ({
-                location: new google.maps.LatLng(d.lat, d.lng),
-                weight: d.weight
-            }));
-    } catch (e) {
-        console.error("Failed to generate heatmap data", e);
-        return [];
-    }
-  }, [isLoaded, data]);
+  const points = useMemo(() => {
+    if (!data || !Array.isArray(data)) return [];
+    return data
+      .map((d: any) => ({
+        lat: typeof d?.lat === "number" ? d.lat : Number(d?.lat),
+        lng: typeof d?.lng === "number" ? d.lng : Number(d?.lng),
+        weight: typeof d?.weight === "number" ? d.weight : Number(d?.weight ?? 1),
+      }))
+      .filter((d) => Number.isFinite(d.lat) && Number.isFinite(d.lng))
+      .map((d) => ({
+        lat: d.lat,
+        lng: d.lng,
+        weight: Number.isFinite(d.weight) && d.weight > 0 ? d.weight : 1,
+      }));
+  }, [data]);
+
+  const maxWeight = useMemo(() => {
+    if (!points.length) return 1;
+    return points.reduce((m, p) => (p.weight > m ? p.weight : m), 1);
+  }, [points]);
+
+  const getHeatColor = (t: number) => {
+    const x = Math.max(0, Math.min(1, t));
+    const r = Math.round(255 * x);
+    const g = Math.round(160 * (1 - x));
+    const b = Math.round(60 * (1 - x));
+    return `rgb(${r},${g},${b})`;
+  };
 
   if (loadError) {
       return (
@@ -80,15 +90,28 @@ function DashboardMap({ apiKey, data }: { apiKey: string, data: any[] }) {
           center={{ lat: 20.5937, lng: 78.9629 }}
           zoom={5}
       >
-          {heatmapData.length > 0 && (
-              <HeatmapLayerF
-                  data={heatmapData}
-                  options={{
-                      radius: 30,
-                      opacity: 0.6
-                  }}
+          {points.map((p, idx) => {
+            const t = maxWeight <= 0 ? 0 : p.weight / maxWeight;
+            const radiusMeters = 6000 + Math.round(24000 * t);
+            const fillOpacity = 0.10 + 0.35 * t;
+            const strokeOpacity = 0.18 + 0.35 * t;
+            const color = getHeatColor(t);
+            return (
+              <CircleF
+                key={`${p.lat},${p.lng},${idx}`}
+                center={{ lat: p.lat, lng: p.lng }}
+                radius={radiusMeters}
+                options={{
+                  fillColor: color,
+                  fillOpacity,
+                  strokeColor: color,
+                  strokeOpacity,
+                  strokeWeight: 1,
+                  clickable: false,
+                }}
               />
-          )}
+            );
+          })}
       </GoogleMap>
   );
 }

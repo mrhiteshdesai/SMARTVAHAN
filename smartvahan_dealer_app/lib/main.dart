@@ -499,7 +499,6 @@ final api = ApiClient();
 
 class DealerBottomNav extends StatelessWidget {
   final int currentIndex;
-
   const DealerBottomNav({super.key, required this.currentIndex});
 
   Widget _navIcon(IconData icon, bool selected) {
@@ -556,6 +555,326 @@ class DealerBottomNav extends StatelessWidget {
           label: 'Support',
         ),
       ],
+    );
+  }
+}
+
+class DealerDrawer extends StatelessWidget {
+  final String currentRoute;
+  const DealerDrawer({super.key, required this.currentRoute});
+
+  String _name() {
+    final n = ApiSession.user?['name']?.toString().trim();
+    return (n == null || n.isEmpty) ? 'Dealer' : n;
+  }
+
+  String _phone() {
+    final p = ApiSession.user?['phone']?.toString().trim();
+    return (p == null || p.isEmpty) ? '-' : p;
+  }
+
+  String _state() {
+    final s = (ApiSession.user?['stateName'] ?? ApiSession.user?['stateCode'])
+        ?.toString()
+        .trim();
+    return (s == null || s.isEmpty) ? '-' : s;
+  }
+
+  String _oems() {
+    final o = ApiSession.user?['oems']?.toString().trim();
+    return (o == null || o.isEmpty) ? '-' : o;
+  }
+
+  Future<void> _go(BuildContext context, String route) async {
+    Navigator.of(context).pop();
+    if (route == currentRoute) return;
+    Navigator.of(context).pushNamedAndRemoveUntil(route, (r) => false);
+  }
+
+  Widget _menuItem(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String route,
+  }) {
+    final selected = currentRoute == route;
+    final bg = selected ? const Color(0xFFE4EEFF) : Colors.transparent;
+    final fg = selected ? const Color(0xFF12314D) : const Color(0xFF91A8BD);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      child: InkWell(
+        onTap: () => _go(context, route),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: fg, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: selected
+                        ? const Color(0xFF12314D)
+                        : const Color(0xFF1A2B3C),
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoCard({
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title.toUpperCase(),
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.75),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final version = AppMeta.versionName.trim().isEmpty
+        ? '-'
+        : AppMeta.versionName.trim();
+
+    return Drawer(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 46, 16, 16),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF162F45), Color(0xFF00417B)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(22),
+                bottomRight: Radius.circular(22),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: 64,
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    alignment: Alignment.centerLeft,
+                    child: Image.asset(
+                      'assets/logo.png',
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          LucideIcons.car,
+                          color: Colors.white,
+                          size: 44,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.18),
+                        ),
+                      ),
+                      child: const Icon(
+                        LucideIcons.user,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _name(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'ID: ${_phone()}',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.75),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _infoCard(
+                  icon: LucideIcons.map_pin,
+                  title: 'Authorised State',
+                  value: _state(),
+                ),
+                const SizedBox(height: 10),
+                _infoCard(
+                  icon: LucideIcons.badge_check,
+                  title: 'Authorised OEM',
+                  value: _oems(),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          _menuItem(
+            context,
+            icon: LucideIcons.history,
+            label: 'My Certificates',
+            route: '/history',
+          ),
+          _menuItem(
+            context,
+            icon: LucideIcons.user,
+            label: 'Profile',
+            route: '/profile',
+          ),
+          _menuItem(
+            context,
+            icon: LucideIcons.headset,
+            label: 'Support',
+            route: '/support',
+          ),
+          const Spacer(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Divider(color: Colors.grey.withOpacity(0.25), height: 18),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            child: InkWell(
+              onTap: () async {
+                await ApiSession.clearStorage();
+                Navigator.of(
+                  context,
+                ).pushNamedAndRemoveUntil('/login', (route) => false);
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: const [
+                    Icon(
+                      LucideIcons.log_out,
+                      color: Color(0xFFF13546),
+                      size: 20,
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Logout',
+                        style: TextStyle(
+                          color: Color(0xFFF13546),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Text(
+              'App Version $version',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: const Color(0xFF91A8BD).withOpacity(0.9),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1174,98 +1493,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(icon: const Icon(LucideIcons.house), onPressed: () {}),
         ],
       ),
-      drawer: Drawer(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 50, 16, 16),
-              color: const Color(0xFF12314D),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Image.asset(
-                    'assets/logo.png',
-                    height: 150,
-                    width: 150,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Icon(
-                        LucideIcons.car,
-                        color: Colors.white,
-                        size: 120,
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _dealerTitle(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'User ID: ${ApiSession.user?['phone'] ?? '-'}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  Text(
-                    'Authorised State: ${ApiSession.user?['stateName'] ?? ApiSession.user?['stateCode']?.toString() ?? '-'}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  Text(
-                    'Authorised OEMs: ${ApiSession.user?['oems']?.toString() ?? '-'}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            ListTile(
-              leading: const Icon(LucideIcons.history),
-              title: const Text('My Certificates'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(
-                  context,
-                ).pushNamedAndRemoveUntil('/history', (route) => false);
-              },
-            ),
-            ListTile(
-              leading: const Icon(LucideIcons.user),
-              title: const Text('Profile'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(
-                  context,
-                ).pushNamedAndRemoveUntil('/profile', (route) => false);
-              },
-            ),
-            ListTile(
-              leading: const Icon(LucideIcons.headset),
-              title: const Text('Support'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(
-                  context,
-                ).pushNamedAndRemoveUntil('/support', (route) => false);
-              },
-            ),
-            ListTile(
-              leading: const Icon(LucideIcons.log_out),
-              title: const Text('Logout'),
-              onTap: () async {
-                await ApiSession.clearStorage();
-                Navigator.of(
-                  context,
-                ).pushNamedAndRemoveUntil('/login', (route) => false);
-              },
-            ),
-          ],
-        ),
-      ),
+      drawer: const DealerDrawer(currentRoute: '/home'),
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -4611,48 +4839,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
               .join(', ')
         : '-';
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF12314D),
-        foregroundColor: Colors.white,
-        title: const Text('Profile'),
-        actions: [
-          IconButton(
-            onPressed: _loading ? null : _refreshProfile,
-            icon: const Icon(LucideIcons.refresh_cw),
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _tile('Dealer Name', dealerName, icon: LucideIcons.badge),
-                  const SizedBox(height: 12),
-                  _tile('User ID (Phone)', phone, icon: LucideIcons.smartphone),
-                  const SizedBox(height: 12),
-                  _tile('Email', email, icon: LucideIcons.mail),
-                  const SizedBox(height: 12),
-                  _tile('Authorised State', state, icon: LucideIcons.map_pin),
-                  const SizedBox(height: 12),
-                  _tile('Authorised Brand(s)', brands, icon: LucideIcons.car),
-                  const SizedBox(height: 12),
-                  _tile(
-                    'Passing RTO',
-                    passingRtos,
-                    icon: LucideIcons.building_2,
-                  ),
-                ],
-              ),
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.of(context).pushNamedAndRemoveUntil('/home', (r) => false);
+        return false;
+      },
+      child: Scaffold(
+        drawer: const DealerDrawer(currentRoute: '/profile'),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF12314D),
+          foregroundColor: Colors.white,
+          title: const Text('Profile'),
+          actions: [
+            IconButton(
+              onPressed: _loading ? null : _refreshProfile,
+              icon: const Icon(LucideIcons.refresh_cw),
             ),
-      bottomNavigationBar: const DealerBottomNav(currentIndex: 2),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+            ? Center(
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              )
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _tile('Dealer Name', dealerName, icon: LucideIcons.badge),
+                    const SizedBox(height: 12),
+                    _tile(
+                      'User ID (Phone)',
+                      phone,
+                      icon: LucideIcons.smartphone,
+                    ),
+                    const SizedBox(height: 12),
+                    _tile('Email', email, icon: LucideIcons.mail),
+                    const SizedBox(height: 12),
+                    _tile('Authorised State', state, icon: LucideIcons.map_pin),
+                    const SizedBox(height: 12),
+                    _tile('Authorised Brand(s)', brands, icon: LucideIcons.car),
+                    const SizedBox(height: 12),
+                    _tile(
+                      'Passing RTO',
+                      passingRtos,
+                      icon: LucideIcons.building_2,
+                    ),
+                  ],
+                ),
+              ),
+        bottomNavigationBar: const DealerBottomNav(currentIndex: 2),
+      ),
     );
   }
 }
@@ -4707,150 +4946,157 @@ class SupportScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF12314D),
-        foregroundColor: Colors.white,
-        title: const Text('Support'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              "We're here to help you move forward. Choose your preferred way to get in touch with our specialist team.",
-              style: TextStyle(
-                color: Color(0xFF91A8BD),
-                fontWeight: FontWeight.w600,
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.of(context).pushNamedAndRemoveUntil('/home', (r) => false);
+        return false;
+      },
+      child: Scaffold(
+        drawer: const DealerDrawer(currentRoute: '/support'),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF12314D),
+          foregroundColor: Colors.white,
+          title: const Text('Support'),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                "We're here to help you move forward. Choose your preferred way to get in touch with our specialist team.",
+                style: TextStyle(
+                  color: Color(0xFF91A8BD),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF7F8FA),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 46,
-                        height: 46,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF13546).withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(14),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7F8FA),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF13546).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            LucideIcons.message_circle,
+                            color: Color(0xFFF13546),
+                          ),
                         ),
-                        child: const Icon(
-                          LucideIcons.message_circle,
-                          color: Color(0xFFF13546),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Chat with us',
+                                style: TextStyle(
+                                  color: Color(0xFF12314D),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 20,
+                                ),
+                              ),
+                              SizedBox(height: 6),
+                              Text(
+                                'Get answers to your technical queries and certificate-related support directly on WhatsApp.',
+                                style: TextStyle(
+                                  color: Color(0xFF91A8BD),
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: _openWhatsApp,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFF13546),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'Chat with us',
-                              style: TextStyle(
-                                color: Color(0xFF12314D),
-                                fontWeight: FontWeight.w800,
-                                fontSize: 20,
-                              ),
+                              'Open WhatsApp Chat',
+                              style: TextStyle(fontWeight: FontWeight.w800),
                             ),
-                            SizedBox(height: 6),
-                            Text(
-                              'Get answers to your technical queries and certificate-related support directly on WhatsApp.',
-                              style: TextStyle(
-                                color: Color(0xFF91A8BD),
-                                fontWeight: FontWeight.w600,
-                                height: 1.35,
-                              ),
-                            ),
+                            SizedBox(width: 10),
+                            Icon(LucideIcons.arrow_right),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: _openWhatsApp,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFF13546),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: const [
+                        Icon(
+                          LucideIcons.circle,
+                          size: 8,
+                          color: Color(0xFF10B981),
                         ),
-                        elevation: 0,
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'Open WhatsApp Chat',
-                            style: TextStyle(fontWeight: FontWeight.w800),
+                        SizedBox(width: 8),
+                        Text(
+                          'Typically responds in 30 mins',
+                          style: TextStyle(
+                            color: Color(0xFF91A8BD),
+                            fontWeight: FontWeight.w600,
                           ),
-                          SizedBox(width: 10),
-                          Icon(LucideIcons.arrow_right),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: const [
-                      Icon(
-                        LucideIcons.circle,
-                        size: 8,
-                        color: Color(0xFF10B981),
-                      ),
-                      SizedBox(width: 8),
-                      Text(
-                        'Typically responds in 30 mins',
-                        style: TextStyle(
-                          color: Color(0xFF91A8BD),
-                          fontWeight: FontWeight.w600,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Support Hours: 9 AM to 5 PM',
-                    style: TextStyle(
-                      color: Color(0xFF91A8BD),
-                      fontWeight: FontWeight.w600,
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Support Hours: 9 AM to 5 PM',
+                      style: TextStyle(
+                        color: Color(0xFF91A8BD),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'COMMON CATEGORIES',
-              style: TextStyle(
-                color: Color(0xFF91A8BD),
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.1,
+              const SizedBox(height: 20),
+              const Text(
+                'COMMON CATEGORIES',
+                style: TextStyle(
+                  color: Color(0xFF91A8BD),
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.1,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            _categoryTile(LucideIcons.settings, 'Installation Issues'),
-            const SizedBox(height: 10),
-            _categoryTile(LucideIcons.download, 'Certificate Downloads'),
-            const SizedBox(height: 10),
-            _categoryTile(LucideIcons.lock, 'Account Access'),
-          ],
+              const SizedBox(height: 12),
+              _categoryTile(LucideIcons.settings, 'Installation Issues'),
+              const SizedBox(height: 10),
+              _categoryTile(LucideIcons.download, 'Certificate Downloads'),
+              const SizedBox(height: 10),
+              _categoryTile(LucideIcons.lock, 'Account Access'),
+            ],
+          ),
         ),
+        bottomNavigationBar: const DealerBottomNav(currentIndex: 3),
       ),
-      bottomNavigationBar: const DealerBottomNav(currentIndex: 3),
     );
   }
 }
@@ -5132,218 +5378,231 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF12314D),
-        foregroundColor: Colors.white,
-        title: const Text('My Certificates'),
-      ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  offset: const Offset(0, 4),
-                  blurRadius: 8,
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    _buildDateSelector('From Date', _fromDate, _pickFromDate),
-                    const SizedBox(width: 12),
-                    _buildDateSelector('To Date', _toDate, _pickToDate),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _loadHistory,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF12314D),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 2,
-                  ),
-                  child: const Text(
-                    'Apply Filter',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        spreadRadius: 4,
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      labelText: 'Search',
-                      labelStyle: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 14,
-                      ),
-                      prefixIcon: const Icon(
-                        LucideIcons.search,
-                        color: Color(0xFF12314D),
-                      ),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 16,
-                      ),
-                    ),
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.red, fontSize: 12),
-                    textAlign: TextAlign.center,
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.of(context).pushNamedAndRemoveUntil('/home', (r) => false);
+        return false;
+      },
+      child: Scaffold(
+        drawer: const DealerDrawer(currentRoute: '/history'),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF12314D),
+          foregroundColor: Colors.white,
+          title: const Text('My Certificates'),
+        ),
+        body: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    offset: const Offset(0, 4),
+                    blurRadius: 8,
                   ),
                 ],
-              ],
-            ),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredItems.isEmpty
-                ? Center(
-                    child: Text(
-                      _hasLoadedOnce
-                          ? 'No certificates found.'
-                          : 'Select a date range and click Apply Filter.',
-                      style: const TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      _buildDateSelector('From Date', _fromDate, _pickFromDate),
+                      const SizedBox(width: 12),
+                      _buildDateSelector('To Date', _toDate, _pickToDate),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _loadHistory,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF12314D),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 2,
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _filteredItems.length,
-                    itemBuilder: (context, index) {
-                      final item = _filteredItems[index];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
+                    child: const Text(
+                      'Apply Filter',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          spreadRadius: 4,
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _buildInfoColumn(
-                                      'Date',
-                                      _formatDisplayDate(item.generationDate),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: _buildInfoColumn(
-                                      'QR Code Serial',
-                                      item.qrSerial.toString(),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _buildInfoColumn(
-                                      'Vehicle Number',
-                                      item.vehicleNumber,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: _buildInfoColumn('OEM', item.oem),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _buildInfoColumn(
-                                      'Product',
-                                      item.product,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: _buildInfoColumn(
-                                      'Owner Name',
-                                      item.ownerName,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton.icon(
-                                  onPressed: item.pdfUrl == null
-                                      ? null
-                                      : () => _openPdf(item),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF12314D),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  icon: const Icon(
-                                    LucideIcons.download,
-                                    size: 18,
-                                  ),
-                                  label: const Text('Download Certificate'),
-                                ),
+                      ],
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        labelText: 'Search',
+                        labelStyle: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                        prefixIcon: const Icon(
+                          LucideIcons.search,
+                          color: Color(0xFF12314D),
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filteredItems.isEmpty
+                  ? Center(
+                      child: Text(
+                        _hasLoadedOnce
+                            ? 'No certificates found.'
+                            : 'Select a date range and click Apply Filter.',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _filteredItems.length,
+                      itemBuilder: (context, index) {
+                        final item = _filteredItems[index];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                spreadRadius: 2,
+                                blurRadius: 10,
+                                offset: const Offset(0, 2),
                               ),
                             ],
                           ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildInfoColumn(
+                                        'Date',
+                                        _formatDisplayDate(item.generationDate),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildInfoColumn(
+                                        'QR Code Serial',
+                                        item.qrSerial.toString(),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildInfoColumn(
+                                        'Vehicle Number',
+                                        item.vehicleNumber,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildInfoColumn('OEM', item.oem),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildInfoColumn(
+                                        'Product',
+                                        item.product,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildInfoColumn(
+                                        'Owner Name',
+                                        item.ownerName,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: item.pdfUrl == null
+                                        ? null
+                                        : () => _openPdf(item),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF12314D),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      elevation: 0,
+                                    ),
+                                    icon: const Icon(
+                                      LucideIcons.download,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Download Certificate'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: const DealerBottomNav(currentIndex: 1),
       ),
-      bottomNavigationBar: const DealerBottomNav(currentIndex: 1),
     );
   }
 }

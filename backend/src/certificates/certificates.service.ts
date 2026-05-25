@@ -1162,14 +1162,30 @@ export class CertificatesService {
         const vehicleNumber = `${vehicleDetails.registrationRto}${vehicleDetails.series}`;
         const pdfFilename = `${vehicleNumber}-${certNumber}.pdf`;
         const pdfPath = path.join(baseUploadDir, pdfFilename);
+
+        let passingRtoLabel = String(vehicleDetails.passingRto || '').trim();
+        try {
+            if (passingRtoLabel) {
+                const rto = await this.prisma.rTO.findUnique({
+                    where: { code: passingRtoLabel },
+                    select: { code: true, name: true },
+                });
+                if (rto && rto.name) {
+                    passingRtoLabel = `${rto.code}-${rto.name}`;
+                }
+            }
+        } catch (_) {}
         
         await this.generatePdf(pdfPath, {
             certNumber,
             qrCode,
             vehicleDetails,
+            passingRtoLabel,
             ownerDetails,
             photos: photoPaths,
             locationText,
+            locationLat: typeof data.locationLat === 'number' ? data.locationLat : undefined,
+            locationLng: typeof data.locationLng === 'number' ? data.locationLng : undefined,
             generatedAt: new Date(),
             systemLogo: finalSystemLogo,
             systemName: finalSystemName,
@@ -1261,6 +1277,34 @@ export class CertificatesService {
       const stream = fs.createWriteStream(outputPath);
       doc.pipe(stream);
 
+      const resolveUnicodeFontPath = () => {
+        const candidates = [
+          path.join(process.cwd(), 'assets', 'fonts', 'NotoSansDevanagari-Regular.ttf'),
+          path.join(process.cwd(), 'assets', 'fonts', 'NotoSansDevanagari.ttf'),
+          'C:\\Windows\\Fonts\\mangal.ttf',
+          'C:\\Windows\\Fonts\\Nirmala.ttf',
+          'C:\\Windows\\Fonts\\NirmalaUI.ttf',
+        ];
+        for (const p of candidates) {
+          try {
+            if (p && fs.existsSync(p)) return p;
+          } catch (_) {}
+        }
+        return null;
+      };
+
+      const unicodeFontName = 'UnicodeFallback';
+      let hasUnicodeFont = false;
+      try {
+        const unicodeFontPath = resolveUnicodeFontPath();
+        if (unicodeFontPath) {
+          doc.registerFont(unicodeFontName, unicodeFontPath);
+          hasUnicodeFont = true;
+        }
+      } catch (_) {}
+
+      const needsUnicodeFont = (text: string) => hasUnicodeFont && /[^\x00-\x7F]/.test(text);
+
       const startX = 20;
       let currentY = 20;
       const fullWidth = 555; // A4 (595) - 40 margin
@@ -1296,9 +1340,19 @@ export class CertificatesService {
         // Colon
         doc.text(':', x + (w * 0.4), y, { width: 10, align: 'center' });
         // Value
-        const val = value ? String(value).toUpperCase() : '-';
-        doc.font(isBoldValue ? 'Helvetica-Bold' : 'Helvetica')
-           .text(val, x + (w * 0.4) + 10, y, { width: (w * 0.6) - 10, align: 'left' });
+        const rawVal = value ? String(value) : '-';
+        const useUnicode = needsUnicodeFont(rawVal);
+        const val = useUnicode ? rawVal : rawVal.toUpperCase();
+        const valueFont = useUnicode ? unicodeFontName : isBoldValue ? 'Helvetica-Bold' : 'Helvetica';
+        doc.font(valueFont).text(val, x + (w * 0.4) + 10, y, { width: (w * 0.6) - 10, align: 'left' });
+
+        const valueW = (w * 0.6) - 10;
+        const labelW = w * 0.4;
+        doc.font('Helvetica').fontSize(9);
+        const labelH = doc.heightOfString(label.toUpperCase(), { width: labelW });
+        doc.font(valueFont).fontSize(9);
+        const valueH = doc.heightOfString(val, { width: valueW });
+        return Math.max(16, labelH, valueH);
       };
 
       // ================= HEADER =================
@@ -1361,9 +1415,12 @@ export class CertificatesService {
       currentY += headerHeight + 10;
 
       // Note Sub-header
-      doc.font('Helvetica-Oblique').fontSize(8)
-         .text(`NOTE: THIS INSTALLATION CERTIFICATE IS ONLY VALID IN THE STATE OF ${data.qrCode.batch.state.name.toUpperCase()}`, 
-               startX, currentY, { align: 'center', width: contentWidth });
+      const noteStateName = String(data.qrCode?.batch?.state?.name ?? '').trim();
+      const noteLine = `NOTE: THIS INSTALLATION CERTIFICATE IS ONLY VALID IN THE STATE OF ${noteStateName ? noteStateName.toUpperCase() : ''}`;
+      doc.font(needsUnicodeFont(noteStateName) ? unicodeFontName : 'Helvetica-Oblique').fontSize(8).text(noteLine, startX, currentY, {
+        align: 'center',
+        width: contentWidth,
+      });
       currentY += 15;
 
       // ================= MAIN INFO BLOCK =================
@@ -1399,14 +1456,51 @@ export class CertificatesService {
         ? new Date(data.qrCode.batch.oem.copValidity).toLocaleDateString('en-IN') 
         : '-';
 
-      // Clean Location Text (Remove Lat/Long)
-      let locationDisplay = data.locationText || '';
-      if (locationDisplay.includes('|')) {
-          locationDisplay = locationDisplay.split('|')[0].trim();
-      }
-      if (locationDisplay.startsWith('Lat:')) {
-          locationDisplay = ''; 
-      }
+      const buildGeneratedAtDisplay = (locationText: string, lat?: number, lng?: number) => {
+        const txt = String(locationText || '').trim();
+        const parts = txt.split('|').map((p) => p.trim()).filter(Boolean);
+        const addressPart = parts.length > 0 ? parts[0] : '';
+        const rest = parts.length > 1 ? parts.slice(1).join(' | ') : '';
+
+        const hasDirectCoords = typeof lat === 'number' && isFinite(lat) && typeof lng === 'number' && isFinite(lng);
+        let outLat = hasDirectCoords ? lat! : undefined;
+        let outLng = hasDirectCoords ? lng! : undefined;
+
+        if (!hasDirectCoords) {
+          const src = rest || txt;
+          const labeled = src.match(/Lat:\s*(-?\d+(\.\d+)?)[, ]+\s*(Long|Lng):\s*(-?\d+(\.\d+)?)/i);
+          if (labeled) {
+            const parsedLat = Number(labeled[1]);
+            const parsedLng = Number(labeled[4]);
+            if (isFinite(parsedLat) && isFinite(parsedLng)) {
+              outLat = parsedLat;
+              outLng = parsedLng;
+            }
+          } else {
+            const pair = src.match(/(-?\d+(\.\d+)?)[, ]+\s*(-?\d+(\.\d+)?)/);
+            if (pair) {
+              const parsedLat = Number(pair[1]);
+              const parsedLng = Number(pair[3]);
+              if (isFinite(parsedLat) && isFinite(parsedLng)) {
+                outLat = parsedLat;
+                outLng = parsedLng;
+              }
+            }
+          }
+        }
+
+        const coordText =
+          typeof outLat === 'number' && typeof outLng === 'number'
+            ? `Lat: ${outLat.toFixed(6)}, Long: ${outLng.toFixed(6)}`
+            : '';
+
+        if (addressPart && coordText) return `${addressPart} | ${coordText}`;
+        if (addressPart) return addressPart;
+        if (coordText) return coordText;
+        return '';
+      };
+
+      const locationDisplay = buildGeneratedAtDisplay(data.locationText, data.locationLat, data.locationLng);
 
       const infoFields = [
           ['COP', copDoc], 
@@ -1420,11 +1514,13 @@ export class CertificatesService {
           ['VEHICLE NUMBER', vehicleNumber]
       ];
 
-      infoFields.forEach((field, i) => {
-          drawField(field[0], field[1], startX + qrColWidth, infoY + (i * rowHeight), textColWidth);
+      let infoCursorY = infoY;
+      infoFields.forEach((field) => {
+        const usedH = drawField(field[0], field[1], startX + qrColWidth, infoCursorY, textColWidth);
+        infoCursorY += usedH;
       });
 
-      currentY += (infoFields.length * rowHeight) + 10;
+      currentY = infoCursorY + 10;
 
       // ================= MATERIAL DETAILS =================
       currentY = drawGreyHeader('MATERIAL DETAILS', currentY);
@@ -1435,11 +1531,17 @@ export class CertificatesService {
       
       // Brand
       doc.font('Helvetica').fontSize(9).text('BRAND', startX + 5, matY);
-      doc.font('Helvetica-Bold').text(`: ${data.qrCode.batch.oem.name.toUpperCase()}`, startX + 50, matY);
+      const oemNameRaw = String(data.qrCode?.batch?.oem?.name ?? '').trim();
+      doc
+        .font(needsUnicodeFont(oemNameRaw) ? unicodeFontName : 'Helvetica-Bold')
+        .text(`: ${needsUnicodeFont(oemNameRaw) ? oemNameRaw : oemNameRaw.toUpperCase()}`, startX + 50, matY);
 
       // Product
       doc.font('Helvetica').text('PRODUCT', startX + colW + 5, matY);
-      doc.font('Helvetica-Bold').text(`: ${data.qrCode.batch.product.name.toUpperCase()}`, startX + colW + 50, matY);
+      const productNameRaw = String(data.qrCode?.batch?.product?.name ?? '').trim();
+      doc
+        .font(needsUnicodeFont(productNameRaw) ? unicodeFontName : 'Helvetica-Bold')
+        .text(`: ${needsUnicodeFont(productNameRaw) ? productNameRaw : productNameRaw.toUpperCase()}`, startX + colW + 50, matY);
 
       // Quantity
       let quantityText = `${data.qrCode.batch.quantity || 1}`;
@@ -1568,8 +1670,8 @@ export class CertificatesService {
            currentLeftY += vRowH;
       }
       
-      // Right Column: RTO Location
-      drawField('RTO LOCATION', data.vehicleDetails.passingRto, rightX, dY, vColW);
+      const rtoLocationValue = (data.passingRtoLabel ?? data.vehicleDetails.passingRto) || '';
+      drawField('RTO/ATS LOCATION', String(rtoLocationValue), rightX, dY, vColW);
       
       // Update currentY based on max height used
       currentY = Math.max(currentLeftY, dY + vRowH) + 10;

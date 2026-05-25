@@ -192,13 +192,137 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
     }
     return "";
   });
-  const { isLoaded: isPlacesLoaded } = useLoadScript({
+  const { isLoaded: isPlacesLoaded, loadError: placesLoadError } = useLoadScript({
     googleMapsApiKey,
     libraries,
   });
   const [autocomplete, setAutocomplete] = useState<any>(null);
   const autocompleteRef = useRef<any>(null);
   const [locationSearch, setLocationSearch] = useState("");
+  const [placesTimedOut, setPlacesTimedOut] = useState(false);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+
+  useEffect(() => {
+    if (!isDealerRegistration) return;
+    if (!googleMapsApiKey) return;
+    if (isPlacesLoaded) {
+      setPlacesTimedOut(false);
+      return;
+    }
+    if (placesLoadError) {
+      setPlacesTimedOut(true);
+      return;
+    }
+    const t = window.setTimeout(() => setPlacesTimedOut(true), 8000);
+    return () => window.clearTimeout(t);
+  }, [googleMapsApiKey, isDealerRegistration, isPlacesLoaded, placesLoadError]);
+
+  const fillFromAddressParts = (args: {
+    address: string;
+    city?: string;
+    stateName?: string;
+    zip?: string;
+    lat?: number | null;
+    lng?: number | null;
+  }) => {
+    const addr = args.address || locationSearch;
+    setLocationSearch(addr);
+    setDealerAddress(addr);
+    setDealerCity(args.city || "");
+    setDealerGeoStateName(args.stateName || "");
+    setDealerZip(args.zip || "");
+    if (typeof args.lat === "number" && typeof args.lng === "number") {
+      setDealerLatitude(args.lat);
+      setDealerLongitude(args.lng);
+    }
+  };
+
+  const detectCurrentLocation = async () => {
+    setLocationError("");
+    if (!("geolocation" in navigator)) {
+      setLocationError("Location is not supported on this browser.");
+      return;
+    }
+    setIsDetectingLocation(true);
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 0,
+        });
+      });
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      setDealerLatitude(lat);
+      setDealerLongitude(lng);
+
+      const g: any = (window as any).google;
+      const hasGoogleGeocoder = Boolean(g?.maps?.Geocoder);
+      if (hasGoogleGeocoder) {
+        const geocoder = new g.maps.Geocoder();
+        const result = await new Promise<any>((resolve, reject) => {
+          geocoder.geocode({ location: { lat, lng } }, (results: any, status: any) => {
+            if (status === "OK" && Array.isArray(results) && results.length) {
+              resolve(results[0]);
+              return;
+            }
+            reject(new Error(String(status || "GEOCODE_FAILED")));
+          });
+        });
+
+        let city = "";
+        let stateName = "";
+        let zip = "";
+        result?.address_components?.forEach((comp: any) => {
+          if (comp.types?.includes("locality")) city = comp.long_name;
+          if (comp.types?.includes("administrative_area_level_1")) stateName = comp.long_name;
+          if (comp.types?.includes("postal_code")) zip = comp.long_name;
+        });
+        fillFromAddressParts({
+          address: result?.formatted_address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+          city,
+          stateName,
+          zip,
+          lat,
+          lng,
+        });
+        return;
+      }
+
+      const resp = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&lat=${encodeURIComponent(
+          String(lat),
+        )}&lon=${encodeURIComponent(String(lng))}`,
+        { headers: { Accept: "application/json" } },
+      );
+      if (!resp.ok) throw new Error("REVERSE_GEOCODE_FAILED");
+      const data: any = await resp.json();
+      const a = data?.address || {};
+      const city = String(a.city || a.town || a.village || a.suburb || "").trim();
+      const stateName = String(a.state || "").trim();
+      const zip = String(a.postcode || "").trim();
+      fillFromAddressParts({
+        address: String(data?.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`),
+        city,
+        stateName,
+        zip,
+        lat,
+        lng,
+      });
+    } catch (e: any) {
+      const msg = e?.message?.toString?.() || "";
+      if (msg.includes("denied")) {
+        setLocationError("Location permission denied. Please allow location and try again.");
+      } else if (msg.includes("timeout")) {
+        setLocationError("Location request timed out. Please try again.");
+      } else {
+        setLocationError("Unable to detect current location. Please search manually.");
+      }
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
   useEffect(() => {
     if (mode !== "landing") return;
     const st: any = (location as any)?.state;
@@ -353,11 +477,11 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
   const sortedPassingRtos = useMemo(() => {
     const list = Array.isArray(passingRtos) ? [...passingRtos] : [];
     list.sort((a, b) => {
-      const an = String(a?.name || "");
-      const bn = String(b?.name || "");
-      const byName = an.localeCompare(bn, "en", { sensitivity: "base" });
-      if (byName !== 0) return byName;
-      return String(a?.code || "").localeCompare(String(b?.code || ""), "en", { sensitivity: "base" });
+      const ac = String(a?.code || "");
+      const bc = String(b?.code || "");
+      const byCode = ac.localeCompare(bc, "en", { sensitivity: "base" });
+      if (byCode !== 0) return byCode;
+      return String(a?.name || "").localeCompare(String(b?.name || ""), "en", { sensitivity: "base" });
     });
     return list;
   }, [passingRtos]);
@@ -1709,30 +1833,32 @@ a{text-decoration:none;color:inherit;}
                     <label>OEMs You Work With</label>
                     <div className="chk-wrap">
                       {!dealerStateCode ? <div className="geo-err">Select a state to load OEMs.</div> : null}
-                      <div className="chk-grid">
-                        {dealerOemOptions.map((o) => {
-                          const checked = dealerOemCodes.includes(o.code);
-                          return (
-                            <label key={o.code} className="chk-item">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={!dealerStateCode}
-                                onChange={(e) => {
-                                  const next = e.target.checked
-                                    ? Array.from(new Set([...dealerOemCodes, o.code]))
-                                    : dealerOemCodes.filter((c) => c !== o.code);
-                                  setDealerOemCodes(next);
-                                  setOemError("");
-                                }}
-                              />
-                              <span>
-                                {o.name} ({o.code})
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
+                      {dealerStateCode ? (
+                        <div className="chk-grid">
+                          {dealerOemOptions.map((o) => {
+                            const checked = dealerOemCodes.includes(o.code);
+                            return (
+                              <label key={o.code} className="chk-item">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={!dealerStateCode}
+                                  onChange={(e) => {
+                                    const next = e.target.checked
+                                      ? Array.from(new Set([...dealerOemCodes, o.code]))
+                                      : dealerOemCodes.filter((c) => c !== o.code);
+                                    setDealerOemCodes(next);
+                                    setOemError("");
+                                  }}
+                                />
+                                <span>
+                                  {o.name} ({o.code})
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : null}
                       <div className="geo-row">
                         <span className="geo-pill">{dealerOemCodes.length} selected</span>
                       </div>
@@ -1741,61 +1867,90 @@ a{text-decoration:none;color:inherit;}
                   </div>
 
                   <div className="f-grp">
-                    <label>Your Location</label>
-                    {isPlacesLoaded && googleMapsApiKey ? (
-                      <Autocomplete
-                        onLoad={(a) => {
-                          autocompleteRef.current = a;
-                          setAutocomplete(a);
-                        }}
-                        onPlaceChanged={() => {
-                          setLocationError("");
-                          const ac = autocompleteRef.current || autocomplete;
-                          if (!ac) return;
-                          const place = ac.getPlace();
-                          const lat = place?.geometry?.location?.lat?.();
-                          const lng = place?.geometry?.location?.lng?.();
-                          if (typeof lat === "number" && typeof lng === "number") {
-                            setDealerLatitude(lat);
-                            setDealerLongitude(lng);
-                          }
-                          let city = "";
-                          let stateName = "";
-                          let zip = "";
-                          place?.address_components?.forEach((comp: any) => {
-                            if (comp.types?.includes("locality")) city = comp.long_name;
-                            if (comp.types?.includes("administrative_area_level_1")) stateName = comp.long_name;
-                            if (comp.types?.includes("postal_code")) zip = comp.long_name;
-                          });
-                          const addr = place?.formatted_address || locationSearch;
-                          setLocationSearch(addr);
-                          setDealerAddress(addr);
-                          setDealerCity(city);
-                          setDealerGeoStateName(stateName);
-                          setDealerZip(zip);
+                    <label>Search Your Location</label>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <div style={{ flex: 1 }}>
+                        {isPlacesLoaded && googleMapsApiKey ? (
+                          <Autocomplete
+                            onLoad={(a) => {
+                              autocompleteRef.current = a;
+                              setAutocomplete(a);
+                            }}
+                            onPlaceChanged={() => {
+                              setLocationError("");
+                              const ac = autocompleteRef.current || autocomplete;
+                              if (!ac) return;
+                              const place = ac.getPlace();
+                              const lat = place?.geometry?.location?.lat?.();
+                              const lng = place?.geometry?.location?.lng?.();
+                              let city = "";
+                              let stateName = "";
+                              let zip = "";
+                              place?.address_components?.forEach((comp: any) => {
+                                if (comp.types?.includes("locality")) city = comp.long_name;
+                                if (comp.types?.includes("administrative_area_level_1")) stateName = comp.long_name;
+                                if (comp.types?.includes("postal_code")) zip = comp.long_name;
+                              });
+                              fillFromAddressParts({
+                                address: place?.formatted_address || locationSearch,
+                                city,
+                                stateName,
+                                zip,
+                                lat: typeof lat === "number" ? lat : null,
+                                lng: typeof lng === "number" ? lng : null,
+                              });
+                            }}
+                          >
+                            <input
+                              value={locationSearch}
+                              onChange={(e) => {
+                                setLocationSearch(e.target.value);
+                                setLocationError("");
+                              }}
+                              placeholder="Search like: Area / Landmark / City"
+                              required
+                            />
+                          </Autocomplete>
+                        ) : (
+                          <input
+                            value={locationSearch}
+                            onChange={(e) => {
+                              setLocationSearch(e.target.value);
+                              setLocationError("");
+                            }}
+                            placeholder="Search like: Area / Landmark / City"
+                            required
+                          />
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={detectCurrentLocation}
+                        disabled={isDetectingLocation}
+                        style={{
+                          whiteSpace: "nowrap",
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          border: "1px solid rgba(13,27,42,.18)",
+                          background: "rgba(255,255,255,.9)",
+                          fontWeight: 800,
+                          cursor: isDetectingLocation ? "not-allowed" : "pointer",
+                          opacity: isDetectingLocation ? 0.75 : 1,
                         }}
                       >
-                        <input
-                          value={locationSearch}
-                          onChange={(e) => {
-                            setLocationSearch(e.target.value);
-                            setLocationError("");
-                          }}
-                          placeholder="Search like: Area / Landmark / City"
-                          required
-                        />
-                      </Autocomplete>
-                    ) : (
-                      <input
-                        value={locationSearch}
-                        onChange={(e) => {
-                          setLocationSearch(e.target.value);
-                          setLocationError("");
-                        }}
-                        placeholder="Search like: Area / Landmark / City"
-                        required
-                      />
-                    )}
+                        {isDetectingLocation ? "Detecting…" : "Auto Detect"}
+                      </button>
+                    </div>
+                    {googleMapsApiKey && !isPlacesLoaded && !placesTimedOut && !placesLoadError ? (
+                      <div className="geo-pill" style={{ marginTop: 8 }}>
+                        Loading location search…
+                      </div>
+                    ) : null}
+                    {googleMapsApiKey && !isPlacesLoaded && (placesTimedOut || placesLoadError) ? (
+                      <div className="geo-err" style={{ marginTop: 8 }}>
+                        Location search failed to load. Please type your location manually or use Auto Detect.
+                      </div>
+                    ) : null}
                     {locationError ? <div className="geo-err">{locationError}</div> : null}
                   </div>
 
@@ -1809,25 +1964,50 @@ a{text-decoration:none;color:inherit;}
                     <div className="f-row-3">
                       <div className="f-grp">
                         <label>City</label>
-                        <input value={dealerCity} readOnly placeholder="Auto-filled" />
+                        <input
+                          value={dealerCity}
+                          readOnly
+                          placeholder="Auto-filled"
+                          style={{ background: "rgba(13,27,42,.06)" }}
+                        />
                       </div>
                       <div className="f-grp">
                         <label>State</label>
-                        <input value={dealerGeoStateName} readOnly placeholder="Auto-filled" />
+                        <input
+                          value={dealerGeoStateName}
+                          readOnly
+                          placeholder="Auto-filled"
+                          style={{ background: "rgba(13,27,42,.06)" }}
+                        />
                       </div>
                       <div className="f-grp">
                         <label>Zip</label>
-                        <input value={dealerZip} readOnly placeholder="Auto-filled" />
+                        <input
+                          value={dealerZip}
+                          readOnly
+                          placeholder="Auto-filled"
+                          style={{ background: "rgba(13,27,42,.06)" }}
+                        />
                       </div>
                     </div>
                     <div className="f-row">
                       <div className="f-grp">
                         <label>Latitude</label>
-                        <input value={dealerLatitude !== null ? String(dealerLatitude) : ""} readOnly placeholder="Auto-filled" />
+                        <input
+                          value={dealerLatitude !== null ? String(dealerLatitude) : ""}
+                          readOnly
+                          placeholder="Auto-filled"
+                          style={{ background: "rgba(13,27,42,.06)" }}
+                        />
                       </div>
                       <div className="f-grp">
                         <label>Longitude</label>
-                        <input value={dealerLongitude !== null ? String(dealerLongitude) : ""} readOnly placeholder="Auto-filled" />
+                        <input
+                          value={dealerLongitude !== null ? String(dealerLongitude) : ""}
+                          readOnly
+                          placeholder="Auto-filled"
+                          style={{ background: "rgba(13,27,42,.06)" }}
+                        />
                       </div>
                     </div>
                   </div>

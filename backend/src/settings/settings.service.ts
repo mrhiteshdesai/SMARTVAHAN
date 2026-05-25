@@ -113,6 +113,8 @@ export class SettingsService {
     const likelyMobile = this._isLikelyMobileClient(headers);
     if (!likelyMobile) return;
 
+    const upgradeRequiredStatus = ((HttpStatus as any).UPGRADE_REQUIRED ?? 426) as number;
+
     const get = (k: string) => (headers[k] ?? headers[k.toLowerCase()]) as any;
     const platform = (get('x-app-platform') ?? '').toString().trim().toLowerCase();
     const versionName = (get('x-app-version') ?? '').toString().trim();
@@ -129,7 +131,7 @@ export class SettingsService {
           storeUrl: cfg.defaultStoreUrl || null,
           action,
         },
-        HttpStatus.UPGRADE_REQUIRED,
+        upgradeRequiredStatus,
       );
     }
 
@@ -141,7 +143,7 @@ export class SettingsService {
           storeUrl: cfg.defaultStoreUrl || null,
           action,
         },
-        HttpStatus.UPGRADE_REQUIRED,
+        upgradeRequiredStatus,
       );
     }
 
@@ -167,7 +169,7 @@ export class SettingsService {
           storeUrl: url,
           action,
         },
-        HttpStatus.UPGRADE_REQUIRED,
+        upgradeRequiredStatus,
       );
     }
   }

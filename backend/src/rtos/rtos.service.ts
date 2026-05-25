@@ -11,8 +11,9 @@ export class RtosService {
   }
 
   async findAll(stateCode?: string): Promise<RTO[]> {
-    if (stateCode) {
-        return this.prisma.rTO.findMany({ where: { stateCode }, orderBy: { name: 'asc' } });
+    const normalizedStateCode = stateCode ? stateCode.trim().toUpperCase() : '';
+    if (normalizedStateCode) {
+        return this.prisma.rTO.findMany({ where: { stateCode: normalizedStateCode }, orderBy: { name: 'asc' } });
     }
     return this.prisma.rTO.findMany({ orderBy: { name: 'asc' } });
   }

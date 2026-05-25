@@ -468,7 +468,7 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
     queryKey: ["public-passing-rtos", dealerStateCode],
     queryFn: async () => {
       const res = await client.get<Array<{ code: string; name: string }>>("/rtos", {
-        params: { stateCode: dealerStateCode }
+        params: { stateCode: dealerStateCode.trim().toUpperCase() }
       });
       return res.data;
     },
@@ -1797,6 +1797,8 @@ a{text-decoration:none;color:inherit;}
                         <div className="geo-err">Select a state to load Passing RTOs.</div>
                       ) : isPassingRtosLoading || isPassingRtosFetching ? (
                         <div className="geo-pill">Loading Passing RTOs…</div>
+                      ) : sortedPassingRtos.length === 0 ? (
+                        <div className="geo-err">No Passing RTOs found for the selected state.</div>
                       ) : null}
                       <div className="chk-grid">
                         {sortedPassingRtos.map((r) => {
@@ -2014,120 +2016,160 @@ a{text-decoration:none;color:inherit;}
 
                   <div style={{ height: 1, background: "rgba(13,27,42,.12)", margin: "14px 0" }} />
                   <div style={{ fontWeight: 800, marginBottom: 6, textAlign: "center" }}>*Verification Documents*</div>
-                  <div style={{ fontSize: 12, color: "rgba(13,27,42,.7)", marginBottom: 10, textAlign: "center" }}>
-                    At least one of the following is required.
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--red)",
+                      marginBottom: 10,
+                      textAlign: "center",
+                      fontWeight: 800,
+                    }}
+                  >
+                    At least one of the following documents is required.
                   </div>
 
-                  <div className="f-row">
-                    <div className="f-grp">
-                      <label>GST No</label>
-                      <input
-                        value={dealerGstNo}
-                        onChange={(e) => {
-                          setDealerGstNo(e.target.value);
-                          setDocsError("");
-                        }}
-                        placeholder="GST Number"
-                      />
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div
+                      style={{
+                        background: "rgba(255,255,255,.9)",
+                        border: "1px solid rgba(13,27,42,.12)",
+                        borderRadius: 14,
+                        padding: 12,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, marginBottom: 10 }}>GST Document</div>
+                      <div className="f-row">
+                        <div className="f-grp">
+                          <label>GST No</label>
+                          <input
+                            value={dealerGstNo}
+                            onChange={(e) => {
+                              setDealerGstNo(e.target.value);
+                              setDocsError("");
+                            }}
+                            placeholder="GST Number"
+                          />
+                        </div>
+                        <div className="f-grp">
+                          <label>GST Certificate Upload</label>
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={async (e) => {
+                              setDocsError("");
+                              const f = e.target.files?.[0];
+                              if (!f) {
+                                setDealerGstCertificateUrl("");
+                                return;
+                              }
+                              try {
+                                setDealerGstCertificateUrl(await readFileAsDataUrl(f));
+                              } catch {
+                                setDealerGstCertificateUrl("");
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="f-grp">
-                      <label>GST Certificate Upload</label>
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={async (e) => {
-                          setDocsError("");
-                          const f = e.target.files?.[0];
-                          if (!f) {
-                            setDealerGstCertificateUrl("");
-                            return;
-                          }
-                          try {
-                            setDealerGstCertificateUrl(await readFileAsDataUrl(f));
-                          } catch {
-                            setDealerGstCertificateUrl("");
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
 
-                  <div className="f-row">
-                    <div className="f-grp">
-                      <label>Aadhar No</label>
-                      <input
-                        value={dealerAadharNumber}
-                        onChange={(e) => {
-                          setDealerAadharNumber(e.target.value);
-                          setDocsError("");
-                        }}
-                        placeholder="Aadhar Number"
-                      />
+                    <div
+                      style={{
+                        background: "rgba(255,255,255,.9)",
+                        border: "1px solid rgba(13,27,42,.12)",
+                        borderRadius: 14,
+                        padding: 12,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, marginBottom: 10 }}>Aadhar Document</div>
+                      <div className="f-row">
+                        <div className="f-grp">
+                          <label>Aadhar No</label>
+                          <input
+                            value={dealerAadharNumber}
+                            onChange={(e) => {
+                              setDealerAadharNumber(e.target.value);
+                              setDocsError("");
+                            }}
+                            placeholder="Aadhar Number"
+                          />
+                        </div>
+                        <div className="f-grp">
+                          <label>Aadhar Upload</label>
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={async (e) => {
+                              setDocsError("");
+                              const f = e.target.files?.[0];
+                              if (!f) {
+                                setDealerAadharCardUrl("");
+                                return;
+                              }
+                              try {
+                                setDealerAadharCardUrl(await readFileAsDataUrl(f));
+                              } catch {
+                                setDealerAadharCardUrl("");
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="f-grp">
-                      <label>Aadhar Upload</label>
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={async (e) => {
-                          setDocsError("");
-                          const f = e.target.files?.[0];
-                          if (!f) {
-                            setDealerAadharCardUrl("");
-                            return;
-                          }
-                          try {
-                            setDealerAadharCardUrl(await readFileAsDataUrl(f));
-                          } catch {
-                            setDealerAadharCardUrl("");
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
 
-                  <div className="f-row-3">
-                    <div className="f-grp">
-                      <label>Trade Certificate No</label>
-                      <input
-                        value={dealerTradeCertificateNo}
-                        onChange={(e) => {
-                          setDealerTradeCertificateNo(e.target.value);
-                          setDocsError("");
-                        }}
-                        placeholder="Trade Certificate Number"
-                      />
-                    </div>
-                    <div className="f-grp">
-                      <label>Trade Validity</label>
-                      <input
-                        value={dealerTradeValidity}
-                        onChange={(e) => {
-                          setDealerTradeValidity(e.target.value);
-                          setDocsError("");
-                        }}
-                        type="date"
-                      />
-                    </div>
-                    <div className="f-grp">
-                      <label>Trade Certificate Upload</label>
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={async (e) => {
-                          setDocsError("");
-                          const f = e.target.files?.[0];
-                          if (!f) {
-                            setDealerTradeCertificateUrl("");
-                            return;
-                          }
-                          try {
-                            setDealerTradeCertificateUrl(await readFileAsDataUrl(f));
-                          } catch {
-                            setDealerTradeCertificateUrl("");
-                          }
-                        }}
-                      />
+                    <div
+                      style={{
+                        background: "rgba(255,255,255,.9)",
+                        border: "1px solid rgba(13,27,42,.12)",
+                        borderRadius: 14,
+                        padding: 12,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, marginBottom: 10 }}>Trade Certificate</div>
+                      <div className="f-row-3">
+                        <div className="f-grp">
+                          <label>Trade Certificate No</label>
+                          <input
+                            value={dealerTradeCertificateNo}
+                            onChange={(e) => {
+                              setDealerTradeCertificateNo(e.target.value);
+                              setDocsError("");
+                            }}
+                            placeholder="Trade Certificate Number"
+                          />
+                        </div>
+                        <div className="f-grp">
+                          <label>Trade Validity</label>
+                          <input
+                            value={dealerTradeValidity}
+                            onChange={(e) => {
+                              setDealerTradeValidity(e.target.value);
+                              setDocsError("");
+                            }}
+                            type="date"
+                          />
+                        </div>
+                        <div className="f-grp">
+                          <label>Trade Certificate Upload</label>
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={async (e) => {
+                              setDocsError("");
+                              const f = e.target.files?.[0];
+                              if (!f) {
+                                setDealerTradeCertificateUrl("");
+                                return;
+                              }
+                              try {
+                                setDealerTradeCertificateUrl(await readFileAsDataUrl(f));
+                              } catch {
+                                setDealerTradeCertificateUrl("");
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                   {docsError ? <div className="geo-err">{docsError}</div> : null}

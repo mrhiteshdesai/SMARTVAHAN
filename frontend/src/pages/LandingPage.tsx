@@ -470,7 +470,7 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
   } = useQuery({
     queryKey: ["public-passing-rtos", dealerStateCode],
     queryFn: async () => {
-      const res = await client.get<Array<{ code: string; name: string }>>("/rtos", {
+      const res = await client.get<Array<{ code: string; name: string }>>("/public/rtos", {
         params: { stateCode: dealerStateCode.trim().toUpperCase() }
       });
       return res.data;

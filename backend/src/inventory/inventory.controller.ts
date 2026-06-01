@@ -25,8 +25,8 @@ export class InventoryController {
 
     // Check for ghost mode header
     const isGhost = req.headers['x-ghost-mode'] === 'true';
-    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
-        throw new ForbiddenException("Access Denied: Ghost Mode is restricted to Super Admins.");
+    if (isGhost && user.role !== 'GHOST_ADMIN') {
+        throw new ForbiddenException('Ghost Mode is restricted to Ghost Admin only');
     }
 
     if (user.role === 'STATE_ADMIN') finalStateCode = user.stateCode;
@@ -51,8 +51,8 @@ export class InventoryController {
 
     // Check for ghost mode header
     const isGhost = req.headers['x-ghost-mode'] === 'true';
-    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
-        throw new ForbiddenException("Access Denied: Ghost Mode is restricted to Super Admins.");
+    if (isGhost && user.role !== 'GHOST_ADMIN') {
+        throw new ForbiddenException('Ghost Mode is restricted to Ghost Admin only');
     }
 
     if (user.role === 'STATE_ADMIN') finalStateCode = user.stateCode;

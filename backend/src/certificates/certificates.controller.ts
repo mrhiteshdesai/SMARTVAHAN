@@ -41,8 +41,8 @@ export class CertificatesController {
       (body as any).enforceGeofence = true;
     }
     const isGhostMode = req.headers['x-ghost-mode'] === 'true';
-    if (isGhostMode && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'GHOST_ADMIN') {
-      throw new ForbiddenException('Ghost Mode is restricted to Super Admin');
+    if (isGhostMode && req.user.role !== 'GHOST_ADMIN') {
+      throw new ForbiddenException('Ghost Mode is restricted to Ghost Admin only');
     }
     (body as any).isGhostMode = isGhostMode;
     return this.certificatesService.createCertificate(body);
@@ -98,8 +98,8 @@ export class CertificatesController {
 
     // Ghost Mode check
     const isGhost = req.headers['x-ghost-mode'] === 'true';
-    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
-        throw new ForbiddenException('Ghost Mode is restricted to Super Admin');
+    if (isGhost && user.role !== 'GHOST_ADMIN') {
+        throw new ForbiddenException('Ghost Mode is restricted to Ghost Admin only');
     }
 
     return this.certificatesService.searchCertificate({
@@ -136,8 +136,8 @@ export class CertificatesController {
     // The service method accepts `user`.
 
     const isGhost = req.headers['x-ghost-mode'] === 'true';
-    if (isGhost && user.role !== 'SUPER_ADMIN' && user.role !== 'GHOST_ADMIN') {
-         throw new ForbiddenException('Ghost Mode is restricted to Super Admin');
+    if (isGhost && user.role !== 'GHOST_ADMIN') {
+         throw new ForbiddenException('Ghost Mode is restricted to Ghost Admin only');
     }
     
     return this.certificatesService.listCertificatesForDownload({ state: finalState, oem: finalOem, from, to, user, isGhost });

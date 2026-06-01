@@ -111,16 +111,19 @@ function hexToRgb(hex: string) {
 
 function normalizeMobileAppConfig(raw: any): MobileAppConfig {
   const cfg = raw && typeof raw === "object" ? raw : {};
-  const versionsRaw = Array.isArray(cfg.versions) ? cfg.versions : [];
+  const versionsRaw: unknown[] = Array.isArray(cfg.versions) ? (cfg.versions as unknown[]) : [];
   const versions: MobileAppVersionEntry[] = versionsRaw
-    .map((v: any) => ({
-      platform: (v?.platform ?? "").toString().trim().toLowerCase(),
-      versionName: (v?.versionName ?? "").toString().trim(),
-      buildNumber: Number(v?.buildNumber ?? NaN),
-      status: ((v?.status ?? "ACTIVE").toString().trim().toUpperCase() as MobileAppVersionStatus) || "ACTIVE",
-      message: v?.message != null ? v.message.toString() : undefined,
-      storeUrl: v?.storeUrl != null ? v.storeUrl.toString() : undefined,
-    }))
+    .map((v): MobileAppVersionEntry => {
+      const x = v as any;
+      return {
+        platform: (x?.platform ?? "").toString().trim().toLowerCase(),
+        versionName: (x?.versionName ?? "").toString().trim(),
+        buildNumber: Number(x?.buildNumber ?? NaN),
+        status: ((x?.status ?? "ACTIVE").toString().trim().toUpperCase() as MobileAppVersionStatus) || "ACTIVE",
+        message: x?.message != null ? x.message.toString() : undefined,
+        storeUrl: x?.storeUrl != null ? x.storeUrl.toString() : undefined,
+      };
+    })
     .filter((v) => v.platform && v.versionName && Number.isFinite(v.buildNumber))
     .map((v) => ({
       ...v,

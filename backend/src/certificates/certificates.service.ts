@@ -116,7 +116,12 @@ export class CertificatesService {
     }
     const certificate = await this.prisma.certificate.findUnique({
       where: { qrValue: qrValue! },
-      include: { qrCode: { include: { batch: { include: { oem: true, state: true, product: true } } } } }
+      include: {
+        dealer: true,
+        qrCode: {
+          include: { batch: { include: { oem: true, state: true, product: true } } }
+        }
+      }
     });
     if (certificate) {
       const batch = certificate.qrCode.batch;
@@ -136,6 +141,15 @@ export class CertificatesService {
         }
       }
 
+      const dealer = certificate.dealer;
+      const dealerVerification = dealer?.tradeCertificateNo
+        ? `Trade Certificate: ${dealer.tradeCertificateNo}`
+        : dealer?.gstNo
+          ? `GST: ${dealer.gstNo}`
+          : dealer?.aadharNumber
+            ? `Aadhar: ${dealer.aadharNumber}`
+            : null;
+
       return {
         success: true,
         status: 'VALID',
@@ -148,6 +162,7 @@ export class CertificatesService {
           registrationRto: certificate.registrationRto,
           series: certificate.series,
           manufacturingYear: certificate.manufacturingYear,
+          registrationYear: certificate.manufacturingYear,
           chassisNumber: certificate.chassisNumber,
           engineNumber: certificate.engineNumber,
           ownerName: certificate.ownerName,
@@ -160,6 +175,22 @@ export class CertificatesService {
           vehicleNumber: certificate.vehicleNumber,
           generatedAt: certificate.generatedAt,
           locationText: certificate.locationText,
+          dealerName: dealer?.name ?? null,
+          dealerPhone: dealer?.phone ?? null,
+          dealerVerification,
+          dealer: dealer
+            ? {
+                id: dealer.id,
+                name: dealer.name,
+                phone: dealer.phone,
+                stateCode: dealer.stateCode,
+                rtoCode: dealer.rtoCode,
+                gstNo: dealer.gstNo,
+                tradeCertificateNo: dealer.tradeCertificateNo,
+                tradeValidity: dealer.tradeValidity,
+                aadharNumber: dealer.aadharNumber,
+              }
+            : null,
           qr: {
             serialNumber: certificate.qrCode.serialNumber,
             value: certificate.qrValue,
@@ -184,6 +215,22 @@ export class CertificatesService {
       return {
         success: true,
         status: 'UNUSED',
+        data: {
+          id: qrCode.id,
+          serialNumber: qrCode.serialNumber,
+          value: qrCode.value,
+          stateCode: qrCode.batch.state.code,
+          oemCode: qrCode.batch.oem.code,
+          productCode: qrCode.batch.product.code,
+          batchId: qrCode.batch.batchId
+        }
+      };
+    }
+    if (qrCode.status === 2) {
+      return {
+        success: true,
+        status: 'DEACTIVATED',
+        message: 'QR Code is deactivated',
         data: {
           id: qrCode.id,
           serialNumber: qrCode.serialNumber,
@@ -780,6 +827,9 @@ export class CertificatesService {
         throw new BadRequestException('Security Alert: QR Brand code does not match database record');
     }
 
+    if (qrCode.status === 2) {
+      throw new BadRequestException('QR Code is deactivated');
+    }
     if (qrCode.status !== 0) {
       throw new BadRequestException('QR Code already used');
     }
@@ -872,6 +922,9 @@ export class CertificatesService {
         }
     }
 
+    if (qrCode.status === 2) {
+      throw new BadRequestException('QR Code is deactivated');
+    }
     if (qrCode.status !== 0) {
       throw new BadRequestException('QR Code already used');
     }
@@ -1069,6 +1122,7 @@ export class CertificatesService {
     });
 
     if (!qrCode) throw new NotFoundException('QR Code not found');
+    if (qrCode.status === 2) throw new BadRequestException('QR Code is deactivated');
     if (qrCode.status !== 0) throw new BadRequestException('QR Code already used');
 
     // If system branding not provided from client, load from SystemSettings
@@ -1284,6 +1338,10 @@ export class CertificatesService {
           'C:\\Windows\\Fonts\\mangal.ttf',
           'C:\\Windows\\Fonts\\Nirmala.ttf',
           'C:\\Windows\\Fonts\\NirmalaUI.ttf',
+          '/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf',
+          '/usr/share/fonts/opentype/noto/NotoSansDevanagari-Regular.ttf',
+          '/usr/share/fonts/truetype/noto/NotoSansDevanagariUI-Regular.ttf',
+          '/usr/share/fonts/truetype/lohit-devanagari/Lohit-Devanagari.ttf',
         ];
         for (const p of candidates) {
           try {
@@ -1304,6 +1362,18 @@ export class CertificatesService {
       } catch (_) {}
 
       const needsUnicodeFont = (text: string) => hasUnicodeFont && /[^\x00-\x7F]/.test(text);
+
+      const maybeFixMojibake = (text: string) => {
+        const s = String(text ?? '');
+        if (!s) return s;
+        if (/[\u0900-\u097F]/.test(s)) return s;
+        if (!/[ÃÂâ€™â€œâ€â€“â€”â€¢é]/.test(s)) return s;
+        try {
+          const fixed = Buffer.from(s, 'latin1').toString('utf8');
+          if (/[\u0900-\u097F]/.test(fixed)) return fixed;
+        } catch (_) {}
+        return s;
+      };
 
       const startX = 20;
       let currentY = 20;
@@ -1340,7 +1410,7 @@ export class CertificatesService {
         // Colon
         doc.text(':', x + (w * 0.4), y, { width: 10, align: 'center' });
         // Value
-        const rawVal = value ? String(value) : '-';
+        const rawVal = maybeFixMojibake(value ? String(value) : '-');
         const useUnicode = needsUnicodeFont(rawVal);
         const val = useUnicode ? rawVal : rawVal.toUpperCase();
         const valueFont = useUnicode ? unicodeFontName : isBoldValue ? 'Helvetica-Bold' : 'Helvetica';
@@ -1459,7 +1529,7 @@ export class CertificatesService {
       const buildGeneratedAtDisplay = (locationText: string, lat?: number, lng?: number) => {
         const txt = String(locationText || '').trim();
         const parts = txt.split('|').map((p) => p.trim()).filter(Boolean);
-        const addressPart = parts.length > 0 ? parts[0] : '';
+        const addressPart = parts.length > 0 ? maybeFixMojibake(parts[0]) : '';
         const rest = parts.length > 1 ? parts.slice(1).join(' | ') : '';
 
         const hasDirectCoords = typeof lat === 'number' && isFinite(lat) && typeof lng === 'number' && isFinite(lng);
@@ -1491,7 +1561,7 @@ export class CertificatesService {
 
         const coordText =
           typeof outLat === 'number' && typeof outLng === 'number'
-            ? `Lat: ${outLat.toFixed(6)}, Long: ${outLng.toFixed(6)}`
+            ? `${outLat.toFixed(6)}, ${outLng.toFixed(6)}`
             : '';
 
         if (addressPart && coordText) return `${addressPart} | ${coordText}`;

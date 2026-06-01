@@ -23,6 +23,7 @@ import {
 const items = [
   { path: "", label: "Dashboard", icon: LayoutDashboard },
   { path: "/qr-generation", label: "QR Generator", icon: QrCode },
+  { path: "/ghost-qr", label: "Ghost QR Manager", icon: ShieldCheck },
   { path: "/inventory", label: "Inventory", icon: Package },
   { path: "/activate-qr", label: "Reactivate QR Code", icon: RefreshCcw },
   { path: "/certificate", label: "Certificate Generator", icon: FileBadge2 },
@@ -55,6 +56,7 @@ export default function Sidebar() {
     // Ghost Mode Logic
     const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
     if (isGhostMode) {
+        if (roleValue !== 'GHOST_ADMIN') return false;
         // In Ghost Mode, HIDE Dealers, Settings, User Management
         if (path === "/settings") return false;
         if (path === "users-section") return false;
@@ -71,11 +73,13 @@ export default function Sidebar() {
         case "": // Dashboard
             return true;
         case "/qr-generation":
-            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue);
+            return isGhostMode ? roleValue === "GHOST_ADMIN" : ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue);
+        case "/ghost-qr":
+            return isGhostMode ? roleValue === "GHOST_ADMIN" : false;
         case "/inventory":
             return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue); // Dealer No Access
         case "/activate-qr":
-            return ["SUPER_ADMIN", "GHOST_ADMIN"].includes(roleValue);
+            return isGhostMode ? roleValue === "GHOST_ADMIN" : ["SUPER_ADMIN", "GHOST_ADMIN"].includes(roleValue);
         case "/certificate":
             // "Certificate Generator"
             return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue) || isDealer;

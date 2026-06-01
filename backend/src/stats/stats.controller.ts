@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards, Logger, InternalServerErrorException, Req } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, Logger, InternalServerErrorException, Req, ForbiddenException } from '@nestjs/common';
 import { StatsService } from './stats.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -28,9 +28,8 @@ export class StatsController {
     // Check for ghost mode header
     const isGhost = req.headers['x-ghost-mode'] === 'true';
 
-    // Restrict Ghost Mode to GHOST_ADMIN and SUPER_ADMIN
-    if (isGhost && user.role !== 'GHOST_ADMIN' && user.role !== 'SUPER_ADMIN') {
-        throw new InternalServerErrorException("Access Denied: Ghost Mode is restricted to Ghost Admins.");
+    if (isGhost && user.role !== 'GHOST_ADMIN') {
+        throw new ForbiddenException('Ghost Mode is restricted to Ghost Admin only');
     }
 
     if (user.role === 'STATE_ADMIN') {

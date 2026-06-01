@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, UseGuards, Req, Param, Res, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Req, Param, Res, BadRequestException, Query, ForbiddenException } from '@nestjs/common';
 import { QrService } from './qr.service';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -24,7 +24,7 @@ export class QrController {
 
   @Post('regenerate')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.GHOST_ADMIN) // Only Super Admin and Ghost Admin can regenerate (Ghost Mode)
+  @Roles(UserRole.GHOST_ADMIN)
   async regenerateBatch(@Body() body: any, @Req() req: any) {
       // Body: stateCode, oemCode, productCode, startSerial, quantity
       const userId = req.user?.userId || 'system-admin';
@@ -34,14 +34,14 @@ export class QrController {
 
   @Post('regenerate-v2/eligible')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.GHOST_ADMIN)
+  @Roles(UserRole.GHOST_ADMIN)
   async eligibleForRegenerationV2(@Body() body: any) {
     return this.qrService.getEligibleCountForRegenerationV2(body);
   }
 
   @Post('regenerate-v2')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.GHOST_ADMIN)
+  @Roles(UserRole.GHOST_ADMIN)
   async regenerateBatchV2(@Body() body: any, @Req() req: any) {
     const userId = req.user?.userId || 'system-admin';
     const baseUrl = req.get('origin') || process.env.BASE_URL || 'https://smartvahan.com';
@@ -93,21 +93,184 @@ export class QrController {
   }
 
   @Post('reactivate')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
   async reactivateQr(@Body() body: { stateCode: string; oemCode: string; serialNumber: number }, @Req() req: any) {
       if (!body.stateCode || !body.oemCode || !body.serialNumber) {
-          throw new Error('Missing required fields: stateCode, oemCode, serialNumber');
+          throw new BadRequestException('Missing required fields: stateCode, oemCode, serialNumber');
       }
       const userId = req.user?.userId || 'system-admin';
       
-      // Check for ghost mode header
       const isGhost = req.headers['x-ghost-mode'] === 'true';
-      if (isGhost && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'GHOST_ADMIN') {
-        // Should be caught by RoleGuard but reactivateQr currently has no Role restriction in decorator?
-         throw new Error("Access Denied: Ghost Mode is restricted to Super Admins.");
+      if (!isGhost) {
+        throw new ForbiddenException('This endpoint is restricted to Ghost Mode only.');
       }
+      return this.qrService.reactivateQr(body, userId, true);
+  }
 
-      return this.qrService.reactivateQr(body, userId, isGhost);
+  @Post('ghost-v1/deactivate-duplicates')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async deactivateGhostV1Duplicates(@Body() body: any, @Req() req: any) {
+    const userId = req.user?.userId || 'system-admin';
+    return this.qrService.deactivateGhostV1Duplicates(body, userId);
+  }
+
+  @Post('ghost-v1/restore')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async restoreGhostQr(@Body() body: { qrValue?: string; qrCodeId?: string }, @Req() req: any) {
+    const userId = req.user?.userId || 'system-admin';
+    return this.qrService.restoreGhostQr(body, userId);
+  }
+
+  @Get('ghost-v1/stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async ghostV1Stats(
+    @Query('stateCode') stateCode?: string,
+    @Query('oemCode') oemCode?: string,
+    @Query('productCode') productCode?: string
+  ) {
+    return this.qrService.getGhostV1Stats({ stateCode, oemCode, productCode });
+  }
+
+  @Post('ghost-v1/batch/backup')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async backupGhostV1Batch(@Body() body: { batchId: string }) {
+    return this.qrService.backupGhostV1Batch(body);
+  }
+
+  @Post('ghost-v1/batch/delete')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async deleteGhostV1Batch(@Body() body: { batchId: string }, @Req() req: any) {
+    const userId = req.user?.userId || 'system-admin';
+    return this.qrService.deleteGhostV1Batch(body, userId);
+  }
+
+  @Post('ghost-v1/batch/restore')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async restoreGhostV1Batch(
+    @Body() body: { backup: any; onConflict?: 'FAIL' | 'SKIP'; forceNewBatchId?: boolean },
+    @Req() req: any
+  ) {
+    const userId = req.user?.userId || 'system-admin';
+    return this.qrService.restoreGhostV1Batch(body, userId);
+  }
+
+  @Post('ghost-v1/batch/deactivate-unused')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async deactivateGhostV1BatchUnused(@Body() body: { batchId: string }, @Req() req: any) {
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+    if (!isGhost) throw new ForbiddenException('This endpoint is restricted to Ghost Mode only.');
+    const userId = req.user?.userId || 'system-admin';
+    return this.qrService.deactivateGhostV1BatchUnused(body, userId);
+  }
+
+  @Post('ghost-v1/batch/reactivate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async reactivateGhostV1Batch(@Body() body: { batchId: string }, @Req() req: any) {
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+    if (!isGhost) throw new ForbiddenException('This endpoint is restricted to Ghost Mode only.');
+    const userId = req.user?.userId || 'system-admin';
+    return this.qrService.reactivateGhostV1Batch(body, userId);
+  }
+
+  @Get('ghost-v2/runs')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async listGhostV2Runs(
+    @Req() req: any,
+    @Query('stateCode') stateCode?: string,
+    @Query('oemCode') oemCode?: string,
+    @Query('productCode') productCode?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string
+  ) {
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+    if (!isGhost) throw new ForbiddenException('This endpoint is restricted to Ghost Mode only.');
+    return this.qrService.listGhostV2Runs({
+      stateCode,
+      oemCode,
+      productCode,
+      from,
+      to,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined
+    });
+  }
+
+  @Get('ghost-v2/runs/:runId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async getGhostV2Run(@Param('runId') runId: string, @Req() req: any) {
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+    if (!isGhost) throw new ForbiddenException('This endpoint is restricted to Ghost Mode only.');
+    return this.qrService.getGhostV2Run(runId);
+  }
+
+  @Get('ghost-v2/runs/:runId/counts')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async getGhostV2RunCounts(@Param('runId') runId: string, @Req() req: any) {
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+    if (!isGhost) throw new ForbiddenException('This endpoint is restricted to Ghost Mode only.');
+    return this.qrService.getGhostV2RunStatusCounts(runId);
+  }
+
+  @Post('ghost-v2/runs/:runId/deactivate-unused')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async deactivateGhostV2RunUnused(@Param('runId') runId: string, @Req() req: any) {
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+    if (!isGhost) throw new ForbiddenException('This endpoint is restricted to Ghost Mode only.');
+    const userId = req.user?.userId || 'system-admin';
+    return this.qrService.deactivateGhostV2RunUnused(runId, userId);
+  }
+
+  @Post('ghost-v2/runs/:runId/reactivate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async reactivateGhostV2Run(@Param('runId') runId: string, @Req() req: any) {
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+    if (!isGhost) throw new ForbiddenException('This endpoint is restricted to Ghost Mode only.');
+    const userId = req.user?.userId || 'system-admin';
+    return this.qrService.reactivateGhostV2Run(runId, userId);
+  }
+
+  @Get('ghost-v2/runs/:runId/download')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.GHOST_ADMIN)
+  async downloadGhostV2Run(@Param('runId') runId: string, @Res() res: Response, @Req() req: any) {
+    const isGhost = req.headers['x-ghost-mode'] === 'true';
+    if (!isGhost) throw new ForbiddenException('This endpoint is restricted to Ghost Mode only.');
+    const download = await this.qrService.getGhostV2RunDownload(runId);
+    if (download.type === 'redirect') {
+      res.redirect(download.url);
+      return;
+    }
+    if (download.type === 'stream') {
+      res.setHeader('Content-Type', download.contentType || 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${download.filename}"`);
+      if (typeof download.contentLength === 'number') {
+        res.setHeader('Content-Length', String(download.contentLength));
+      }
+      await new Promise<void>((resolve, reject) => {
+        pipeline(download.stream, res, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      return;
+    }
+    res.download(download.path, download.filename);
   }
 
   @Get('batches')
@@ -116,6 +279,9 @@ export class QrController {
   async getBatches(@Req() req: any) {
       // Check for ghost mode header
       const isGhost = req.headers['x-ghost-mode'] === 'true';
+      if (isGhost && req.user.role !== 'GHOST_ADMIN') {
+        throw new ForbiddenException('Ghost Mode is restricted to Ghost Admin only.');
+      }
       return this.qrService.getBatches(req.user, isGhost);
   }
 
@@ -123,6 +289,10 @@ export class QrController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.STATE_ADMIN, UserRole.OEM_ADMIN, UserRole.GHOST_ADMIN)
   async downloadBatch(@Param('batchId') batchId: string, @Res() res: Response, @Req() req: any) {
+      const isGhost = req.headers['x-ghost-mode'] === 'true';
+      if (isGhost && req.user.role !== 'GHOST_ADMIN') {
+        throw new ForbiddenException('Ghost Mode is restricted to Ghost Admin only.');
+      }
       const download = await this.qrService.getBatchDownload(batchId, req.user);
 
       if (download.type === 'local') {

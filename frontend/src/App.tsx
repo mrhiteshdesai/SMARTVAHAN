@@ -10,6 +10,7 @@ import DealersPage from "./pages/dealers/DealersPage";
 import SystemUsersPage from "./pages/users/SystemUsersPage";
 import SettingsPage from "./pages/SettingsPage";
 import { QRGenerationPage } from "./pages/qr/QRGenerationPage";
+import { GhostQrManagementPage } from "./pages/qr/GhostQrManagementPage";
 import ActivateQrPage from "./pages/ActivateQrPage";
 import { CertificateGeneratorPage } from "./pages/CertificateGeneratorPage";
 import SearchQrPage from "./pages/SearchQrPage";
@@ -51,7 +52,7 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
 
   // Ghost Mode Restrictions
   if (isGhostMode) {
-    if (user?.role !== "SUPER_ADMIN" && user?.role !== "GHOST_ADMIN") {
+    if (user?.role !== "GHOST_ADMIN") {
       // Not authorized for ghost mode
       signOut(); // Force logout to prevent loop or invalid state
       return <Navigate to="/login" replace />;
@@ -199,6 +200,14 @@ export default function App() {
             element={
               <ErrorBoundary>
                 <QRGenerationPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="ghost-qr"
+            element={
+              <ErrorBoundary>
+                <GhostQrManagementPage />
               </ErrorBoundary>
             }
           />

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Search, Filter, Download, FileDown, FileSpreadsheet } from "lucide-react";
+import { Plus, Search, FileDown, FileSpreadsheet } from "lucide-react";
 import * as XLSX from 'xlsx';
 import Modal from "../../ui/Modal";
 import {
@@ -141,7 +141,20 @@ export const QRGenerationPage = () => {
   // Filter Logic
   const filteredBatches = useMemo(() => {
     return batches.filter((batch: any) => {
-      const matchesSearch = batch.batchId.toLowerCase().includes(searchTerm.toLowerCase());
+      const q = searchTerm.trim().toLowerCase();
+      const haystack = [
+        batch.batchId,
+        batch.stateCode,
+        batch.oemCode,
+        batch.productCode,
+        batch.state?.name,
+        batch.oem?.name,
+        batch.product?.name,
+      ]
+        .filter(Boolean)
+        .map((s: any) => String(s).toLowerCase())
+        .join(" ");
+      const matchesSearch = q ? haystack.includes(q) : true;
       const matchesState = filterState ? batch.stateCode === filterState : true;
       const matchesOem = filterOem ? batch.oemCode === filterOem : true;
       const matchesProduct = filterProduct ? batch.productCode === filterProduct : true;

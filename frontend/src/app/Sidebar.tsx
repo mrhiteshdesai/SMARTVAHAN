@@ -25,7 +25,6 @@ const items = [
   { path: "/qr-generation", label: "QR Generator", icon: QrCode },
   { path: "/ghost-qr", label: "Ghost QR Manager", icon: ShieldCheck },
   { path: "/inventory", label: "Inventory", icon: Package },
-  { path: "/activate-qr", label: "Reactivate QR Code", icon: RefreshCcw },
   { path: "/certificate", label: "Certificate Generator", icon: FileBadge2 },
   { path: "/search-qr", label: "Search QR Code", icon: Search },
   { path: "/search-cert", label: "Search Certificate", icon: FileSearch },
@@ -78,8 +77,6 @@ export default function Sidebar() {
             return isGhostMode ? roleValue === "GHOST_ADMIN" : false;
         case "/inventory":
             return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue); // Dealer No Access
-        case "/activate-qr":
-            return isGhostMode ? roleValue === "GHOST_ADMIN" : ["SUPER_ADMIN", "GHOST_ADMIN"].includes(roleValue);
         case "/certificate":
             // "Certificate Generator"
             return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue) || isDealer;

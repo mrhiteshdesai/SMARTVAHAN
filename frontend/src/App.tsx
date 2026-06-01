@@ -11,7 +11,6 @@ import SystemUsersPage from "./pages/users/SystemUsersPage";
 import SettingsPage from "./pages/SettingsPage";
 import { QRGenerationPage } from "./pages/qr/QRGenerationPage";
 import { GhostQrManagementPage } from "./pages/qr/GhostQrManagementPage";
-import ActivateQrPage from "./pages/ActivateQrPage";
 import { CertificateGeneratorPage } from "./pages/CertificateGeneratorPage";
 import SearchQrPage from "./pages/SearchQrPage";
 import SearchCertPage from "./pages/SearchCertPage";
@@ -146,14 +145,6 @@ export default function App() {
               </ErrorBoundary>
             }
           />
-          <Route
-            path="activate-qr"
-            element={
-              <ErrorBoundary>
-                <ActivateQrPage />
-              </ErrorBoundary>
-            }
-          />
           <Route path="search-qr" element={<SearchQrPage />} />
           <Route path="search-cert" element={<SearchCertPage />} />
           <Route path="download" element={<DownloadPage />} />
@@ -216,14 +207,6 @@ export default function App() {
             element={
               <ErrorBoundary>
                 <InventoryPage />
-              </ErrorBoundary>
-            }
-          />
-          <Route
-            path="activate-qr"
-            element={
-              <ErrorBoundary>
-                <ActivateQrPage />
               </ErrorBoundary>
             }
           />

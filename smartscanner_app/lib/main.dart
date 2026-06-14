@@ -3693,8 +3693,7 @@ class _FormScreenState extends State<FormScreen> {
         (stateCode != null && stateCode.isNotEmpty) &&
         LookupService.getRtos(stateCode) == null;
     final needPassingRtos =
-        (passingStateCode != null && passingStateCode.isNotEmpty) &&
-        LookupService.getPassingRtos(passingStateCode) == null;
+        (passingStateCode != null && passingStateCode.isNotEmpty);
 
     if (!needCats && !needRtos && !needPassingRtos) {
       if (!mounted) return;

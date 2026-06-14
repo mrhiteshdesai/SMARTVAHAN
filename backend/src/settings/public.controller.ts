@@ -34,10 +34,12 @@ export class PublicController {
   @Get('rtos')
   async listRtos(@Query('stateCode') stateCode?: string) {
     const normalizedStateCode = stateCode ? stateCode.trim().toUpperCase() : '';
-    const where = normalizedStateCode ? { stateCode: normalizedStateCode } : undefined;
+    const where = normalizedStateCode
+      ? { stateCode: normalizedStateCode, isPassingEnabled: true }
+      : { isPassingEnabled: true };
     return this.prisma.rTO.findMany({
       where: where as any,
-      select: { code: true, name: true, stateCode: true },
+      select: { code: true, name: true, stateCode: true, isPassingEnabled: true },
       orderBy: { code: 'asc' },
     });
   }

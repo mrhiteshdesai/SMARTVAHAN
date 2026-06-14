@@ -16,8 +16,8 @@ export class RtosController {
   }
 
   @Get()
-  async findAll(@Query('stateCode') stateCode?: string) {
-    return this.rtosService.findAll(stateCode);
+  async findAll(@Query('stateCode') stateCode?: string, @Query('passingOnly') passingOnly?: string) {
+    return this.rtosService.findAll(stateCode, { passingOnly: passingOnly === 'true' });
   }
 
   @Get('authorized')
@@ -36,7 +36,7 @@ export class RtosController {
       }
 
       const effectiveStateCode = stateCode || dealer.stateCode;
-      const rtos = await this.rtosService.findAll(effectiveStateCode);
+      const rtos = await this.rtosService.findAll(effectiveStateCode, { passingOnly: true });
 
       if (dealer.passingRtosAll) {
         return rtos;
@@ -46,7 +46,7 @@ export class RtosController {
       return rtos.filter((r) => allowed.has(r.code));
     }
 
-    return this.rtosService.findAll(stateCode);
+    return this.rtosService.findAll(stateCode, { passingOnly: true });
   }
 
   @Get(':id')

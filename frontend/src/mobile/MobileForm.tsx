@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { useRTOs, useVehicleCategories } from "../api/hooks";
+import { useAuthorizedPassingRTOs, useRTOs, useVehicleCategories } from "../api/hooks";
 
 type VehicleDetails = {
   vehicleMake: string;
@@ -48,7 +48,8 @@ export default function MobileForm() {
   const { user } = useAuth();
   const qrData = state?.qr;
 
-  const { data: rtos = [] } = useRTOs(qrData?.stateCode);
+  const { data: registrationRtos = [] } = useRTOs(qrData?.stateCode);
+  const { data: passingRtos = [] } = useAuthorizedPassingRTOs(qrData?.stateCode);
   const { data: vehicleCategories = [] } = useVehicleCategories();
 
   const [step, setStep] = useState<number>(1);
@@ -308,7 +309,7 @@ export default function MobileForm() {
                   onChange={(e) => setVehicleDetails({ ...vehicleDetails, passingRto: e.target.value })}
                 >
                   <option value="">Passing RTO</option>
-                  {[...rtos]
+                  {[...passingRtos]
                     .sort((a: any, b: any) => a.code.localeCompare(b.code))
                     .map((r: any) => (
                       <option key={r.code} value={r.code}>
@@ -322,7 +323,7 @@ export default function MobileForm() {
                   onChange={(e) => setVehicleDetails({ ...vehicleDetails, registrationRto: e.target.value })}
                 >
                   <option value="">Registration RTO</option>
-                  {[...rtos]
+                  {[...registrationRtos]
                     .sort((a: any, b: any) => a.code.localeCompare(b.code))
                     .map((r: any) => (
                       <option key={r.code} value={r.code}>

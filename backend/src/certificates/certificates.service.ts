@@ -16,6 +16,49 @@ export class CertificatesService {
     private s3Service: S3Service
   ) {}
 
+  private decodeDataUrlToBuffer(dataUrl?: string | null): Buffer | null {
+    const raw = String(dataUrl || '').trim();
+    if (!raw) return null;
+
+    const matches = raw.match(/^data:([A-Za-z0-9.+-]+\/[A-Za-z0-9.+-]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) return null;
+
+    try {
+      return Buffer.from(matches[2], 'base64');
+    } catch (error) {
+      this.logger.warn(`Failed to decode QR fallback image: ${error instanceof Error ? error.message : error}`);
+      return null;
+    }
+  }
+
+  private async buildQrCodeImageBuffer(qrContent: string, qrCodeImageBase64?: string | null): Promise<Buffer | null> {
+    try {
+      return await QRCode.toBuffer(qrContent, {
+        type: 'png',
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `[Certificate PDF] Failed to generate QR image buffer, attempting fallback image: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
+    }
+
+    const fallbackBuffer = this.decodeDataUrlToBuffer(qrCodeImageBase64);
+    if (fallbackBuffer) {
+      this.logger.warn('[Certificate PDF] Using uploaded QR image fallback for certificate PDF.');
+      return fallbackBuffer;
+    }
+
+    return null;
+  }
+
   @Cron(CronExpression.EVERY_MINUTE)
   async handleImageCleanup() {
     // 1. Define threshold (10 minutes ago)
@@ -1189,22 +1232,8 @@ export class CertificatesService {
             photoRc: saveImage(photos.photoRc, 'RC')
         };
         
-        // Generate QR Code Image from value (Ensure it exists and is high quality)
-        let qrCodeImagePath = null;
-        try {
-            const qrFilename = `${certNumber}_QR.png`;
-            qrCodeImagePath = path.join(baseUploadDir, qrFilename);
-            await QRCode.toFile(qrCodeImagePath, qrContent, {
-                width: 300,
-                margin: 2,
-                color: {
-                    dark: '#000000',
-                    light: '#FFFFFF'
-                }
-            });
-        } catch (e) {
-            console.error("Failed to generate QR Code image:", e);
-        }
+        // Build the QR image in memory so the PDF does not depend on a temporary file write.
+        const qrCodeImageBuffer = await this.buildQrCodeImageBuffer(qrContent, qrCodeImageBase64);
 
         // Check if any image failed (returned null) - this would cause Prisma error
         if (!photoPaths.photoFrontLeft || !photoPaths.photoBackRight || !photoPaths.photoNumberPlate || !photoPaths.photoRc) {
@@ -1243,7 +1272,7 @@ export class CertificatesService {
             generatedAt: new Date(),
             systemLogo: finalSystemLogo,
             systemName: finalSystemName,
-            qrCodeImagePath,
+            qrCodeImageBuffer,
             dealerName: dealerDetails.name,
             tradeCertificateNo: dealerDetails.tradeCertificateNo,
             gstNo: dealerDetails.gstNo,
@@ -1500,10 +1529,15 @@ export class CertificatesService {
       let infoY = currentY;
 
       // QR Code (Left)
-      if (data.qrCodeImagePath) {
+      const qrImageSource =
+        data.qrCodeImageBuffer ||
+        data.qrCodeImagePath ||
+        this.decodeDataUrlToBuffer(data.qrCodeImage);
+
+      if (qrImageSource) {
           try {
              // 120x120 QR Code
-             doc.image(data.qrCodeImagePath, startX, infoY + 10, { fit: [100, 100], align: 'center' });
+             doc.image(qrImageSource, startX, infoY + 10, { fit: [100, 100], align: 'center' });
              doc.font('Helvetica-Oblique').fontSize(8)
                 .text('(Scan To Verify)', startX, infoY + 115, { width: 100, align: 'center' });
           } catch (e) {

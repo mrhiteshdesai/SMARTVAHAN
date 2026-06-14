@@ -5,7 +5,7 @@ import Modal from "../../ui/Modal";
 import { 
   useDealers, useCreateDealer, useUpdateDealer, useDeleteDealer,
   useDealerRegistrationRequests, useApproveDealerRegistrationRequest, useRejectDealerRegistrationRequest,
-  useStates, useRTOs, useOEMs,
+  useStates, usePassingRTOs, useOEMs,
   Dealer, DealerRegistrationRequest
 } from "../../api/hooks";
 
@@ -67,7 +67,7 @@ export default function DealersPage() {
   } = useDealerRegistrationRequests("PENDING");
   
   // RTOs depend on selected state in form
-  const { data: formRTOs = [] } = useRTOs(form.stateCode);
+  const { data: formRTOs = [] } = usePassingRTOs(form.stateCode);
   const sortedFormRTOs = useMemo(() => {
     return [...formRTOs].sort((a, b) => a.code.localeCompare(b.code));
   }, [formRTOs]);

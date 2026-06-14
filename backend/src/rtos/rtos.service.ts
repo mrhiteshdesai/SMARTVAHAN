@@ -10,12 +10,16 @@ export class RtosService {
     return this.prisma.rTO.create({ data });
   }
 
-  async findAll(stateCode?: string): Promise<RTO[]> {
+  async findAll(stateCode?: string, options?: { passingOnly?: boolean }): Promise<RTO[]> {
     const normalizedStateCode = stateCode ? stateCode.trim().toUpperCase() : '';
+    const where: any = {};
     if (normalizedStateCode) {
-        return this.prisma.rTO.findMany({ where: { stateCode: normalizedStateCode }, orderBy: { name: 'asc' } });
+      where.stateCode = normalizedStateCode;
     }
-    return this.prisma.rTO.findMany({ orderBy: { name: 'asc' } });
+    if (options?.passingOnly) {
+      where.isPassingEnabled = true;
+    }
+    return this.prisma.rTO.findMany({ where, orderBy: { name: 'asc' } });
   }
 
   async findOne(code: string): Promise<RTO | null> {

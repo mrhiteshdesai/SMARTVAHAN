@@ -8,7 +8,7 @@ export default function ManageRTOsPage() {
   const { code: stateCode = "" } = useParams();
   const [query, setQuery] = useState("");
   const [openAdd, setOpenAdd] = useState(false);
-  const [form, setForm] = useState<RTO>({ name: "", code: "", stateCode });
+  const [form, setForm] = useState<RTO>({ name: "", code: "", stateCode, isPassingEnabled: true });
   const [openImport, setOpenImport] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -37,7 +37,7 @@ export default function ManageRTOsPage() {
         await createRTO.mutateAsync({ ...form, stateCode });
       }
       setOpenAdd(false);
-      setForm({ name: "", code: "", stateCode });
+      setForm({ name: "", code: "", stateCode, isPassingEnabled: true });
       setIsEdit(false);
     } catch (err) {
       console.error("Failed to save RTO:", err);
@@ -116,7 +116,7 @@ export default function ManageRTOsPage() {
             <div className="flex items-center gap-2">
             <button
                 onClick={() => {
-                  setForm({ name: "", code: "", stateCode });
+                  setForm({ name: "", code: "", stateCode, isPassingEnabled: true });
                   setIsEdit(false);
                   setOpenAdd(true);
                 }}
@@ -153,13 +153,14 @@ export default function ManageRTOsPage() {
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">RTO Name</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Passing RTO</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
                   No RTOs found
                 </td>
               </tr>
@@ -168,6 +169,17 @@ export default function ManageRTOsPage() {
                 <tr key={r.code} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{r.name}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{r.code}</td>
+                  <td className="px-6 py-4 text-sm">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        r.isPassingEnabled !== false
+                          ? "bg-green-100 text-green-700"
+                          : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {r.isPassingEnabled !== false ? "Enabled" : "Disabled"}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
@@ -220,6 +232,18 @@ export default function ManageRTOsPage() {
               placeholder="e.g. MH12"
             />
           </div>
+          <label className="flex items-center justify-between rounded-md border px-3 py-2">
+            <div>
+              <div className="text-sm font-medium text-gray-700">Allow as Passing RTO</div>
+              <div className="text-xs text-gray-500">Controls visibility in Passing RTO lists and reports.</div>
+            </div>
+            <input
+              type="checkbox"
+              checked={form.isPassingEnabled !== false}
+              onChange={(e) => setForm({ ...form, isPassingEnabled: e.target.checked })}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+          </label>
           
           <div className="flex justify-end gap-3 mt-6">
             <button

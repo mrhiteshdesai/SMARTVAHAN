@@ -42,11 +42,12 @@ model State {
 }
 
 model RTO {
-  code      String   @id
-  name      String
-  stateCode String
-  dealers   Dealer[]
-  state     State    @relation(fields: [stateCode], references: [code])
+  code             String   @id
+  name             String
+  stateCode        String
+  isPassingEnabled Boolean  @default(true)
+  dealers          Dealer[]
+  state            State    @relation(fields: [stateCode], references: [code])
 
   @@map("rtos")
 }

@@ -62,18 +62,25 @@ export type RTO = {
   code: string;
   name: string;
   stateCode: string;
+  isPassingEnabled?: boolean;
 };
 
-export function useRTOs(stateCode?: string) {
+export function useRTOs(stateCode?: string, options?: { passingOnly?: boolean }) {
   return useQuery({
-    queryKey: ["rtos", stateCode],
+    queryKey: ["rtos", stateCode, options?.passingOnly === true],
     queryFn: async () => {
-      const params = stateCode ? { stateCode } : {};
+      const params: Record<string, string> = {};
+      if (stateCode) params.stateCode = stateCode;
+      if (options?.passingOnly) params.passingOnly = "true";
       const res = await api.get<RTO[]>("/rtos", { params });
       return res.data;
     },
     enabled: true, 
   });
+}
+
+export function usePassingRTOs(stateCode?: string) {
+  return useRTOs(stateCode, { passingOnly: true });
 }
 
 export function useAuthorizedPassingRTOs(stateCode?: string) {
@@ -97,6 +104,7 @@ export function useCreateRTO() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rtos"] });
+      queryClient.invalidateQueries({ queryKey: ["rtos-authorized"] });
     },
   });
 }
@@ -110,6 +118,7 @@ export function useUpdateRTO() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rtos"] });
+      queryClient.invalidateQueries({ queryKey: ["rtos-authorized"] });
     },
   });
 }
@@ -123,6 +132,7 @@ export function useDeleteRTO() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rtos"] });
+      queryClient.invalidateQueries({ queryKey: ["rtos-authorized"] });
     },
   });
 }

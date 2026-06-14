@@ -1,0 +1,2 @@
+ALTER TABLE "rtos"
+ADD COLUMN "isPassingEnabled" BOOLEAN NOT NULL DEFAULT true;

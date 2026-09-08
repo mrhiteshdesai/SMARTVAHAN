@@ -30,6 +30,7 @@ type HomeData = {
     states: Array<{ code: string; name: string }>;
     oems: Array<{ code: string; name: string; logo?: string | null }>;
     registrationOems?: Array<{ code: string; name: string; authorizedStates?: string[] }>;
+    registrationSldOems?: Array<{ code: string; name: string; authorizedStates?: string[] }>;
     stats: {
       totalQrCodeIssued: number;
       totalCertificateGenerated: number;
@@ -164,6 +165,9 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
   const [dealerGstCertificateUrl, setDealerGstCertificateUrl] = useState("");
   const [dealerAadharCardUrl, setDealerAadharCardUrl] = useState("");
   const [dealerOemCodes, setDealerOemCodes] = useState<string[]>([]);
+  const [dealerSldOemCodes, setDealerSldOemCodes] = useState<string[]>([]);
+  const [wantsReflective, setWantsReflective] = useState(true);
+  const [wantsSld, setWantsSld] = useState(false);
   const [dealerLatitude, setDealerLatitude] = useState<number | null>(null);
   const [dealerLongitude, setDealerLongitude] = useState<number | null>(null);
   const [dealerGeoStateName, setDealerGeoStateName] = useState("");
@@ -173,6 +177,8 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
   const [phoneError, setPhoneError] = useState<string>("");
   const [passingRtoError, setPassingRtoError] = useState<string>("");
   const [oemError, setOemError] = useState<string>("");
+  const [sldOemError, setSldOemError] = useState<string>("");
+  const [moduleError, setModuleError] = useState<string>("");
   const [successPopupOpen, setSuccessPopupOpen] = useState(false);
   const [successPopupMessage, setSuccessPopupMessage] = useState("");
 
@@ -361,7 +367,10 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
           zip: dealerZip || null,
           latitude: dealerLatitude,
           longitude: dealerLongitude,
-          oemCodes: dealerOemCodes,
+          oemCodes: wantsReflective ? dealerOemCodes : [],
+          sldOemCodes: wantsSld ? dealerSldOemCodes : [],
+          wantsReflective,
+          wantsSld,
           gstNo: dealerGstNo || null,
           tradeCertificateNo: dealerTradeCertificateNo || null,
           tradeValidity: dealerTradeValidity ? new Date(dealerTradeValidity).toISOString() : null,
@@ -423,6 +432,9 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
       setDealerGstCertificateUrl("");
       setDealerAadharCardUrl("");
       setDealerOemCodes([]);
+      setDealerSldOemCodes([]);
+      setWantsReflective(true);
+      setWantsSld(false);
       setDealerLatitude(null);
       setDealerLongitude(null);
       setDealerGeoStateName("");
@@ -433,6 +445,8 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
       setPhoneError("");
       setPassingRtoError("");
       setOemError("");
+      setSldOemError("");
+      setModuleError("");
 
       if (res?.kind === "dealer") {
         const status = String(res?.data?.data?.status || "");
@@ -451,6 +465,7 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
   const states = data?.data?.states || [];
   const oems = data?.data?.oems || [];
   const registrationOems = data?.data?.registrationOems || [];
+  const registrationSldOems = data?.data?.registrationSldOems || [];
   const dealerOemOptions = useMemo(() => {
     const base = registrationOems.length ? registrationOems : oems;
     if (!dealerStateCode) return [];
@@ -459,6 +474,13 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
       return Array.isArray(o.authorizedStates) && o.authorizedStates.includes(dealerStateCode);
     });
   }, [dealerStateCode, oems, registrationOems]);
+
+  const dealerSldOemOptions = useMemo(() => {
+    if (!dealerStateCode) return [];
+    return registrationSldOems.filter((o: any) => {
+      return Array.isArray(o.authorizedStates) && o.authorizedStates.includes(dealerStateCode);
+    });
+  }, [dealerStateCode, registrationSldOems]);
 
   const {
     data: passingRtos = [],
@@ -494,8 +516,10 @@ export default function LandingPage({ mode = "landing" }: LandingPageProps) {
     if (!isDealerRegistration) return;
     setDealerPassingRtoCodes([]);
     setDealerOemCodes([]);
+    setDealerSldOemCodes([]);
     setPassingRtoError("");
     setOemError("");
+    setSldOemError("");
   }, [dealerStateCode, isDealerRegistration]);
 
   useEffect(() => {
@@ -1693,22 +1717,30 @@ a{text-decoration:none;color:inherit;}
                   setPhoneError("");
                   setPassingRtoError("");
                   setOemError("");
+                  setSldOemError("");
+                  setModuleError("");
                   const hasDoc =
                     (dealerGstNo.trim() && dealerGstCertificateUrl) ||
                     (dealerAadharNumber.trim() && dealerAadharCardUrl) ||
                     (dealerTradeCertificateNo.trim() && dealerTradeCertificateUrl);
                   const phoneDigits = String(phone || "").replace(/\D/g, "");
                   const nextPassingRtoError = dealerPassingRtoCodes.length === 0 ? "Select at least one Passing RTO." : "";
-                  const nextOemError = dealerOemCodes.length === 0 ? "Select at least one OEM." : "";
+                  const nextModuleError = !wantsReflective && !wantsSld ? "Enable Reflective Tape and/or SLD." : "";
+                  const nextOemError =
+                    wantsReflective && dealerOemCodes.length === 0 ? "Select at least one Reflective OEM." : "";
+                  const nextSldOemError =
+                    wantsSld && dealerSldOemCodes.length === 0 ? "Select at least one SLD OEM." : "";
                   const nextPhoneError = phoneDigits.length !== 10 ? "Phone number must be exactly 10 digits." : "";
                   const nextDocsError = !hasDoc ? "Upload at least one verification document (GST, Aadhar, or Trade Certificate)." : "";
 
                   setPassingRtoError(nextPassingRtoError);
+                  setModuleError(nextModuleError);
                   setOemError(nextOemError);
+                  setSldOemError(nextSldOemError);
                   setPhoneError(nextPhoneError);
                   setDocsError(nextDocsError);
 
-                  if (nextPassingRtoError || nextOemError || nextPhoneError || nextDocsError) return;
+                  if (nextPassingRtoError || nextModuleError || nextOemError || nextSldOemError || nextPhoneError || nextDocsError) return;
                 }
                 submit.mutate();
               }}
@@ -1862,7 +1894,43 @@ a{text-decoration:none;color:inherit;}
                   </div>
 
                   <div className="f-grp">
-                    <label>OEMs You Work With</label>
+                    <label>Modules You Want To Work With</label>
+                    <div className="chk-wrap">
+                      <div className="chk-grid">
+                        <label className="chk-item">
+                          <input
+                            type="checkbox"
+                            checked={wantsReflective}
+                            onChange={(e) => {
+                              setWantsReflective(e.target.checked);
+                              if (!e.target.checked) setDealerOemCodes([]);
+                              setModuleError("");
+                              setOemError("");
+                            }}
+                          />
+                          <span>Reflective Tape</span>
+                        </label>
+                        <label className="chk-item">
+                          <input
+                            type="checkbox"
+                            checked={wantsSld}
+                            onChange={(e) => {
+                              setWantsSld(e.target.checked);
+                              if (!e.target.checked) setDealerSldOemCodes([]);
+                              setModuleError("");
+                              setSldOemError("");
+                            }}
+                          />
+                          <span>Speed Limiting Device (SLD)</span>
+                        </label>
+                      </div>
+                      {moduleError ? <div className="geo-err">{moduleError}</div> : null}
+                    </div>
+                  </div>
+
+                  {wantsReflective ? (
+                  <div className="f-grp">
+                    <label>Reflective OEMs You Work With</label>
                     <div className="chk-wrap">
                       {!dealerStateCode ? <div className="geo-err">Select a state to load OEMs.</div> : null}
                       {dealerStateCode ? (
@@ -1897,6 +1965,46 @@ a{text-decoration:none;color:inherit;}
                     </div>
                     {oemError ? <div className="geo-err">{oemError}</div> : null}
                   </div>
+                  ) : null}
+
+                  {wantsSld ? (
+                  <div className="f-grp">
+                    <label>SLD OEMs You Work With</label>
+                    <div className="chk-wrap">
+                      {!dealerStateCode ? <div className="geo-err">Select a state to load SLD OEMs.</div> : null}
+                      {dealerStateCode ? (
+                        <div className="chk-grid">
+                          {dealerSldOemOptions.map((o) => {
+                            const checked = dealerSldOemCodes.includes(o.code);
+                            return (
+                              <label key={o.code} className="chk-item">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={!dealerStateCode}
+                                  onChange={(e) => {
+                                    const next = e.target.checked
+                                      ? Array.from(new Set([...dealerSldOemCodes, o.code]))
+                                      : dealerSldOemCodes.filter((c) => c !== o.code);
+                                    setDealerSldOemCodes(next);
+                                    setSldOemError("");
+                                  }}
+                                />
+                                <span>
+                                  {o.name} ({o.code})
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      <div className="geo-row">
+                        <span className="geo-pill">{dealerSldOemCodes.length} selected</span>
+                      </div>
+                    </div>
+                    {sldOemError ? <div className="geo-err">{sldOemError}</div> : null}
+                  </div>
+                  ) : null}
 
                   <div className="f-grp">
                     <label>Search Your Location</label>

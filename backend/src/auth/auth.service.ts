@@ -18,14 +18,24 @@ export class AuthService {
             const isValid = await bcrypt.compare(pass, user.password);
             if (isValid && user.status === 'ACTIVE') {
                 const { password, ...result } = user;
-                return result;
+                const isFullAdmin =
+                  result.role === 'SUPER_ADMIN' || result.role === 'ADMIN';
+                return {
+                  ...result,
+                  hasSldAccess: isFullAdmin ? true : undefined,
+                  hasReflectiveAccess: isFullAdmin ? true : undefined,
+                  oems: isFullAdmin ? 'All Reflective OEMs' : undefined,
+                  sldOems: isFullAdmin
+                    ? [{ code: 'ALL', name: 'All SLD OEMs' }]
+                    : undefined,
+                };
             }
         }
 
         // Check Dealers
         const dealer = await this.prisma.dealer.findUnique({
           where: { phone },
-          include: { oems: true, state: true }
+          include: { oems: true, sldOems: true, state: true }
         });
         if (dealer) {
             // Ensure password exists before comparing
@@ -42,6 +52,16 @@ export class AuthService {
                     stateCode: dealer.stateCode,
                     stateName: dealer.state?.name,
                     oems: dealer.oems.map(o => o.name).join(', '),
+                    sldOems: dealer.sldOems.map((o) => ({
+                      id: o.id,
+                      code: o.code,
+                      name: o.name,
+                    })),
+                    hasSldAccess: dealer.sldOems.length > 0,
+                    hasReflectiveAccess: dealer.oems.length > 0,
+                    passingRtosAll: dealer.passingRtosAll,
+                    passingRtoCodes: dealer.passingRtoCodes,
+                    dealerUpdatedAt: dealer.updatedAt.toISOString(),
                 };
             }
         }
@@ -72,7 +92,7 @@ export class AuthService {
     if (role === 'DEALER_USER' || role === 'DEALER') {
       const dealer = await this.prisma.dealer.findUnique({
         where: { id: userId },
-        include: { oems: true, state: true }
+        include: { oems: true, sldOems: true, state: true }
       });
       if (dealer) {
         return {
@@ -84,6 +104,13 @@ export class AuthService {
             stateCode: dealer.stateCode,
             stateName: dealer.state?.name,
             oems: dealer.oems.map(o => o.name).join(', '),
+            sldOems: dealer.sldOems.map((o) => ({
+              id: o.id,
+              code: o.code,
+              name: o.name,
+            })),
+            hasSldAccess: dealer.sldOems.length > 0,
+            hasReflectiveAccess: dealer.oems.length > 0,
             passingRtosAll: dealer.passingRtosAll,
             passingRtoCodes: dealer.passingRtoCodes,
             dealerUpdatedAt: dealer.updatedAt.toISOString(),
@@ -93,7 +120,17 @@ export class AuthService {
        const user = await this.prisma.user.findUnique({ where: { id: userId } });
        if (user) {
           const { password, ...result } = user;
-          return result;
+          const isFullAdmin =
+            result.role === 'SUPER_ADMIN' || result.role === 'ADMIN';
+          return {
+            ...result,
+            hasSldAccess: isFullAdmin ? true : undefined,
+            hasReflectiveAccess: isFullAdmin ? true : undefined,
+            oems: isFullAdmin ? 'All Reflective OEMs' : undefined,
+            sldOems: isFullAdmin
+              ? [{ code: 'ALL', name: 'All SLD OEMs' }]
+              : undefined,
+          };
        }
     }
     return null;

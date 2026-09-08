@@ -46,18 +46,18 @@ async function main() {
   });
   console.log({ ghostAdmin });
 
-  // Seed Products
+  // Seed Products (names match live prod: code-as-display-name)
   const products = [
-    { code: 'C3', name: 'Class 3' },
-    { code: 'C4', name: 'Class 4' },
     { code: 'CT', name: 'CT' },
-    { code: 'CTAUTO', name: 'CT Auto' },
+    { code: 'C3', name: 'C3' },
+    { code: 'C4', name: 'C4' },
+    { code: 'CTAUTO', name: 'CTAUTO' },
   ];
 
   for (const p of products) {
     await prisma.product.upsert({
       where: { code: p.code },
-      update: {},
+      update: { name: p.name },
       create: {
         code: p.code,
         name: p.name,

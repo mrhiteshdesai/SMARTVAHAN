@@ -5,7 +5,7 @@ import Modal from "../../ui/Modal";
 import { 
   useDealers, useCreateDealer, useUpdateDealer, useDeleteDealer,
   useDealerRegistrationRequests, useApproveDealerRegistrationRequest, useRejectDealerRegistrationRequest,
-  useStates, usePassingRTOs, useOEMs,
+  useStates, usePassingRTOs, useOEMs, useSldOems,
   Dealer, DealerRegistrationRequest
 } from "../../api/hooks";
 
@@ -33,7 +33,8 @@ export default function DealersPage() {
     stateCode: "",
     passingRtosAll: true,
     passingRtoCodes: [] as string[],
-    oemCodes: [] as string[], 
+    oemCodes: [] as string[],
+    sldOemCodes: [] as string[],
     password: "",
     status: "ACTIVE" as "ACTIVE" | "INACTIVE",
     locationAddress: "",
@@ -58,6 +59,7 @@ export default function DealersPage() {
   const { data: dealers = [], isLoading, error } = useDealers();
   const { data: states = [] } = useStates();
   const { data: allOEMs = [] } = useOEMs();
+  const { data: allSldOems = [] } = useSldOems();
   const {
     data: registrationRequests = [],
     isLoading: isRequestsLoading,
@@ -84,6 +86,11 @@ export default function DealersPage() {
     if (!form.stateCode) return [];
     return allOEMs.filter(o => o.authorizedStates?.includes(form.stateCode));
   }, [allOEMs, form.stateCode]);
+
+  const formSldOems = useMemo(() => {
+    if (!form.stateCode) return [];
+    return allSldOems.filter(o => o.authorizedStates?.includes(form.stateCode));
+  }, [allSldOems, form.stateCode]);
 
   // Google Maps
   const [googleMapsApiKey] = useState(() => {
@@ -217,7 +224,8 @@ export default function DealersPage() {
         stateCode: dealer.stateCode,
         passingRtosAll: mappedPassingRtosAll,
         passingRtoCodes: mappedPassingRtoCodes,
-        oemCodes: dealer.oems?.map(o => o.code) || [], 
+        oemCodes: dealer.oems?.map(o => o.code) || [],
+        sldOemCodes: (dealer as any).sldOems?.map((o: any) => o.code) || [],
         password: "", // Don't fill password
         status: dealer.status,
         locationAddress: dealer.locationAddress || "",
@@ -259,6 +267,7 @@ export default function DealersPage() {
       passingRtosAll: Array.isArray((req as any).passingRtoCodes) ? ((req as any).passingRtoCodes.length === 0) : true,
       passingRtoCodes: Array.isArray((req as any).passingRtoCodes) ? ((req as any).passingRtoCodes as any) : [],
       oemCodes: Array.isArray((req as any).oemCodes) ? ((req as any).oemCodes as any) : [],
+      sldOemCodes: Array.isArray((req as any).sldOemCodes) ? ((req as any).sldOemCodes as any) : [],
       gstNo: (req.gstNo as any) || "",
       tradeCertificateNo: (req.tradeCertificateNo as any) || "",
       tradeValidity: req.tradeValidity ? String(req.tradeValidity).split("T")[0] : "",
@@ -285,6 +294,7 @@ export default function DealersPage() {
       state: "",
       zip: "",
       oemCodes: [],
+      sldOemCodes: [],
       password: "",
       passingRtosAll: true,
       passingRtoCodes: [],
@@ -435,7 +445,8 @@ export default function DealersPage() {
                     <th className="px-4 py-3">Phone</th>
                     <th className="px-4 py-3">State</th>
                     <th className="px-4 py-3">City</th>
-                    <th className="px-4 py-3">Requested Brand</th>
+                    <th className="px-4 py-3">Reflective OEMs</th>
+                    <th className="px-4 py-3">SLD OEMs</th>
                     <th className="px-4 py-3">Passing RTO Request</th>
                     <th className="px-4 py-3">Location</th>
                     <th className="px-4 py-3">Submitted</th>
@@ -457,7 +468,17 @@ export default function DealersPage() {
                                 return o ? o.name : c;
                               })
                               .join(", ")
-                          : "-"}
+                          : (r.wantsReflective === false ? "—" : "-")}
+                      </td>
+                      <td className="px-4 py-3">
+                        {(r.sldOemCodes || []).length
+                          ? (r.sldOemCodes || [])
+                              .map((c) => {
+                                const o = allSldOems.find((x) => x.code === c);
+                                return o ? o.name : c;
+                              })
+                              .join(", ")
+                          : (r.wantsSld ? "-" : "—")}
                       </td>
                       <td className="px-4 py-3">
                         {Array.isArray((r as any).passingRtoCodes) && (r as any).passingRtoCodes.length
@@ -705,7 +726,7 @@ export default function DealersPage() {
               <select
                 required
                 value={form.stateCode}
-                onChange={e => setForm({...form, stateCode: e.target.value, oemCodes: [], passingRtosAll: true, passingRtoCodes: []})}
+                onChange={e => setForm({...form, stateCode: e.target.value, oemCodes: [], sldOemCodes: [], passingRtosAll: true, passingRtoCodes: []})}
                 className="w-full border rounded px-3 py-2"
               >
                 <option value="">Select State</option>
@@ -790,7 +811,7 @@ export default function DealersPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Authorised OEMs (Multi-select)</label>
+              <label className="block text-sm font-medium mb-1">Authorised Reflective OEMs (Multi-select)</label>
               <div className="border rounded p-2 h-32 overflow-y-auto bg-white">
                 {formOEMs.length === 0 ? (
                    <p className="text-sm text-gray-400 p-1">Select a state first</p>
@@ -816,6 +837,36 @@ export default function DealersPage() {
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 {form.oemCodes.length} selected
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Authorised SLD OEMs (Multi-select)</label>
+              <div className="border rounded p-2 h-32 overflow-y-auto bg-white">
+                {formSldOems.length === 0 ? (
+                   <p className="text-sm text-gray-400 p-1">Select a state first</p>
+                ) : (
+                   formSldOems.map(o => (
+                     <label key={o.code} className="flex items-center gap-2 p-1 hover:bg-gray-50 cursor-pointer">
+                       <input
+                         type="checkbox"
+                         checked={form.sldOemCodes.includes(o.code)}
+                         onChange={(e) => {
+                           if (e.target.checked) {
+                             setForm(f => ({ ...f, sldOemCodes: [...f.sldOemCodes, o.code] }));
+                           } else {
+                             setForm(f => ({ ...f, sldOemCodes: f.sldOemCodes.filter(c => c !== o.code) }));
+                           }
+                         }}
+                         className="rounded border-gray-300"
+                       />
+                       <span className="text-sm">{o.name}</span>
+                     </label>
+                   ))
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {form.sldOemCodes.length} selected
               </p>
             </div>
 

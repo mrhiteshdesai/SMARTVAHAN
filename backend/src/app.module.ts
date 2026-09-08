@@ -23,6 +23,7 @@ import { S3Module } from "./s3/s3.module";
 import { AuditModule } from "./audit/audit.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { ReportsModule } from "./reports/reports.module";
+import { SldModule } from "./sld/sld.module";
 import { AppController } from "./app.controller";
 
 @Module({
@@ -49,7 +50,8 @@ import { AppController } from "./app.controller";
     StatsModule,
     AuditModule,
     InventoryModule,
-    ReportsModule
+    ReportsModule,
+    SldModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,0 +1,26 @@
+{
+  "project": {
+    "name": "SMARTVAHAN V2",
+    "type": "Civic/GovTech vehicle compliance",
+    "canonicalPath": "C:\\Projects\\SMARTVAHAN-V2",
+    "stack": {
+      "web": "React+Vite",
+      "backend": "NestJS+Prisma",
+      "database": "PostgreSQL",
+      "mobile": "Flutter (dealer + scanner)"
+    },
+    "requirementsStatus": "IN_PROGRESS"
+  },
+  "apps": [
+    "backend",
+    "frontend",
+    "smartvahan_dealer_app",
+    "smartscanner_app"
+  ],
+  "docIndex": {
+    "agents": "AGENTS.md",
+    "tenderFrs": "docs/02-requirements/Tender_FRS_SmartVahan.docx",
+    "prisma": "backend/prisma/schema.prisma",
+    "deploy": "DEPLOYMENT_GUIDE_v2.md"
+  }
+}

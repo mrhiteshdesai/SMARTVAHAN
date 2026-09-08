@@ -188,4 +188,87 @@ export class ReportsService {
 
     return this.prisma.$queryRawUnsafe(query);
   }
+
+  // --- SLD Reports ---
+
+  async getSldStateReport(filters: { startDate?: string; endDate?: string; stateCode?: string }) {
+    const { startDate, endDate, stateCode } = filters;
+    let whereClause = 'WHERE 1=1';
+    if (stateCode) whereClause += ` AND d."stateCode" = '${stateCode}'`;
+    if (startDate && endDate) {
+      whereClause += ` AND c."generatedAt" >= '${startDate}'::timestamp AND c."generatedAt" <= '${endDate} 23:59:59'::timestamp`;
+    }
+    const query = `
+      SELECT
+        s.name as "State Name",
+        COUNT(CASE WHEN c.status = 'PENDING' THEN 1 END)::int as "Pending",
+        COUNT(CASE WHEN c.status = 'COMPLETED' THEN 1 END)::int as "Completed",
+        COUNT(*)::int as "Total"
+      FROM sld_certificates c
+      JOIN dealers d ON c."dealerId" = d.id
+      JOIN states s ON d."stateCode" = s.code
+      ${whereClause}
+      GROUP BY s.name
+      ORDER BY s.name ASC
+    `;
+    return this.prisma.$queryRawUnsafe(query);
+  }
+
+  async getSldOemReport(filters: {
+    stateCode?: string;
+    sldOemId?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { stateCode, sldOemId, startDate, endDate } = filters;
+    let whereClause = 'WHERE 1=1';
+    if (stateCode) whereClause += ` AND d."stateCode" = '${stateCode}'`;
+    if (sldOemId) whereClause += ` AND c."sldOemId" = '${sldOemId}'`;
+    if (startDate && endDate) {
+      whereClause += ` AND c."generatedAt" >= '${startDate}'::timestamp AND c."generatedAt" <= '${endDate} 23:59:59'::timestamp`;
+    }
+    const query = `
+      SELECT
+        o.name as "SLD OEM",
+        COUNT(CASE WHEN c.status = 'PENDING' THEN 1 END)::int as "Pending",
+        COUNT(CASE WHEN c.status = 'COMPLETED' THEN 1 END)::int as "Completed",
+        COUNT(*)::int as "Total"
+      FROM sld_certificates c
+      JOIN sld_oems o ON c."sldOemId" = o.id
+      JOIN dealers d ON c."dealerId" = d.id
+      ${whereClause}
+      GROUP BY o.name
+      ORDER BY o.name ASC
+    `;
+    return this.prisma.$queryRawUnsafe(query);
+  }
+
+  async getSldDealerReport(filters: {
+    stateCode?: string;
+    sldOemId?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { stateCode, sldOemId, startDate, endDate } = filters;
+    let whereClause = 'WHERE 1=1';
+    if (stateCode) whereClause += ` AND d."stateCode" = '${stateCode}'`;
+    if (sldOemId) whereClause += ` AND c."sldOemId" = '${sldOemId}'`;
+    if (startDate && endDate) {
+      whereClause += ` AND c."generatedAt" >= '${startDate}'::timestamp AND c."generatedAt" <= '${endDate} 23:59:59'::timestamp`;
+    }
+    const query = `
+      SELECT
+        d.name as "Dealer Name",
+        d.city as "City",
+        COUNT(CASE WHEN c.status = 'PENDING' THEN 1 END)::int as "Pending",
+        COUNT(CASE WHEN c.status = 'COMPLETED' THEN 1 END)::int as "Completed",
+        COUNT(*)::int as "Total"
+      FROM sld_certificates c
+      JOIN dealers d ON c."dealerId" = d.id
+      ${whereClause}
+      GROUP BY d.name, d.city
+      ORDER BY "Total" DESC
+    `;
+    return this.prisma.$queryRawUnsafe(query);
+  }
 }

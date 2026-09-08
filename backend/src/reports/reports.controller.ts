@@ -162,4 +162,59 @@ export class ReportsController {
     
     return this.reportsService.getDealerReport({ stateCode: finalStateCode, oemCode: finalOemCode, startDate, endDate, isGhost });
   }
+
+  @Get('sld/state')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN')
+  async getSldStateReport(
+    @Req() req: any,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('stateCode') stateCode?: string,
+  ) {
+    let finalStateCode = stateCode;
+    if (req.user?.role === 'STATE_ADMIN') finalStateCode = req.user.stateCode;
+    return this.reportsService.getSldStateReport({
+      startDate,
+      endDate,
+      stateCode: finalStateCode,
+    });
+  }
+
+  @Get('sld/oem')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN')
+  async getSldOemReport(
+    @Req() req: any,
+    @Query('stateCode') stateCode?: string,
+    @Query('sldOemId') sldOemId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    let finalStateCode = stateCode;
+    if (req.user?.role === 'STATE_ADMIN') finalStateCode = req.user.stateCode;
+    return this.reportsService.getSldOemReport({
+      stateCode: finalStateCode,
+      sldOemId,
+      startDate,
+      endDate,
+    });
+  }
+
+  @Get('sld/dealer')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'STATE_ADMIN')
+  async getSldDealerReport(
+    @Req() req: any,
+    @Query('stateCode') stateCode?: string,
+    @Query('sldOemId') sldOemId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    let finalStateCode = stateCode;
+    if (req.user?.role === 'STATE_ADMIN') finalStateCode = req.user.stateCode;
+    return this.reportsService.getSldDealerReport({
+      stateCode: finalStateCode,
+      sldOemId,
+      startDate,
+      endDate,
+    });
+  }
 }

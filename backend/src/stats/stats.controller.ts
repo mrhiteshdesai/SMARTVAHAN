@@ -49,6 +49,31 @@ export class StatsController {
     }
   }
 
+  @Get('dashboard/sld')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async getSldDashboardStats(
+    @Query('stateCode') stateCode?: string,
+    @Query('sldOemCode') sldOemCode?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    try {
+      this.logger.log(
+        `SLD dashboard stats requested: ${JSON.stringify({ stateCode, sldOemCode, startDate, endDate })}`,
+      );
+      return await this.statsService.getSldDashboardStats({
+        stateCode,
+        sldOemCode,
+        startDate,
+        endDate,
+      });
+    } catch (error) {
+      this.logger.error('Failed to get SLD dashboard stats', error.stack);
+      throw new InternalServerErrorException(error.message);
+    }
+  }
+
   @Get('dealer/daily')
   @UseGuards(JwtAuthGuard)
   async getDealerDailyStats(

@@ -102,6 +102,9 @@ model Dealer {
   state               State          @relation(fields: [stateCode], references: [code])
   inventoryLogs       InventoryLog[]
   oems                OEM[]          @relation("DealerToOEM")
+  sldOems             SldOem[]       @relation("DealerToSldOem")
+  sldDeviceSerials    SldDeviceSerial[]
+  sldCertificates     SldCertificate[]
   registrationRequests DealerRegistrationRequest[] @relation("DealerRegistrationApprovedDealer")
 
   @@map("dealers")
@@ -123,7 +126,10 @@ model DealerRegistrationRequest {
   latitude            Float?
   longitude           Float?
   radius              Float?
+  wantsReflective     Boolean                  @default(true)
+  wantsSld            Boolean                  @default(false)
   oemCodes            String[]                 @default([])
+  sldOemCodes         String[]                 @default([])
   passingRtoCodes     String[]                 @default([])
   gstNo               String?
   tradeCertificateNo  String?
@@ -378,4 +384,130 @@ enum DealerRegistrationStatus {
 enum UserStatus {
   ACTIVE
   INACTIVE
+}
+
+enum SldSerialStatus {
+  AVAILABLE
+  ASSIGNED
+  USED
+}
+
+enum SldCertStatus {
+  PENDING
+  COMPLETED
+}
+
+model SldOem {
+  id               String            @id @default(uuid())
+  name             String
+  code             String            @unique
+  authorizedStates String[]
+  logo             String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  models           SldDeviceModel[]
+  serials          SldDeviceSerial[]
+  certificates     SldCertificate[]
+  dealers          Dealer[]          @relation("DealerToSldOem")
+
+  @@map("sld_oems")
+}
+
+model SldDeviceModel {
+  id                 String                     @id @default(uuid())
+  sldOemId           String
+  name               String
+  code               String
+  tacNumber          String?
+  copNumber          String?
+  copDocument        String?
+  copValidity        DateTime?
+  testingAgency      String?
+  speedLimit         String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  sldOem             SldOem                     @relation(fields: [sldOemId], references: [id], onDelete: Cascade)
+  serials            SldDeviceSerial[]
+  certificates       SldCertificate[]
+  vehicleModels      SldApprovedVehicleModel[]
+
+  @@unique([sldOemId, code])
+  @@map("sld_device_models")
+}
+
+model SldApprovedVehicleModel {
+  id               String         @id @default(uuid())
+  sldDeviceModelId String
+  make             String?
+  modelName        String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deviceModel      SldDeviceModel @relation(fields: [sldDeviceModelId], references: [id], onDelete: Cascade)
+
+  @@unique([sldDeviceModelId, make, modelName])
+  @@index([sldDeviceModelId])
+  @@map("sld_approved_vehicle_models")
+}
+
+model SldDeviceSerial {
+  id             String          @id @default(uuid())
+  sldOemId       String
+  modelId        String
+  serialNumber   String
+  status         SldSerialStatus @default(AVAILABLE)
+  dealerId       String?
+  assignedAt     DateTime?
+  usedAt         DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  sldOem         SldOem          @relation(fields: [sldOemId], references: [id])
+  model          SldDeviceModel  @relation(fields: [modelId], references: [id])
+  dealer         Dealer?         @relation(fields: [dealerId], references: [id])
+  certificate    SldCertificate?
+
+  @@unique([sldOemId, serialNumber])
+  @@index([status, dealerId])
+  @@index([modelId, status])
+  @@map("sld_device_serials")
+}
+
+model SldCertificate {
+  id                String           @id @default(uuid())
+  certificateNumber String           @unique
+  deviceSerialId    String           @unique
+  dealerId          String
+  sldOemId          String
+  modelId           String
+  status            SldCertStatus    @default(PENDING)
+  vehicleMake       String?
+  vehicleCategory   String?
+  fuelType          String?
+  passingRto        String?
+  registrationRto   String?
+  series            String?
+  manufacturingYear String?
+  chassisNumber     String?
+  engineNumber      String?
+  ownerName         String?
+  ownerContact      String?
+  vehicleNumber     String?
+  photoInstalled    String?
+  photoSeal         String?
+  photoSerial       String?
+  photoPlate        String?
+  sealNumber        String?
+  smartvahanPdfPath String?
+  vahanPdfPath      String?
+  vahanUploadedAt   DateTime?
+  vahanUploadedBy   String?
+  locationText      String?
+  generatedAt       DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  dealer            Dealer           @relation(fields: [dealerId], references: [id])
+  sldOem            SldOem           @relation(fields: [sldOemId], references: [id])
+  model             SldDeviceModel   @relation(fields: [modelId], references: [id])
+  deviceSerial      SldDeviceSerial  @relation(fields: [deviceSerialId], references: [id])
+
+  @@index([status, generatedAt])
+  @@map("sld_certificates")
 }

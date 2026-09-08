@@ -95,11 +95,15 @@ export class SettingsService {
   }
 
   private _isLikelyMobileClient(headers: Record<string, any>): boolean {
-    const h = (k: string) => (headers[k] ?? headers[k.toLowerCase()]) as any;
+    const get = (k: string) => (headers[k] ?? headers[k.toLowerCase()]) as any;
+    const platform = (get('x-app-platform') ?? '').toString().trim().toLowerCase();
+    // Chrome/Flutter-web previews send app headers but are not mobile store clients.
+    if (platform === 'web') return false;
+
     const hasAppHeaders =
-      h('x-app-platform') != null || h('x-app-version') != null || h('x-app-build') != null;
+      get('x-app-platform') != null || get('x-app-version') != null || get('x-app-build') != null;
     if (hasAppHeaders) return true;
-    const ua = (h('user-agent') ?? '').toString();
+    const ua = (get('user-agent') ?? '').toString();
     return ua.includes('Dart/') || ua.includes('okhttp') || ua.includes('Flutter');
   }
 
@@ -198,6 +202,7 @@ export class SettingsService {
     let states: Array<{ code: string; name: string }> = [];
     let oems: Array<{ code: string; name: string; logo: string | null }> = [];
     let registrationOems: Array<{ code: string; name: string; authorizedStates: string[] }> = [];
+    let registrationSldOems: Array<{ code: string; name: string; authorizedStates: string[] }> = [];
     let totalQrCodeIssued = 0;
     let totalCertificateGenerated = 0;
     let totalVehicleFitments = 0;
@@ -205,7 +210,7 @@ export class SettingsService {
     let totalRtosServed = 0;
 
     try {
-      [states, oems, registrationOems] = await Promise.all([
+      [states, oems, registrationOems, registrationSldOems] = await Promise.all([
         this.prisma.state.findMany({
           where: { showOnHomepage: true } as any,
           select: { code: true, name: true }
@@ -215,6 +220,9 @@ export class SettingsService {
           select: { code: true, name: true, logo: true }
         }),
         this.prisma.oEM.findMany({
+          select: { code: true, name: true, authorizedStates: true }
+        }),
+        this.prisma.sldOem.findMany({
           select: { code: true, name: true, authorizedStates: true }
         })
       ]);
@@ -246,6 +254,7 @@ export class SettingsService {
         states,
         oems,
         registrationOems,
+        registrationSldOems,
         stats: {
           totalQrCodeIssued,
           totalCertificateGenerated,

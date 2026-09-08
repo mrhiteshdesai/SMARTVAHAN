@@ -67,3 +67,43 @@ export function usePassingRtoReport(filters: ReportFilters, enabled: boolean = t
     enabled,
   });
 }
+
+export type SldReportFilters = {
+  stateCode?: string;
+  sldOemId?: string;
+  startDate?: string;
+  endDate?: string;
+};
+
+export function useSldStateReport(filters: SldReportFilters, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["report-sld-state", filters],
+    queryFn: async () => {
+      const res = await api.get<ReportRow[]>("/reports/sld/state", { params: filters });
+      return res.data;
+    },
+    enabled,
+  });
+}
+
+export function useSldOemReport(filters: SldReportFilters, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["report-sld-oem", filters],
+    queryFn: async () => {
+      const res = await api.get<ReportRow[]>("/reports/sld/oem", { params: filters });
+      return res.data;
+    },
+    enabled,
+  });
+}
+
+export function useSldDealerReport(filters: SldReportFilters, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["report-sld-dealer", filters],
+    queryFn: async () => {
+      const res = await api.get<ReportRow[]>("/reports/sld/dealer", { params: filters });
+      return res.data;
+    },
+    enabled,
+  });
+}

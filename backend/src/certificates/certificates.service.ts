@@ -742,7 +742,7 @@ export class CertificatesService {
         dbUser = await this.prisma.user.findUnique({ where: { id: user.userId } });
         if (!dbUser) throw new UnauthorizedException('User account not found');
         
-        if (dbUser.role === 'SUPER_ADMIN') {
+        if (dbUser.role === 'SUPER_ADMIN' || dbUser.role === 'ADMIN') {
             isSuperAdmin = true;
         } else if (dbUser.role === 'STATE_ADMIN') {
             authorizedState = dbUser.stateCode;
@@ -913,7 +913,7 @@ export class CertificatesService {
         dbUser = await this.prisma.user.findUnique({ where: { id: user.userId } });
         if (!dbUser) throw new UnauthorizedException('User account not found');
         
-        if (dbUser.role === 'SUPER_ADMIN') {
+        if (dbUser.role === 'SUPER_ADMIN' || dbUser.role === 'ADMIN') {
             isSuperAdmin = true;
         } else if (dbUser.role === 'STATE_ADMIN') {
             authorizedState = dbUser.stateCode;

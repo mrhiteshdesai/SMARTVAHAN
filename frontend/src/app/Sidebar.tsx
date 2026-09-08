@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { NavLink } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   QrCode,
@@ -16,31 +16,62 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronLeft,
-  RefreshCcw,
-  Package
+  Package,
+  Gauge,
+  Layers,
 } from "lucide-react";
+import { useAuth } from "../auth/AuthContext";
 
-const items = [
-  { path: "", label: "Dashboard", icon: LayoutDashboard },
+const reflectiveMisItems = [
   { path: "/qr-generation", label: "QR Generator", icon: QrCode },
   { path: "/ghost-qr", label: "Ghost QR Manager", icon: ShieldCheck },
-  { path: "/inventory", label: "Inventory", icon: Package },
+  { path: "/inventory", label: "QR Inventory", icon: Package },
   { path: "/certificate", label: "Certificate Generator", icon: FileBadge2 },
   { path: "/search-qr", label: "Search QR Code", icon: Search },
   { path: "/search-cert", label: "Search Certificate", icon: FileSearch },
   { path: "/download", label: "Download Data", icon: Download },
-  { path: "/audit", label: "Audit Logs", icon: ShieldCheck },
-  { path: "/settings", label: "Settings", icon: Settings }
 ];
 
-import { useAuth } from "../auth/AuthContext";
+const sldMisItems = [
+  { path: "/sld/oems", label: "SLD OEMs", icon: Building2 },
+  { path: "/sld/inventory", label: "SLD Inventory", icon: Gauge },
+  { path: "/sld/certificates", label: "SLD Certificates", icon: FileBadge2 },
+];
 
 export default function Sidebar() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
-  const [openUsers, setOpenUsers] = useState(false);
+  const [openReflective, setOpenReflective] = useState(false);
+  const [openSld, setOpenSld] = useState(false);
   const [openReports, setOpenReports] = useState(false);
-  const basePath = localStorage.getItem('isGhostMode') === 'true' ? '/control/rp' : '/control';
+  const [openUsers, setOpenUsers] = useState(false);
+  const basePath = localStorage.getItem("isGhostMode") === "true" ? "/control/rp" : "/control";
+
+  useEffect(() => {
+    const p = location.pathname;
+    if (
+      p.includes("/qr-generation") ||
+      p.includes("/ghost-qr") ||
+      p.includes("/inventory") ||
+      p.includes("/certificate") ||
+      p.includes("/search-qr") ||
+      p.includes("/search-cert") ||
+      p.includes("/download")
+    ) {
+      setOpenReflective(true);
+    }
+    if (p.includes("/sld/")) {
+      setOpenSld(true);
+    }
+    if (p.includes("/reports/")) {
+      setOpenReports(true);
+    }
+    if (p.includes("/users/")) {
+      setOpenUsers(true);
+    }
+  }, [location.pathname]);
 
   const ItemClass = (isActive: boolean) =>
     `flex items-center gap-3 px-3 py-3 rounded-md text-sm ${
@@ -51,55 +82,87 @@ export default function Sidebar() {
     const role = user?.role;
     if (!role) return false;
     const roleValue = role as string;
-    
-    // Ghost Mode Logic
-    const isGhostMode = localStorage.getItem('isGhostMode') === 'true';
-    if (isGhostMode) {
-        if (roleValue !== 'GHOST_ADMIN') return false;
-        // In Ghost Mode, HIDE Dealers, Settings, User Management
-        if (path === "/settings") return false;
-        if (path === "users-section") return false;
-        if (path === "/reports/dealer") return false; // Hide Dealer Report specifically if needed, but "Reports" section is generic.
-        // Requirement says "Dealers/Settings remains only with main dashboard".
-        // Also "Ghost dashboard Stats, Reports, Inventory only shows certificate...". So Reports/Inventory are allowed.
-    }
+    const isGhostMode = localStorage.getItem("isGhostMode") === "true";
+    const isDealer = roleValue === "DEALER_USER" || roleValue === "DEALER";
 
-    // Special handling for DEALER role mapping if needed (DEALER vs DEALER_USER)
-    // Assuming 'DEALER' is also a valid role string or mapped to 'DEALER_USER'
-    const isDealer = roleValue === 'DEALER_USER' || roleValue === 'DEALER';
+    if (isGhostMode) {
+      if (roleValue !== "GHOST_ADMIN") return false;
+      if (path === "/settings") return false;
+      if (path === "users-section") return false;
+      if (path === "sld-section") return false;
+      if (path === "/reports/dealer") return false;
+    }
 
     switch (path) {
-        case "": // Dashboard
-            return true;
-        case "/qr-generation":
-            return isGhostMode ? roleValue === "GHOST_ADMIN" : ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue);
-        case "/ghost-qr":
-            return isGhostMode ? roleValue === "GHOST_ADMIN" : false;
-        case "/inventory":
-            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue); // Dealer No Access
-        case "/certificate":
-            // "Certificate Generator"
-            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue) || isDealer;
-        case "/search-qr":
-            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue);
-        case "/search-cert":
-            return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue);
-        case "/download":
-            // SUB_ADMIN: No Access
-            return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(roleValue) || isDealer;
-        case "/audit":
-            return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue);
-        case "/settings":
-            return ["SUPER_ADMIN"].includes(roleValue);
-        case "reports-section":
-             // SUB_ADMIN, DEALER: No Access
-             return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(roleValue);
-        case "users-section":
-             // Only SUPER_ADMIN and ADMIN
-             return ["SUPER_ADMIN", "ADMIN"].includes(roleValue);
-        default:
-            return true;
+      case "":
+        return true;
+      case "/qr-generation":
+        return isGhostMode ? roleValue === "GHOST_ADMIN" : ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue);
+      case "/ghost-qr":
+        return isGhostMode ? roleValue === "GHOST_ADMIN" : false;
+      case "/inventory":
+        return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue);
+      case "/certificate":
+        return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue) || isDealer;
+      case "/search-qr":
+        return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue);
+      case "/search-cert":
+        return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue);
+      case "/download":
+        return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(roleValue) || isDealer;
+      case "/settings":
+        return ["SUPER_ADMIN"].includes(roleValue);
+      case "reports-section":
+        return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(roleValue);
+      case "users-section":
+        return ["SUPER_ADMIN", "ADMIN"].includes(roleValue);
+      case "sld-section":
+        return isGhostMode ? false : ["SUPER_ADMIN", "ADMIN"].includes(roleValue);
+      default:
+        return true;
     }
+  };
+
+  const visibleReflectiveItems = reflectiveMisItems.filter((item) => hasAccess(item.path));
+  const showReflectiveSection = visibleReflectiveItems.length > 0;
+
+  const firstReflectivePath = visibleReflectiveItems[0]?.path ?? "/qr-generation";
+  const firstSldPath = sldMisItems[0]?.path ?? "/sld/oems";
+
+  const renderCollapsibleSection = (
+    title: string,
+    icon: typeof Layers,
+    open: boolean,
+    setOpen: (v: boolean) => void,
+    collapsedNavigate: string,
+    children: ReactNode,
+  ) => {
+    const Icon = icon;
+    return (
+      <>
+        <button
+          type="button"
+          className="w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm hover:bg-gray-100 text-gray-700"
+          onClick={() => {
+            if (collapsed) {
+              navigate(`${basePath}${collapsedNavigate}`);
+              return;
+            }
+            setOpen(!open);
+          }}
+          aria-expanded={open}
+        >
+          <Icon className="w-5 h-5" />
+          {!collapsed && (
+            <>
+              <span>{title}</span>
+              <span className="ml-auto">{open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+            </>
+          )}
+        </button>
+        {!collapsed && open && <div className="ml-8 space-y-1">{children}</div>}
+      </>
+    );
   };
 
   return (
@@ -119,115 +182,149 @@ export default function Sidebar() {
         </div>
 
         <nav className="px-3 space-y-1 flex-1">
-          {/* Top-level items */}
-          {items.filter(item => hasAccess(item.path)).map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink key={item.path || "dashboard"} to={`${basePath}${item.path || ""}`} className={({ isActive }) => ItemClass(isActive)}>
-                <Icon className="w-5 h-5" />
-                {!collapsed && <span>{item.label}</span>}
-              </NavLink>
-            );
-          })}
-          
-          {/* Collapsible: Reports */}
-          {hasAccess("reports-section") && (
-              <>
-                <button
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm hover:bg-gray-100 text-gray-700"
-                    onClick={() => setOpenReports((v) => !v)}
-                    aria-expanded={openReports}
-                >
-                    <FileBarChart2 className="w-5 h-5" />
-                    {!collapsed && (
-                    <>
-                        <span>Reports</span>
-                        <span className="ml-auto">{openReports ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
-                    </>
-                    )}
-                </button>
-                {!collapsed && openReports && (
-                    <div className="ml-8 space-y-1">
-                     {/* State Report: Everyone except Dealer/SubAdmin? No, prompt says: 
-                        ADMIN: Full
-                        STATE_ADMIN: State Specific
-                        OEM_ADMIN: Restricted (RTO & DEALER REPORT)
-                     */}
-                     {user?.role !== 'OEM_ADMIN' && (
-                         <>
-                            <NavLink to={`${basePath}/reports/state`} className={({ isActive }) => ItemClass(isActive)}>
-                                <Map className="w-4 h-4" />
-                                <span>State Report</span>
-                            </NavLink>
-                            <NavLink to={`${basePath}/reports/oem`} className={({ isActive }) => ItemClass(isActive)}>
-                                <Building2 className="w-4 h-4" />
-                                <span>OEM Report</span>
-                            </NavLink>
-                         </>
-                     )}
-                     <NavLink to={`${basePath}/reports/rto`} className={({ isActive }) => ItemClass(isActive)}>
-                        <FileBarChart2 className="w-4 h-4" />
-                        <span>Reg. RTO Report</span>
-                    </NavLink>
-                    <NavLink to={`${basePath}/reports/passing-rto`} className={({ isActive }) => ItemClass(isActive)}>
-                        <FileBarChart2 className="w-4 h-4" />
-                        <span>Passing RTO Report</span>
-                    </NavLink>
-                    <NavLink to={`${basePath}/reports/dealer`} className={({ isActive }) => ItemClass(isActive)}>
-                        <Users className="w-4 h-4" />
-                        <span>Dealer Report</span>
-                    </NavLink>
-                    </div>
-                )}
-              </>
-          )}
+          {/* 1. Dashboard */}
+          <NavLink to={`${basePath}`} end className={({ isActive }) => ItemClass(isActive)}>
+            <LayoutDashboard className="w-5 h-5" />
+            {!collapsed && <span>Dashboard</span>}
+          </NavLink>
 
-          {/* Collapsible: User Management */}
-          {hasAccess("users-section") && (
-              <>
-                <button
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm hover:bg-gray-100 text-gray-700"
-                    onClick={() => setOpenUsers((v) => !v)}
-                    aria-expanded={openUsers}
-                >
-                    <Users className="w-5 h-5" />
-                    {!collapsed && (
-                    <>
-                        <span>User Management</span>
-                        <span className="ml-auto">{openUsers ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
-                    </>
-                    )}
-                </button>
-                {!collapsed && openUsers && (
-                    <div className="ml-8 space-y-1">
-                    {/* ADMIN: Only Dealers. SUPER_ADMIN: All */}
-                    {user?.role !== 'ADMIN' && (
-                        <>
-                        <NavLink to={`${basePath}/users/states`} className={({ isActive }) => ItemClass(isActive)}>
-                            <Map className="w-4 h-4" />
-                            <span>States</span>
-                        </NavLink>
-                        <NavLink to={`${basePath}/users/oems`} className={({ isActive }) => ItemClass(isActive)}>
-                            <Building2 className="w-4 h-4" />
-                            <span>OEMs</span>
-                        </NavLink>
-                        </>
-                    )}
-                    <NavLink to={`${basePath}/users/dealers`} className={({ isActive }) => ItemClass(isActive)}>
-                        <Users className="w-4 h-4" />
-                        <span>Dealers</span>
-                    </NavLink>
-                    {user?.role !== 'ADMIN' && (
-                        <NavLink to={`${basePath}/users/system`} className={({ isActive }) => ItemClass(isActive)}>
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>System Users</span>
-                        </NavLink>
-                    )}
-                    </div>
-                )}
-              </>
-          )}
+          {/* 2. Reflective MIS */}
+          {showReflectiveSection &&
+            renderCollapsibleSection(
+              "Reflective MIS",
+              Layers,
+              openReflective,
+              setOpenReflective,
+              firstReflectivePath,
+              visibleReflectiveItems.map((item) => {
+                const ItemIcon = item.icon;
+                return (
+                  <NavLink key={item.path} to={`${basePath}${item.path}`} className={({ isActive }) => ItemClass(isActive)}>
+                    <ItemIcon className="w-4 h-4" />
+                    <span>{item.label}</span>
+                  </NavLink>
+                );
+              }),
+            )}
 
+          {/* 3. SLD MIS */}
+          {hasAccess("sld-section") &&
+            renderCollapsibleSection(
+              "SLD MIS",
+              Gauge,
+              openSld,
+              setOpenSld,
+              firstSldPath,
+              sldMisItems.map((item) => {
+                const ItemIcon = item.icon;
+                return (
+                  <NavLink key={item.path} to={`${basePath}${item.path}`} className={({ isActive }) => ItemClass(isActive)}>
+                    <ItemIcon className="w-4 h-4" />
+                    <span>{item.label}</span>
+                  </NavLink>
+                );
+              }),
+            )}
+
+          {/* 4. Reports */}
+          {hasAccess("reports-section") &&
+            renderCollapsibleSection(
+              "Reports",
+              FileBarChart2,
+              openReports,
+              setOpenReports,
+              "/reports/state",
+              <>
+                <div className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                  Ref. Reports
+                </div>
+                {user?.role !== "OEM_ADMIN" && (
+                  <>
+                    <NavLink to={`${basePath}/reports/state`} className={({ isActive }) => ItemClass(isActive)}>
+                      <Map className="w-4 h-4" />
+                      <span>Ref. State Report</span>
+                    </NavLink>
+                    <NavLink to={`${basePath}/reports/oem`} className={({ isActive }) => ItemClass(isActive)}>
+                      <Building2 className="w-4 h-4" />
+                      <span>Ref. OEM Report</span>
+                    </NavLink>
+                  </>
+                )}
+                <NavLink to={`${basePath}/reports/rto`} className={({ isActive }) => ItemClass(isActive)}>
+                  <FileBarChart2 className="w-4 h-4" />
+                  <span>Ref. Reg. RTO Report</span>
+                </NavLink>
+                <NavLink to={`${basePath}/reports/passing-rto`} className={({ isActive }) => ItemClass(isActive)}>
+                  <FileBarChart2 className="w-4 h-4" />
+                  <span>Ref. Passing RTO Report</span>
+                </NavLink>
+                <NavLink to={`${basePath}/reports/dealer`} className={({ isActive }) => ItemClass(isActive)}>
+                  <Users className="w-4 h-4" />
+                  <span>Ref. Dealer Report</span>
+                </NavLink>
+                {hasAccess("sld-section") && (
+                  <>
+                    <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                      SLD Reports
+                    </div>
+                    <NavLink to={`${basePath}/reports/sld/state`} className={({ isActive }) => ItemClass(isActive)}>
+                      <FileBarChart2 className="w-4 h-4" />
+                      <span>SLD State Report</span>
+                    </NavLink>
+                    <NavLink to={`${basePath}/reports/sld/oem`} className={({ isActive }) => ItemClass(isActive)}>
+                      <FileBarChart2 className="w-4 h-4" />
+                      <span>SLD OEM Report</span>
+                    </NavLink>
+                    <NavLink to={`${basePath}/reports/sld/dealer`} className={({ isActive }) => ItemClass(isActive)}>
+                      <Users className="w-4 h-4" />
+                      <span>SLD Dealer Report</span>
+                    </NavLink>
+                  </>
+                )}
+              </>,
+            )}
+
+          {/* 5. User Management */}
+          {hasAccess("users-section") &&
+            renderCollapsibleSection(
+              "User Management",
+              Users,
+              openUsers,
+              setOpenUsers,
+              "/users/dealers",
+              <>
+                {user?.role !== "ADMIN" && (
+                  <>
+                    <NavLink to={`${basePath}/users/states`} className={({ isActive }) => ItemClass(isActive)}>
+                      <Map className="w-4 h-4" />
+                      <span>States</span>
+                    </NavLink>
+                    <NavLink to={`${basePath}/users/oems`} className={({ isActive }) => ItemClass(isActive)}>
+                      <Building2 className="w-4 h-4" />
+                      <span>OEMs</span>
+                    </NavLink>
+                  </>
+                )}
+                <NavLink to={`${basePath}/users/dealers`} className={({ isActive }) => ItemClass(isActive)}>
+                  <Users className="w-4 h-4" />
+                  <span>Dealers</span>
+                </NavLink>
+                {user?.role !== "ADMIN" && (
+                  <NavLink to={`${basePath}/users/system`} className={({ isActive }) => ItemClass(isActive)}>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>System Users</span>
+                  </NavLink>
+                )}
+              </>,
+            )}
+
+          {/* 6. Settings */}
+          {hasAccess("/settings") && (
+            <NavLink to={`${basePath}/settings`} className={({ isActive }) => ItemClass(isActive)}>
+              <Settings className="w-5 h-5" />
+              {!collapsed && <span>Settings</span>}
+            </NavLink>
+          )}
         </nav>
 
         <div className="px-3 py-4 mt-auto text-xs text-gray-500">

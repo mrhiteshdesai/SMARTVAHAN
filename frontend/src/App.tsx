@@ -12,6 +12,9 @@ import SettingsPage from "./pages/SettingsPage";
 import { QRGenerationPage } from "./pages/qr/QRGenerationPage";
 import { GhostQrManagementPage } from "./pages/qr/GhostQrManagementPage";
 import { CertificateGeneratorPage } from "./pages/CertificateGeneratorPage";
+import SldOemsPage from "./pages/sld/SldOemsPage";
+import SldInventoryPage from "./pages/sld/SldInventoryPage";
+import SldCertificatesPage from "./pages/sld/SldCertificatesPage";
 import SearchQrPage from "./pages/SearchQrPage";
 import SearchCertPage from "./pages/SearchCertPage";
 import DownloadPage from "./pages/DownloadPage";
@@ -20,6 +23,9 @@ import RtoReportPage from "./pages/reports/RtoReportPage";
 import PassingRtoReportPage from "./pages/reports/PassingRtoReportPage";
 import OemReportPage from "./pages/reports/OemReportPage";
 import DealerReportPage from "./pages/reports/DealerReportPage";
+import SldStateReportPage from "./pages/reports/SldStateReportPage";
+import SldOemReportPage from "./pages/reports/SldOemReportPage";
+import SldDealerReportPage from "./pages/reports/SldDealerReportPage";
 import AuditLogPage from "./pages/AuditLogPage";
 import InventoryPage from "./pages/inventory/InventoryPage";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
@@ -29,6 +35,7 @@ import MobileHome from "./mobile/MobileHome";
 import MobileScan from "./mobile/MobileScan";
 import MobileForm from "./mobile/MobileForm";
 import PublicVerifyPage from "./pages/PublicVerifyPage";
+import SldPublicVerifyPage from "./pages/SldPublicVerifyPage";
 import LandingPage from "./pages/LandingPage";
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -95,6 +102,7 @@ export default function App() {
       <GhostModeSync />
       <Routes>
         <Route path="/verify" element={<PublicVerifyPage />} />
+        <Route path="/verify-sld" element={<SldPublicVerifyPage />} />
         <Route path="/" element={<LandingPage />} />
         <Route path="/dealer-registration" element={<LandingPage mode="dealer-registration" />} />
         <Route path="/login" element={<Navigate to="/control/login" replace />} />
@@ -145,6 +153,33 @@ export default function App() {
               </ErrorBoundary>
             }
           />
+          <Route
+            path="sld/oems"
+            element={
+              <ErrorBoundary>
+                <SldOemsPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="sld/inventory"
+            element={
+              <ErrorBoundary>
+                <SldInventoryPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="sld/certificates"
+            element={
+              <ErrorBoundary>
+                <SldCertificatesPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route path="reports/sld/state" element={<SldStateReportPage />} />
+          <Route path="reports/sld/oem" element={<SldOemReportPage />} />
+          <Route path="reports/sld/dealer" element={<SldDealerReportPage />} />
           <Route path="search-qr" element={<SearchQrPage />} />
           <Route path="search-cert" element={<SearchCertPage />} />
           <Route path="download" element={<DownloadPage />} />

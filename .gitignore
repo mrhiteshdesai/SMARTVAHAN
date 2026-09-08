@@ -40,3 +40,5 @@ logs/
 
 # Backups
 _backups/
+*.dump
+smartvahan_full.dump

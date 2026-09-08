@@ -18,6 +18,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'platform/pdf_opener.dart';
+import 'dealer_nav.dart';
+import 'api_holder.dart';
+import 'sld/sld_screens.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -174,6 +177,8 @@ class OutwardCurveClipper extends CustomClipper<Path> {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  ApiHolder.client = api;
+  ApiHolder.userGetter = () => ApiSession.user;
   await AppMeta.init();
   runApp(const SmartvahanApp());
 }
@@ -412,9 +417,13 @@ class ApiSession {
 class ApiClient {
   final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: 'https://smartvahan.net/api',
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 20),
+      baseUrl: const String.fromEnvironment(
+        'API_BASE',
+        defaultValue: 'https://smartvahan.net/api',
+      ),
+      connectTimeout: const Duration(seconds: 20),
+      sendTimeout: const Duration(seconds: 120),
+      receiveTimeout: const Duration(seconds: 120),
     ),
   );
 
@@ -486,78 +495,21 @@ class ApiClient {
   Future<Response<dynamic>> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Options? options,
   }) {
-    return _dio.get(path, queryParameters: queryParameters);
+    return _dio.get(path, queryParameters: queryParameters, options: options);
   }
 
-  Future<Response<dynamic>> post(String path, {dynamic data}) {
-    return _dio.post(path, data: data);
+  Future<Response<dynamic>> post(
+    String path, {
+    dynamic data,
+    Options? options,
+  }) {
+    return _dio.post(path, data: data, options: options);
   }
 }
 
 final api = ApiClient();
-
-class DealerBottomNav extends StatelessWidget {
-  final int currentIndex;
-  const DealerBottomNav({super.key, required this.currentIndex});
-
-  Widget _navIcon(IconData icon, bool selected) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: selected
-            ? const Color(0xFF12314D).withOpacity(0.12)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(
-        icon,
-        color: selected ? const Color(0xFF12314D) : const Color(0xFF91A8BD),
-      ),
-    );
-  }
-
-  void _go(BuildContext context, int idx) {
-    final routes = <int, String>{
-      0: '/home',
-      1: '/history',
-      2: '/profile',
-      3: '/support',
-    };
-    final target = routes[idx];
-    if (target == null) return;
-    Navigator.of(context).pushNamedAndRemoveUntil(target, (route) => false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return BottomNavigationBar(
-      currentIndex: currentIndex,
-      type: BottomNavigationBarType.fixed,
-      selectedItemColor: const Color(0xFF12314D),
-      unselectedItemColor: const Color(0xFF91A8BD),
-      onTap: (i) => _go(context, i),
-      items: [
-        BottomNavigationBarItem(
-          icon: _navIcon(LucideIcons.house, currentIndex == 0),
-          label: 'Home',
-        ),
-        BottomNavigationBarItem(
-          icon: _navIcon(LucideIcons.history, currentIndex == 1),
-          label: 'My Certificates',
-        ),
-        BottomNavigationBarItem(
-          icon: _navIcon(LucideIcons.user, currentIndex == 2),
-          label: 'Profile',
-        ),
-        BottomNavigationBarItem(
-          icon: _navIcon(LucideIcons.headset, currentIndex == 3),
-          label: 'Support',
-        ),
-      ],
-    );
-  }
-}
 
 class DealerDrawer extends StatelessWidget {
   final String currentRoute;
@@ -583,6 +535,26 @@ class DealerDrawer extends StatelessWidget {
   String _oems() {
     final o = ApiSession.user?['oems']?.toString().trim();
     return (o == null || o.isEmpty) ? '-' : o;
+  }
+
+  String _sldOems() {
+    final oems = ApiSession.user?['sldOems'];
+    if (oems is List) {
+      final parts = oems
+          .map((e) {
+            if (e is Map) {
+              final code = e['code']?.toString().trim();
+              final name = e['name']?.toString().trim();
+              if (code != null && code.isNotEmpty) return code;
+              if (name != null && name.isNotEmpty) return name;
+            }
+            return e.toString().trim();
+          })
+          .where((e) => e.isNotEmpty)
+          .toList();
+      return parts.isEmpty ? '-' : parts.join(', ');
+    }
+    return '-';
   }
 
   Future<void> _go(BuildContext context, String route) async {
@@ -790,19 +762,39 @@ class DealerDrawer extends StatelessWidget {
                 const SizedBox(height: 10),
                 _infoCard(
                   icon: LucideIcons.badge_check,
-                  title: 'Authorised OEM',
-                  value: _oems(),
+                  title: 'Authorised Reflective OEM',
+                  value: dealerIsSystemAdmin()
+                      ? 'All Reflective OEMs'
+                      : _oems(),
                 ),
+                if (dealerHasSldAccess()) ...[
+                  const SizedBox(height: 10),
+                  _infoCard(
+                    icon: LucideIcons.gauge,
+                    title: 'Authorised SLD OEM',
+                    value: dealerIsSystemAdmin()
+                        ? 'All SLD OEMs'
+                        : _sldOems(),
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(height: 8),
-          _menuItem(
-            context,
-            icon: LucideIcons.history,
-            label: 'My Certificates',
-            route: '/history',
-          ),
+          if (dealerHasReflectiveAccess())
+            _menuItem(
+              context,
+              icon: LucideIcons.history,
+              label: 'My Reflective Fitment',
+              route: '/history',
+            ),
+          if (dealerHasSldAccess())
+            _menuItem(
+              context,
+              icon: LucideIcons.gauge,
+              label: 'My SLD Fitments',
+              route: '/sld/history',
+            ),
           _menuItem(
             context,
             icon: LucideIcons.user,
@@ -910,6 +902,10 @@ class SmartvahanApp extends StatelessWidget {
         '/profile': (_) => const ProfileScreen(),
         '/support': (_) => const SupportScreen(),
         '/success': (_) => const CertificateSuccessScreen(),
+        '/sld': (_) => const SldFormScreen(),
+        '/sld/form': (_) => const SldFormScreen(),
+        '/sld/history': (_) => const SldHistoryScreen(),
+        '/sld/success': (_) => const SldSuccessScreen(),
       },
     );
   }
@@ -1507,7 +1503,7 @@ class _HomeScreenState extends State<HomeScreen> {
           SafeArea(child: _HomeContent()),
         ],
       ),
-      bottomNavigationBar: const DealerBottomNav(currentIndex: 0),
+      bottomNavigationBar: const DealerBottomNav(currentRoute: '/home'),
     );
   }
 }
@@ -1694,7 +1690,7 @@ class _HomeContentState extends State<_HomeContent> {
                             ),
                             const SizedBox(height: 8),
                             const Text(
-                              'Welcome to SMARTVAHAN — India’s Smart Reflective Tape Compliance Platform. Scan, generate & verify certificates with ease.',
+                              'Welcome to SMARTVAHAN — India\'s Smart Vehicle Retro Fitment Compliance Platform. Scan, generate & verify certificates with ease.',
                               style: TextStyle(
                                 color: Color(0xFFE6EEF7),
                                 fontSize: 13,
@@ -1746,55 +1742,217 @@ class _HomeContentState extends State<_HomeContent> {
               ),
             ),
             const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              height: 180,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF162F45), Color(0xFF00417B)],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    Navigator.of(context).pushNamed('/scan');
-                  },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Icon(
-                        LucideIcons.scan_qr_code,
-                        color: Colors.white,
-                        size: 72,
+            Builder(
+              builder: (context) {
+                final hasSld = dealerHasSldAccess();
+                final hasReflective = dealerHasReflectiveAccess();
+
+                Widget actionTile({
+                  required String title,
+                  required String subtitle,
+                  required IconData icon,
+                  required VoidCallback onTap,
+                }) {
+                  return Container(
+                    height: 160,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF162F45), Color(0xFF00417B)],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
                       ),
-                      SizedBox(height: 16),
-                      Text(
-                        'Scan QR Code',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onTap,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(icon, color: Colors.white, size: 56),
+                            const SizedBox(height: 12),
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              subtitle,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+                    ),
+                  );
+                }
+
+                Widget certificateTile({
+                  required String title,
+                  required String subtitle,
+                  required IconData icon,
+                  required VoidCallback onTap,
+                }) {
+                  return Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      onTap: onTap,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        height: 76,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFD6E2F0)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEEF4FB),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                icon,
+                                color: const Color(0xFF12314D),
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    style: const TextStyle(
+                                      color: Color(0xFF12314D),
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Text(
+                                    subtitle,
+                                    style: const TextStyle(
+                                      color: Color(0xFF6B8299),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              LucideIcons.chevron_right,
+                              color: Color(0xFF91A8BD),
+                              size: 20,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                final scanTile = actionTile(
+                  title: 'Scan QR',
+                  subtitle: 'Reflective Tape',
+                  icon: LucideIcons.scan_qr_code,
+                  onTap: () => Navigator.of(context).pushNamed('/scan'),
+                );
+                final sldTile = actionTile(
+                  title: 'SLD',
+                  subtitle: 'Speed Limiter',
+                  icon: LucideIcons.gauge,
+                  onTap: () => Navigator.of(context).pushNamed('/sld'),
+                );
+
+                final qrCertTile = certificateTile(
+                  title: 'QR Certificate',
+                  subtitle: 'My reflective fitments',
+                  icon: LucideIcons.file_badge,
+                  onTap: () => Navigator.of(context).pushNamed('/history'),
+                );
+                final sldCertTile = certificateTile(
+                  title: 'SLD Certificate',
+                  subtitle: 'My SLD fitments',
+                  icon: LucideIcons.file_check,
+                  onTap: () => Navigator.of(context).pushNamed('/sld/history'),
+                );
+
+                Widget scanSection;
+                if (hasReflective && hasSld) {
+                  scanSection = Row(
+                    children: [
+                      Expanded(child: scanTile),
+                      const SizedBox(width: 12),
+                      Expanded(child: sldTile),
                     ],
-                  ),
-                ),
-              ),
+                  );
+                } else if (hasSld && !hasReflective) {
+                  scanSection = sldTile;
+                } else if (hasReflective) {
+                  scanSection = scanTile;
+                } else {
+                  scanSection = const SizedBox.shrink();
+                }
+
+                Widget? certSection;
+                if (hasReflective && hasSld) {
+                  certSection = Row(
+                    children: [
+                      Expanded(child: qrCertTile),
+                      const SizedBox(width: 12),
+                      Expanded(child: sldCertTile),
+                    ],
+                  );
+                } else if (hasSld && !hasReflective) {
+                  certSection = sldCertTile;
+                } else if (hasReflective) {
+                  certSection = qrCertTile;
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    scanSection,
+                    if (certSection != null) ...[
+                      const SizedBox(height: 14),
+                      certSection,
+                    ],
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 24),
+            // Today's Overview — hidden for now; may re-enable later.
+            /*
             const Text(
               "Today's Overview",
               style: TextStyle(
@@ -1821,6 +1979,7 @@ class _HomeContentState extends State<_HomeContent> {
               ],
             ),
             const SizedBox(height: 24),
+            */
           ],
         ),
       ),
@@ -4889,7 +5048,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-        bottomNavigationBar: const DealerBottomNav(currentIndex: 2),
+        bottomNavigationBar: const DealerBottomNav(currentRoute: '/profile'),
       ),
     );
   }
@@ -4899,7 +5058,7 @@ class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
 
   Future<void> _openWhatsApp() async {
-    final uri = Uri.parse('https://wa.me/?text=Hello%20SmartVahan%20Support');
+    final uri = Uri.parse('https://wa.me/$kSupportWhatsAppE164?text=${Uri.encodeComponent('Hello SmartVahan Support')}');
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
@@ -5094,7 +5253,6 @@ class SupportScreen extends StatelessWidget {
             ],
           ),
         ),
-        bottomNavigationBar: const DealerBottomNav(currentIndex: 3),
       ),
     );
   }
@@ -5387,7 +5545,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         appBar: AppBar(
           backgroundColor: const Color(0xFF12314D),
           foregroundColor: Colors.white,
-          title: const Text('My Certificates'),
+          title: const Text('My Reflective Fitment'),
         ),
         body: Column(
           children: [
@@ -5600,7 +5758,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ],
         ),
-        bottomNavigationBar: const DealerBottomNav(currentIndex: 1),
+        bottomNavigationBar: const DealerBottomNav(currentRoute: '/history'),
       ),
     );
   }

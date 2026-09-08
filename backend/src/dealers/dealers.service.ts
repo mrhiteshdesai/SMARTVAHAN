@@ -103,7 +103,7 @@ export class DealersService {
         data.aadharCardUrl = await this.uploadFile(data.aadharCardUrl, 'aadhar');
     }
     
-    // Handle OEMs
+    // Handle OEMs (reflective)
     const oemConnect = [];
     if (data.oemCodes && Array.isArray(data.oemCodes)) {
         data.oemCodes.forEach((code: string) => oemConnect.push({ code }));
@@ -112,6 +112,15 @@ export class DealersService {
     }
     if (data.oemIds && Array.isArray(data.oemIds)) {
         data.oemIds.forEach((id: string) => oemConnect.push({ id }));
+    }
+
+    // Handle SLD OEMs
+    const sldOemConnect: Array<{ id?: string; code?: string }> = [];
+    if (data.sldOemCodes && Array.isArray(data.sldOemCodes)) {
+        data.sldOemCodes.forEach((code: string) => sldOemConnect.push({ code: String(code).trim() }));
+    }
+    if (data.sldOemIds && Array.isArray(data.sldOemIds)) {
+        data.sldOemIds.forEach((id: string) => sldOemConnect.push({ id: String(id).trim() }));
     }
 
     const rtoData =
@@ -127,14 +136,21 @@ export class DealersService {
     const passingRtosAll = data.passingRtosAll === false ? false : true;
 
     // Remove fields we handled specially or that need mapping
-    const { oemCode, oemCodes, oemIds, rtoCode, address, pincode, ...rest } = data;
+    const {
+      oemCode, oemCodes, oemIds,
+      sldOemCodes, sldOemIds,
+      rtoCode, address, pincode,
+      wantsReflective, wantsSld,
+      ...rest
+    } = data;
 
     console.log('Creating Dealer with data:', {
         ...rest,
         ...rtoData,
         locationAddress: address || data.locationAddress,
         zip: pincode || data.zip,
-        oemsConnect: oemConnect
+        oemsConnect: oemConnect,
+        sldOemsConnect: sldOemConnect,
     });
 
     try {
@@ -152,7 +168,10 @@ export class DealersService {
                 longitude: data.longitude ? parseFloat(data.longitude) : null,
                 oems: {
                     connect: oemConnect
-                }
+                },
+                sldOems: sldOemConnect.length
+                  ? { connect: sldOemConnect }
+                  : undefined,
             },
         });
 
@@ -179,7 +198,8 @@ export class DealersService {
         include: {
             state: true,
             rto: true,
-            oems: true
+            oems: true,
+            sldOems: true,
         },
         orderBy: { createdAt: 'desc' }
     });
@@ -191,7 +211,8 @@ export class DealersService {
         include: {
             state: true,
             rto: true,
-            oems: true
+            oems: true,
+            sldOems: true,
         }
     });
   }
@@ -229,6 +250,20 @@ export class DealersService {
         };
         delete updateData.oemCode;
     }
+
+    if (data.sldOemIds && Array.isArray(data.sldOemIds)) {
+        updateData.sldOems = {
+            set: data.sldOemIds.map((id: string) => ({ id: String(id).trim() }))
+        };
+        delete updateData.sldOemIds;
+    } else if (data.sldOemCodes) {
+        updateData.sldOems = {
+            set: data.sldOemCodes.map((code: string) => ({ code: String(code).trim() }))
+        };
+        delete updateData.sldOemCodes;
+    }
+    delete updateData.wantsReflective;
+    delete updateData.wantsSld;
 
     // Handle RTO update if provided
     if (data.rtoCode !== undefined) {
@@ -281,11 +316,31 @@ export class DealersService {
       throw new BadRequestException('Email is required');
     }
 
+    const wantsReflective = data?.wantsReflective !== false && data?.wantsReflective !== 'false';
+    const wantsSld = data?.wantsSld === true || data?.wantsSld === 'true';
+
+    if (!wantsReflective && !wantsSld) {
+      throw new BadRequestException('Enable at least one of Reflective Tape or SLD');
+    }
+
     const oemCodes = Array.isArray(data?.oemCodes)
       ? data.oemCodes.map((c: any) => String(c)).map((s: string) => s.trim()).filter(Boolean)
       : [];
-    if (oemCodes.length === 0) {
-      throw new BadRequestException('At least one OEM is required');
+    const sldOemCodes = Array.isArray(data?.sldOemCodes)
+      ? data.sldOemCodes.map((c: any) => String(c)).map((s: string) => s.trim()).filter(Boolean)
+      : [];
+
+    if (wantsReflective && oemCodes.length === 0) {
+      throw new BadRequestException('Select at least one Reflective OEM');
+    }
+    if (wantsSld && sldOemCodes.length === 0) {
+      throw new BadRequestException('Select at least one SLD OEM');
+    }
+    if (!wantsReflective && oemCodes.length > 0) {
+      throw new BadRequestException('Reflective OEMs provided but Reflective Tape is disabled');
+    }
+    if (!wantsSld && sldOemCodes.length > 0) {
+      throw new BadRequestException('SLD OEMs provided but SLD is disabled');
     }
 
     const passingRtoCodes = Array.isArray(data?.passingRtoCodes)
@@ -345,7 +400,10 @@ export class DealersService {
         latitude: data.latitude !== undefined && data.latitude !== null ? Number(data.latitude) : null,
         longitude: data.longitude !== undefined && data.longitude !== null ? Number(data.longitude) : null,
         radius: data.radius !== undefined && data.radius !== null ? Number(data.radius) : null,
-        oemCodes,
+        wantsReflective,
+        wantsSld,
+        oemCodes: wantsReflective ? oemCodes : [],
+        sldOemCodes: wantsSld ? sldOemCodes : [],
         passingRtoCodes,
         gstNo: data.gstNo ? String(data.gstNo) : null,
         tradeCertificateNo: data.tradeCertificateNo ? String(data.tradeCertificateNo) : null,
@@ -437,7 +495,16 @@ export class DealersService {
       aadharCardUrl: payload?.aadharCardUrl ?? req.aadharCardUrl,
       password: payload?.password,
       status: payload?.status ?? 'ACTIVE',
-      oemCodes: Array.isArray(payload?.oemCodes) ? payload.oemCodes : Array.isArray(req.oemCodes) ? req.oemCodes : [],
+      oemCodes: Array.isArray(payload?.oemCodes)
+        ? payload.oemCodes
+        : Array.isArray(req.oemCodes)
+          ? req.oemCodes
+          : [],
+      sldOemCodes: Array.isArray(payload?.sldOemCodes)
+        ? payload.sldOemCodes
+        : Array.isArray(reqAny.sldOemCodes)
+          ? reqAny.sldOemCodes
+          : [],
       rtoCode: payload?.rtoCode,
       passingRtosAll:
         payload?.passingRtosAll !== undefined

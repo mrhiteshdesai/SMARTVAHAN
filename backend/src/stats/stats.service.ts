@@ -10,12 +10,16 @@ export class StatsService {
   async getDashboardStats(query: { stateCode?: string; oemCode?: string; dealerId?: string; startDate?: string; endDate?: string, isGhost?: boolean }) {
     const { stateCode, oemCode, dealerId, startDate, endDate, isGhost = false } = query;
     
-    const dateFilter = startDate && endDate ? {
-        generatedAt: {
-            gte: new Date(startDate),
-            lte: new Date(endDate)
-        }
-    } : {};
+    const dateFilter =
+      startDate && endDate
+        ? {
+            generatedAt: {
+              gte: new Date(`${startDate}T00:00:00.000`),
+              // Inclusive end day (avoid midnight cut-off of `new Date(endDate)` alone)
+              lte: new Date(`${endDate}T23:59:59.999`),
+            },
+          }
+        : {};
 
     const whereBatch = {
         ...(stateCode && { stateCode }),
@@ -332,6 +336,340 @@ export class StatsService {
     });
 
     return { row1, row2, row3, row4, barData, oemBarData, oemPerformance, rtoDensity, heatmapData };
+  }
+
+  async getSldDashboardStats(query: {
+    stateCode?: string;
+    sldOemCode?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { stateCode, sldOemCode, startDate, endDate } = query;
+
+    const baseCertWhere: any = {
+      ...(sldOemCode && { sldOem: { code: sldOemCode } }),
+      ...(stateCode && { dealer: { stateCode } }),
+    };
+
+    const dateFilter =
+      startDate && endDate
+        ? {
+            generatedAt: {
+              gte: new Date(`${startDate}T00:00:00.000`),
+              lte: new Date(`${endDate}T23:59:59.999`),
+            },
+          }
+        : {};
+
+    const certWhere: any = { ...baseCertWhere, ...dateFilter };
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const todayCerts = await this.prisma.sldCertificate.findMany({
+      where: {
+        generatedAt: { gte: today, lt: tomorrow },
+        ...baseCertWhere,
+      },
+      include: { sldOem: { select: { code: true, name: true } } },
+    });
+
+    const allSldOems = await this.prisma.sldOem.findMany({
+      where: sldOemCode ? { code: sldOemCode } : undefined,
+      select: { code: true, name: true },
+    });
+
+    const row1: Record<string, number> = {};
+    allSldOems.forEach((o) => {
+      row1[o.code] = 0;
+    });
+    todayCerts.forEach((c) => {
+      const code = c.sldOem.code;
+      if (row1[code] === undefined) row1[code] = 0;
+      row1[code]++;
+    });
+
+    const [yesterdayCount, pendingCount, completedTodayCount] = await Promise.all([
+      this.prisma.sldCertificate.count({
+        where: {
+          generatedAt: { gte: yesterday, lt: today },
+          ...baseCertWhere,
+        },
+      }),
+      this.prisma.sldCertificate.count({
+        where: { status: 'PENDING', ...baseCertWhere },
+      }),
+      this.prisma.sldCertificate.count({
+        where: {
+          status: 'COMPLETED',
+          generatedAt: { gte: today, lt: tomorrow },
+          ...baseCertWhere,
+        },
+      }),
+    ]);
+
+    const row2 = {
+      today: todayCerts.length,
+      yesterday: yesterdayCount,
+      pending: pendingCount,
+      completedToday: completedTodayCount,
+    };
+
+    const serialWhere: any = {
+      ...(sldOemCode && { sldOem: { code: sldOemCode } }),
+      ...(stateCode && {
+        OR: [
+          { status: 'AVAILABLE' },
+          { dealer: { stateCode } },
+        ],
+      }),
+    };
+
+    const [totalCerts, invAvailable, invAssigned, invUsed, sldOemCount, activeSldDealers] =
+      await Promise.all([
+        this.prisma.sldCertificate.count({ where: certWhere }),
+        this.prisma.sldDeviceSerial.count({
+          where: { ...serialWhere, status: 'AVAILABLE' },
+        }),
+        this.prisma.sldDeviceSerial.count({
+          where: { ...serialWhere, status: 'ASSIGNED' },
+        }),
+        this.prisma.sldDeviceSerial.count({
+          where: { ...serialWhere, status: 'USED' },
+        }),
+        this.prisma.sldOem.count({
+          where: sldOemCode ? { code: sldOemCode } : undefined,
+        }),
+        this.prisma.dealer.count({
+          where: {
+            status: 'ACTIVE',
+            sldOems: { some: sldOemCode ? { code: sldOemCode } : {} },
+            ...(stateCode && { stateCode }),
+          },
+        }),
+      ]);
+
+    const row3 = {
+      totalCerts,
+      inventoryAvailable: invAvailable,
+      inventoryAssigned: invAssigned,
+      inventoryUsed: invUsed,
+      activeSldDealers,
+      sldOemCount,
+    };
+
+    const row4: Record<string, { certs: number; pending: number; completed: number }> = {};
+    for (const oem of allSldOems) {
+      const oemWhere = {
+        ...baseCertWhere,
+        sldOem: { code: oem.code },
+        ...dateFilter,
+      };
+      const [certs, pending, completed] = await Promise.all([
+        this.prisma.sldCertificate.count({ where: oemWhere }),
+        this.prisma.sldCertificate.count({
+          where: { ...oemWhere, status: 'PENDING' },
+        }),
+        this.prisma.sldCertificate.count({
+          where: { ...oemWhere, status: 'COMPLETED' },
+        }),
+      ]);
+      row4[oem.code] = { certs, pending, completed };
+    }
+
+    const barData: Array<{ date: string; PENDING: number; COMPLETED: number; total: number }> = [];
+    const oemBarData: Array<{ date: string; [key: string]: number | string }> = [];
+    const sldOemCodes = allSldOems.map((o) => o.code);
+    const todayRef = new Date();
+    todayRef.setHours(0, 0, 0, 0);
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(todayRef);
+      d.setDate(d.getDate() - i);
+      const nextD = new Date(d);
+      nextD.setDate(d.getDate() + 1);
+
+      const dayCerts = await this.prisma.sldCertificate.findMany({
+        where: {
+          generatedAt: { gte: d, lt: nextD },
+          ...certWhere,
+        },
+        include: { sldOem: { select: { code: true } } },
+      });
+
+      const dayStat = {
+        date: d.toISOString().split('T')[0],
+        PENDING: 0,
+        COMPLETED: 0,
+        total: dayCerts.length,
+      };
+      const oemDayStat: Record<string, number | string> = {
+        date: d.toISOString().split('T')[0],
+      };
+      sldOemCodes.forEach((code) => {
+        oemDayStat[code] = 0;
+      });
+
+      dayCerts.forEach((c) => {
+        if (c.status === 'PENDING') dayStat.PENDING++;
+        else dayStat.COMPLETED++;
+        const code = c.sldOem.code;
+        if (oemDayStat[code] === undefined) oemDayStat[code] = 0;
+        (oemDayStat[code] as number)++;
+      });
+
+      barData.push(dayStat);
+      oemBarData.push(oemDayStat as { date: string; [key: string]: number | string });
+    }
+
+    const certsForOemPerf = await this.prisma.sldCertificate.findMany({
+      where: certWhere,
+      select: { sldOem: { select: { code: true, name: true } } },
+    });
+
+    const oemPerfMap = new Map<string, { name: string; count: number }>();
+    certsForOemPerf.forEach((c) => {
+      const code = c.sldOem.code;
+      const existing = oemPerfMap.get(code);
+      if (existing) existing.count++;
+      else oemPerfMap.set(code, { name: c.sldOem.name, count: 1 });
+    });
+
+    const oemPerformance = Array.from(oemPerfMap.entries())
+      .map(([code, v]) => ({ code, name: v.name, count: v.count }))
+      .sort((a, b) => b.count - a.count);
+
+    const dealerGroups = await this.prisma.sldCertificate.groupBy({
+      by: ['dealerId'],
+      where: certWhere,
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 10,
+    });
+
+    const dealerIds = dealerGroups.map((g) => g.dealerId);
+    const dealers = await this.prisma.dealer.findMany({
+      where: { id: { in: dealerIds } },
+      select: { id: true, name: true },
+    });
+    const dealerNameMap = new Map(dealers.map((d) => [d.id, d.name]));
+
+    const dealerPerformance = dealerGroups.map((g) => ({
+      dealerId: g.dealerId,
+      name: dealerNameMap.get(g.dealerId) || 'Unknown',
+      count: g._count.id,
+    }));
+
+    const threeDaysAgo = new Date(today);
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const [aging0to3, aging4to7, aging7plus] = await Promise.all([
+      this.prisma.sldCertificate.count({
+        where: {
+          status: 'PENDING',
+          generatedAt: { gte: threeDaysAgo },
+          ...baseCertWhere,
+        },
+      }),
+      this.prisma.sldCertificate.count({
+        where: {
+          status: 'PENDING',
+          generatedAt: { gte: sevenDaysAgo, lt: threeDaysAgo },
+          ...baseCertWhere,
+        },
+      }),
+      this.prisma.sldCertificate.count({
+        where: {
+          status: 'PENDING',
+          generatedAt: { lt: sevenDaysAgo },
+          ...baseCertWhere,
+        },
+      }),
+    ]);
+
+    const pendingAging = {
+      days0to3: aging0to3,
+      days4to7: aging4to7,
+      days7plus: aging7plus,
+    };
+
+    const pendingQueue = await this.prisma.sldCertificate.findMany({
+      where: { status: 'PENDING', ...baseCertWhere },
+      orderBy: { generatedAt: 'asc' },
+      take: 10,
+      select: {
+        id: true,
+        certificateNumber: true,
+        vehicleNumber: true,
+        generatedAt: true,
+        dealer: { select: { name: true } },
+        sldOem: { select: { name: true, code: true } },
+      },
+    });
+
+    const certsWithLocation = await this.prisma.sldCertificate.findMany({
+      where: {
+        ...certWhere,
+        locationText: { not: null },
+      },
+      select: { locationText: true },
+    });
+
+    const locationMap = new Map<string, number>();
+    certsWithLocation.forEach((c) => {
+      if (!c.locationText) return;
+      let lat: number | null = null;
+      let lng: number | null = null;
+      const matchStandard = c.locationText.match(
+        /Lat:\s*(-?\d+(\.\d+)?),\s*Long:\s*(-?\d+(\.\d+)?)/i,
+      );
+      if (matchStandard) {
+        lat = parseFloat(matchStandard[1]);
+        lng = parseFloat(matchStandard[3]);
+      } else {
+        const matchSimple = c.locationText.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+        if (matchSimple) {
+          const l = parseFloat(matchSimple[1]);
+          const g = parseFloat(matchSimple[2]);
+          if (Math.abs(l) <= 90 && Math.abs(g) <= 180) {
+            lat = l;
+            lng = g;
+          }
+        }
+      }
+      if (lat !== null && lng !== null) {
+        const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+        locationMap.set(key, (locationMap.get(key) || 0) + 1);
+      }
+    });
+
+    const heatmapData = Array.from(locationMap.entries()).map(([key, count]) => {
+      const [lat, lng] = key.split(',').map(Number);
+      return { lat, lng, weight: count };
+    });
+
+    const oemLabels = Object.fromEntries(allSldOems.map((o) => [o.code, o.name]));
+
+    return {
+      row1,
+      row2,
+      row3,
+      row4,
+      barData,
+      oemBarData,
+      oemPerformance,
+      dealerPerformance,
+      pendingAging,
+      pendingQueue,
+      heatmapData,
+      oemLabels,
+    };
   }
 
   async getDealerDailyStats(dealerId: string, startDate?: string, endDate?: string) {

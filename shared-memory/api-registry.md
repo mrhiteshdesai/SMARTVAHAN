@@ -6,6 +6,7 @@
 | POST | /api/sld/oems | SLD | Create SLD OEM | SUPER_ADMIN/ADMIN |
 | PATCH | /api/sld/oems/:id | SLD | Update SLD OEM | SUPER_ADMIN/ADMIN |
 | DELETE | /api/sld/oems/:id | SLD | Delete SLD OEM | SUPER_ADMIN |
+| POST | /api/sld/oems/:id/import-variant-list | SLD | Import STANDARD VARIANT LIST rows (models + speed variants) | SUPER_ADMIN/ADMIN |
 | GET | /api/sld/models | SLD | List models (?sldOemId) | JWT |
 | POST | /api/sld/models | SLD | Create model | SUPER_ADMIN/ADMIN |
 | PATCH | /api/sld/models/:id | SLD | Update model | SUPER_ADMIN/ADMIN |

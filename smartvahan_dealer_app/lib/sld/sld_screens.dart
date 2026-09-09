@@ -121,7 +121,10 @@ class _SldFormScreenState extends State<SldFormScreen> {
       (m) => m['id'] == _approvedVehicleModelId,
       orElse: () => <String, dynamic>{},
     );
-    return row['modelName']?.toString() ?? '-';
+    final name = row['modelName']?.toString() ?? '-';
+    final speed = row['setSpeedKmph'];
+    if (speed == null) return name;
+    return '$name ($speed km/h)';
   }
 
   List<String> get _makes {
@@ -853,10 +856,15 @@ class _SldFormScreenState extends State<SldFormScreen> {
                   value: _approvedVehicleModelId,
                   items: _modelsForMake
                       .map(
-                        (m) => DropdownMenuItem(
-                          value: m['id']?.toString(),
-                          child: Text(m['modelName']?.toString() ?? ''),
-                        ),
+                        (m) {
+                          final name = m['modelName']?.toString() ?? '';
+                          final speed = m['setSpeedKmph'];
+                          final label = speed == null ? name : '$name ($speed km/h)';
+                          return DropdownMenuItem(
+                            value: m['id']?.toString(),
+                            child: Text(label, overflow: TextOverflow.ellipsis),
+                          );
+                        },
                       )
                       .toList(),
                   label: 'Vehicle Model / वाहन मॉडल',

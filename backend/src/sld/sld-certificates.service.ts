@@ -295,17 +295,26 @@ export class SldCertificatesService {
 
     let vehicleMake = String(vehicleDetails.vehicleMake || '').trim();
     let vehicleModelName = String(vehicleDetails.vehicleModel || vehicleDetails.model || '').trim();
+    let setSpeedKmph: number | null = null;
+    let testReportNo: string | null = null;
 
-    if (approvedVehicleModelId) {
-      const approved = await this.prisma.sldApprovedVehicleModel.findUnique({
-        where: { id: approvedVehicleModelId },
-      });
-      if (!approved || approved.sldDeviceModelId !== modelId) {
-        throw new BadRequestException('Approved vehicle model is invalid for this device model');
-      }
-      vehicleMake = approved.make || vehicleMake;
-      vehicleModelName = approved.modelName;
+    if (!approvedVehicleModelId) {
+      throw new BadRequestException('Approved vehicle model (with set speed) is required');
     }
+
+    const approved = await this.prisma.sldApprovedVehicleModel.findUnique({
+      where: { id: approvedVehicleModelId },
+    });
+    if (!approved || approved.sldDeviceModelId !== modelId) {
+      throw new BadRequestException('Approved vehicle model is invalid for this device model');
+    }
+    if (!approved.setSpeedKmph || approved.setSpeedKmph <= 0) {
+      throw new BadRequestException('Selected vehicle variant has no valid set speed');
+    }
+    vehicleMake = approved.make || vehicleMake;
+    vehicleModelName = approved.modelName;
+    setSpeedKmph = approved.setSpeedKmph;
+    testReportNo = approved.testReportNo || null;
 
     if (!vehicleMake || !vehicleModelName) {
       throw new BadRequestException('Vehicle make and model are required');
@@ -399,7 +408,8 @@ export class SldCertificatesService {
       tacNumber: model.tacNumber || '',
       copNumber: model.copNumber || '',
       testingAgency: model.testingAgency || '',
-      speedLimit: model.speedLimit || '',
+      speedLimit: String(setSpeedKmph),
+      testReportNo: testReportNo || '',
       generatedAt: new Date(),
       photos: photoPaths,
     };
@@ -459,6 +469,8 @@ export class SldCertificatesService {
           photoSerial: this.toUploadsUrl(photoPaths.photoSerial!)!,
           photoPlate: this.toUploadsUrl(photoPaths.photoPlate!)!,
           sealNumber,
+          setSpeedKmph,
+          testReportNo,
           smartvahanPdfPath: finalPdfPath,
           locationText: certPayload.locationText || null,
         },
@@ -564,11 +576,12 @@ export class SldCertificatesService {
         ['SERIAL NUMBER', data.deviceSerialNumber],
         ['SEAL NUMBER', data.sealNumber],
       ];
+      const approvalIsCop = Boolean(data.copNumber && !data.tacNumber);
       const sldRight: Array<[string, string]> = [
         ['TESTING AGENCY', data.testingAgency],
-        ['TAC', data.tacNumber],
-        ['COP', data.copNumber],
-        ['SPEED LIMIT (KM/H)', data.speedLimit],
+        [approvalIsCop ? 'COP' : 'TAC', data.tacNumber || data.copNumber || ''],
+        ['TEST REPORT NO', data.testReportNo || ''],
+        ['SET SPEED (KM/H)', data.speedLimit],
       ];
       for (let i = 0; i < sldLeft.length; i++) {
         y = sldStart + i * 16;
@@ -952,6 +965,7 @@ export class SldCertificatesService {
             copNumber: true,
             testingAgency: true,
             speedLimit: true,
+            sldType: true,
           },
         },
         deviceSerial: { select: { serialNumber: true } },
@@ -989,6 +1003,8 @@ export class SldCertificatesService {
         ownerContact: cert.ownerContact,
         vehicleNumber: cert.vehicleNumber,
         sealNumber: cert.sealNumber,
+        setSpeedKmph: cert.setSpeedKmph,
+        testReportNo: cert.testReportNo,
         generatedAt: cert.generatedAt,
         locationText: cert.locationText,
         photoInstalled: this.toUploadsUrl(cert.photoInstalled),
@@ -998,7 +1014,10 @@ export class SldCertificatesService {
         smartvahanPdfUrl: this.toUploadsUrl(cert.smartvahanPdfPath),
         vahanPdfUrl: this.toUploadsUrl(cert.vahanPdfPath),
         sldOem: cert.sldOem,
-        deviceModel: cert.model,
+        deviceModel: {
+          ...cert.model,
+          speedLimit: cert.setSpeedKmph != null ? String(cert.setSpeedKmph) : cert.model.speedLimit,
+        },
         deviceSerialNumber: cert.deviceSerial.serialNumber,
         dealerName: dealer?.name ?? null,
         dealerPhone: dealer?.phone ?? null,

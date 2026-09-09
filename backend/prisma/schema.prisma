@@ -418,11 +418,13 @@ model SldDeviceModel {
   sldOemId           String
   name               String
   code               String
+  sldType            String?
   tacNumber          String?
   copNumber          String?
   copDocument        String?
   copValidity        DateTime?
   testingAgency      String?
+  /// Legacy optional default only — set speed lives on approved vehicle variants
   speedLimit         String?
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
@@ -438,13 +440,15 @@ model SldDeviceModel {
 model SldApprovedVehicleModel {
   id               String         @id @default(uuid())
   sldDeviceModelId String
-  make             String?
+  make             String         @default("")
   modelName        String
+  setSpeedKmph     Int
+  testReportNo     String         @default("")
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   deviceModel      SldDeviceModel @relation(fields: [sldDeviceModelId], references: [id], onDelete: Cascade)
 
-  @@unique([sldDeviceModelId, make, modelName])
+  @@unique([sldDeviceModelId, make, modelName, setSpeedKmph, testReportNo])
   @@index([sldDeviceModelId])
   @@map("sld_approved_vehicle_models")
 }
@@ -496,6 +500,9 @@ model SldCertificate {
   photoSerial       String?
   photoPlate        String?
   sealNumber        String?
+  /// Snapshot from approved vehicle at generate time
+  setSpeedKmph      Int?
+  testReportNo      String?
   smartvahanPdfPath String?
   vahanPdfPath      String?
   vahanUploadedAt   DateTime?

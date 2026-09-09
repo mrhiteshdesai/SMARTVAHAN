@@ -208,6 +208,8 @@ export type SldApprovedVehicleModel = {
   sldDeviceModelId: string;
   make?: string | null;
   modelName: string;
+  setSpeedKmph: number;
+  testReportNo?: string;
 };
 
 export type SldDeviceModel = {
@@ -215,6 +217,7 @@ export type SldDeviceModel = {
   sldOemId: string;
   name: string;
   code: string;
+  sldType?: string | null;
   tacNumber?: string | null;
   copNumber?: string | null;
   copDocument?: string | null;
@@ -757,10 +760,30 @@ export function useUploadSldVehicleModels() {
   });
 }
 
+export function useImportSldVariantList() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ oemId, rows }: { oemId: string; rows: any[] }) => {
+      const res = await api.post(`/sld/oems/${oemId}/import-variant-list`, { rows });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sld-oems"] });
+      queryClient.invalidateQueries({ queryKey: ["sld-vehicle-models"] });
+    },
+  });
+}
+
 export function useCreateSldVehicleModel() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ modelId, data }: { modelId: string; data: { make?: string; modelName: string } }) => {
+    mutationFn: async ({
+      modelId,
+      data,
+    }: {
+      modelId: string;
+      data: { make?: string; modelName: string; setSpeedKmph: number; testReportNo?: string };
+    }) => {
       const res = await api.post(`/sld/models/${modelId}/vehicle-models`, data);
       return res.data;
     },
@@ -865,7 +888,6 @@ export type SldCertificateRow = {
   model?: { code: string; name: string };
   dealer?: { id: string; name: string; phone?: string; stateCode?: string };
   serialNumber?: string;
-  sealNumber?: string;
   pdfUrl?: string | null;
   smartvahanPdfPath?: string | null;
   vahanPdfPath?: string | null;

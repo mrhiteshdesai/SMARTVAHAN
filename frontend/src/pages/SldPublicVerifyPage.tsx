@@ -113,12 +113,12 @@ export default function SldPublicVerifyPage() {
               </div>
               <span
                 className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  result.status === "COMPLETED"
+                  result?.status === "COMPLETED"
                     ? "bg-green-100 text-green-800"
                     : "bg-amber-100 text-amber-800"
                 }`}
               >
-                {result.status}
+                {result?.status}
               </span>
             </div>
             <div className="p-5 grid sm:grid-cols-2 gap-4 text-sm">

@@ -4,11 +4,15 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UserRole } from '@prisma/client';
 import { SldOemsService } from './sld-oems.service';
+import { SldModelsService } from './sld-models.service';
 
 @Controller('api/sld/oems')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class SldOemsController {
-  constructor(private readonly sldOemsService: SldOemsService) {}
+  constructor(
+    private readonly sldOemsService: SldOemsService,
+    private readonly sldModelsService: SldModelsService,
+  ) {}
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STATE_ADMIN, UserRole.SUB_ADMIN)
@@ -38,5 +42,11 @@ export class SldOemsController {
   @Roles(UserRole.SUPER_ADMIN)
   remove(@Param('id') id: string, @Req() req: any) {
     return this.sldOemsService.remove(id, req.user?.userId);
+  }
+
+  @Post(':id/import-variant-list')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  importVariantList(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    return this.sldModelsService.importVariantList(id, body?.rows || [], req.user?.userId);
   }
 }

@@ -24,7 +24,8 @@ Source: `backend/prisma/schema.prisma` (SMARTVAHAN V2)
 | AuditLog | Audit | Security | Partial |
 | InventoryLog | Reflective inventory movements | Inventory | No |
 | SldOem | SLD OEMs (state-authorized) | SLD | Partial |
-| SldDeviceModel | SLD device models (TAC, COP+validity, agency, speed) | SLD | No |
-| SldApprovedVehicleModel | Vehicle models approved per device model | SLD | No |
+| SldDeviceModel | SLD device models (type FUEL/CABLE, TAC or COP by agency) | SLD | No |
+| SldApprovedVehicleModel | Vehicle variants per device model (make, model, **setSpeedKmph**, testReportNo) | SLD | No |
 | SldDeviceSerial | Per-device serial inventory | SLD | No |
+| SldCertificate | SLD fitment cert; snapshots setSpeedKmph + testReportNo | SLD | No |
 | SldCertificate | SLD installation certificates (cert no: SLD+OEMCODE+VEHICLENO) | SLD | Yes |

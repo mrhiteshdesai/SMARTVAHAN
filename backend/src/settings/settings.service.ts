@@ -107,6 +107,36 @@ export class SettingsService {
     return ua.includes('Dart/') || ua.includes('okhttp') || ua.includes('Flutter');
   }
 
+  /** Highest ACTIVE build for platform — APK URL clients should download. */
+  private _latestActiveVersion(
+    versions: MobileAppVersionEntry[],
+    platform: string,
+  ): MobileAppVersionEntry | null {
+    const active = versions.filter((v) => {
+      if (v.status !== 'ACTIVE') return false;
+      if (platform && v.platform !== platform) return false;
+      return true;
+    });
+    if (!active.length) return null;
+    return active.reduce((best, v) =>
+      v.buildNumber > best.buildNumber ? v : best,
+    );
+  }
+
+  private _resolveUpdateStoreUrl(
+    cfg: MobileAppConfig,
+    platform: string,
+  ): string | null {
+    const latest = this._latestActiveVersion(
+      Array.isArray(cfg.versions) ? cfg.versions : [],
+      platform,
+    );
+    const fromLatest = (latest?.storeUrl ?? '').trim();
+    if (fromLatest) return fromLatest;
+    const fromDefault = (cfg.defaultStoreUrl ?? '').trim();
+    return fromDefault || null;
+  }
+
   async enforceMobileAppVersion(
     headers: Record<string, any>,
     action: 'LOGIN' | 'CERTIFICATE',
@@ -132,7 +162,7 @@ export class SettingsService {
         {
           code: 'APP_UPDATE_REQUIRED',
           message: cfg.defaultMessage,
-          storeUrl: cfg.defaultStoreUrl || null,
+          storeUrl: this._resolveUpdateStoreUrl(cfg, platform),
           action,
         },
         upgradeRequiredStatus,
@@ -144,7 +174,7 @@ export class SettingsService {
         {
           code: 'APP_UPDATE_REQUIRED',
           message: cfg.defaultMessage,
-          storeUrl: cfg.defaultStoreUrl || null,
+          storeUrl: this._resolveUpdateStoreUrl(cfg, platform),
           action,
         },
         upgradeRequiredStatus,
@@ -156,21 +186,34 @@ export class SettingsService {
       return;
     }
 
-    const match = versions.find((v) => {
-      if (platform && v.platform !== platform) return false;
-      if (Number.isFinite(buildNumber) && v.buildNumber === buildNumber) return true;
-      if (versionName && v.versionName === versionName) return true;
-      return false;
-    });
+    // Prefer exact build match (versionName-only match can hit an old row).
+    let match =
+      Number.isFinite(buildNumber)
+        ? versions.find(
+            (v) =>
+              (!platform || v.platform === platform) &&
+              v.buildNumber === buildNumber,
+          )
+        : undefined;
+    if (!match && versionName) {
+      match = versions.find(
+        (v) =>
+          (!platform || v.platform === platform) &&
+          v.versionName === versionName &&
+          v.status === 'ACTIVE',
+      );
+    }
 
     if (!match || match.status !== 'ACTIVE') {
-      const msg = (match?.message ?? cfg.defaultMessage) || cfg.defaultMessage;
-      const url = (match?.storeUrl ?? cfg.defaultStoreUrl) || cfg.defaultStoreUrl || null;
+      const latest = this._latestActiveVersion(versions, platform);
+      const msg =
+        (match?.message ?? latest?.message ?? cfg.defaultMessage) ||
+        cfg.defaultMessage;
       throw new HttpException(
         {
           code: 'APP_UPDATE_REQUIRED',
           message: msg,
-          storeUrl: url,
+          storeUrl: this._resolveUpdateStoreUrl(cfg, platform),
           action,
         },
         upgradeRequiredStatus,

@@ -854,7 +854,8 @@ export default function SettingsPage() {
                   <div>
                     <div className="text-sm font-semibold text-gray-700">Allowed Versions</div>
                     <div className="text-xs text-gray-500">
-                      Only versions with status ACTIVE are allowed.
+                      Only ACTIVE builds may use the app. Update downloads use the highest ACTIVE
+                      build&apos;s Store/APK URL (not the DEPRECATED row&apos;s URL).
                     </div>
                   </div>
                   <button

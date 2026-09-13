@@ -664,6 +664,29 @@ function SldOverview({ stats, googlePlacesKey }: { stats: SldDashboardStats; goo
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
+          title="Today NEW"
+          value={stats.row2.todayNew ?? 0}
+          icon={<FileBadge2 className="w-5 h-5 text-sky-500" />}
+        />
+        <StatCard
+          title="Today RENEWAL"
+          value={stats.row2.todayRenewal ?? 0}
+          icon={<FileBadge2 className="w-5 h-5 text-violet-500" />}
+        />
+        <StatCard
+          title="Total NEW"
+          value={stats.row2.totalNew ?? 0}
+          icon={<FileBadge2 className="w-5 h-5 text-sky-700" />}
+        />
+        <StatCard
+          title="Total RENEWAL"
+          value={stats.row2.totalRenewal ?? 0}
+          icon={<FileBadge2 className="w-5 h-5 text-violet-700" />}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
           title="Total SLD Certs"
           value={stats.row3.totalCerts}
           icon={<FileBadge2 className="w-5 h-5 text-orange-500" />}

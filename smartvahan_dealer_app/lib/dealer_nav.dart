@@ -32,17 +32,11 @@ class DealerNavItem {
 }
 
 List<DealerNavItem> dealerBottomNavItems() {
-  final items = <DealerNavItem>[
-    const DealerNavItem('/home', 'Home', LucideIcons.house),
+  return const [
+    DealerNavItem('/home', 'Home', LucideIcons.house),
+    DealerNavItem('/profile', 'Profile', LucideIcons.user),
+    DealerNavItem('/support', 'Support', LucideIcons.headset),
   ];
-  if (dealerHasReflectiveAccess()) {
-    items.add(const DealerNavItem('/history', 'Reflective', LucideIcons.history));
-  }
-  if (dealerHasSldAccess()) {
-    items.add(const DealerNavItem('/sld/history', 'SLD', LucideIcons.gauge));
-  }
-  items.add(const DealerNavItem('/profile', 'Profile', LucideIcons.user));
-  return items;
 }
 
 int dealerNavIndexForRoute(String route) {

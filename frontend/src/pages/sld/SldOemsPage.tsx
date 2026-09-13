@@ -85,6 +85,40 @@ function parseVariantWorkbook(file: ArrayBuffer) {
   );
 }
 
+function downloadBlankVariantTemplate() {
+  const headers = [
+    "S no.",
+    "Vehicle Make",
+    "Vehicle Model",
+    "SLD Model Name / Number",
+    "SLD Type",
+    "TAC / COP Number",
+    "Testing Agency",
+    "Test Report Number",
+    "Set Speed (KMPH)",
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["SLD STANDARD VARIANT LIST"],
+    headers,
+    [
+      1,
+      "TATA",
+      "ACE",
+      "EXAMPLE-MODEL",
+      "FUEL TYPE",
+      "AD0342 / SHL/16/2024-2025/3000043351/COP/1525",
+      "ARAI",
+      "CT0VM0000",
+      "80",
+    ],
+  ]);
+  ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 8 } }];
+  ws["!cols"] = headers.map((_, i) => ({ wch: i === 5 || i === 2 ? 40 : 22 }));
+  XLSX.utils.book_append_sheet(wb, ws, "Variant List");
+  XLSX.writeFile(wb, "SLD STANDARD VARIANT LIST.xlsx");
+}
+
 export default function SldOemsPage() {
   const [query, setQuery] = useState("");
   const [openOem, setOpenOem] = useState(false);
@@ -246,24 +280,35 @@ export default function SldOemsPage() {
         onChange={onImportFile}
       />
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-xl font-semibold">SLD OEMs</div>
           <div className="text-sm text-gray-600">
             OEM → Device Model (type, TAC/COP by agency) → Vehicle variants (make, model, set speed, test report)
           </div>
         </div>
-        <button
-          onClick={() => {
-            setOemForm({ name: "", code: "", authorizedStates: [] });
-            setEditOemId(null);
-            setOpenOem(true);
-          }}
-          className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/90 text-sm"
-        >
-          <Plus size={16} />
-          Add SLD OEM
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={downloadBlankVariantTemplate}
+            className="flex items-center gap-2 border px-4 py-2 rounded-md hover:bg-gray-50 text-sm"
+            title="Download SLD STANDARD VARIANT LIST template"
+          >
+            <FileSpreadsheet size={16} />
+            Download template
+          </button>
+          <button
+            onClick={() => {
+              setOemForm({ name: "", code: "", authorizedStates: [] });
+              setEditOemId(null);
+              setOpenOem(true);
+            }}
+            className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/90 text-sm"
+          >
+            <Plus size={16} />
+            Add SLD OEM
+          </button>
+        </div>
       </div>
 
       {importSummary ? (

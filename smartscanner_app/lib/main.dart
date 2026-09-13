@@ -18,6 +18,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'platform/pdf_opener.dart';
+import 'app_updater.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -85,11 +86,16 @@ Future<void> showUpdateRequiredDialog({
           TextButton(
             onPressed: () async {
               final url = (storeUrl ?? '').trim();
-              if (url.isNotEmpty) {
-                await launchUrl(
-                  Uri.parse(url),
-                  mode: LaunchMode.externalApplication,
+              if (url.isEmpty) return;
+              if (isDirectApkUpdateUrl(url)) {
+                Navigator.of(context).pop();
+                await runInAppApkUpdateFlow(
+                  context: rootNavigatorKey.currentContext ?? context,
+                  apkUrl: url,
+                  appLabel: 'SmartScanner',
                 );
+              } else {
+                await openExternalUpdateUrl(url);
               }
             },
             child: const Text('Update App'),
@@ -175,6 +181,7 @@ class OutwardCurveClipper extends CustomClipper<Path> {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppMeta.init();
+  await LookupService.clearLookupCachesIfAppUpdated();
   runApp(const SmartScannerApp());
 }
 
@@ -186,11 +193,37 @@ class LookupService {
   static const _keyRtosMetaPrefix = 'cache_rtos_meta_';
   static const _keyPassingRtosPrefix = 'cache_passing_rtos_';
   static const _keyPassingRtosMetaPrefix = 'cache_passing_rtos_meta_';
+  static const _keyAppBuildStamp = 'lookup_cache_app_build';
   static const _cacheTtlMs = 24 * 60 * 60 * 1000;
 
   static bool _isExpired(int cachedAtMs) {
     final now = DateTime.now().millisecondsSinceEpoch;
     return (now - cachedAtMs) > _cacheTtlMs;
+  }
+
+  /// Clears RTO / passing-RTO caches when app version or build number changes
+  /// (APK update / reinstall over existing install). Full uninstall already wipes prefs.
+  static Future<void> clearLookupCachesIfAppUpdated() async {
+    final stamp =
+        '${AppMeta.versionName}+${AppMeta.buildNumber}'.trim();
+    if (stamp.isEmpty || stamp == '+') return;
+    final prefs = await SharedPreferences.getInstance();
+    final previous = prefs.getString(_keyAppBuildStamp);
+    if (previous == stamp) return;
+
+    _rtosCache.clear();
+    _passingRtosCache.clear();
+    vehicleCategories = null;
+    final keys = prefs.getKeys().toList();
+    for (final k in keys) {
+      if (k.startsWith(_keyRtosPrefix) ||
+          k.startsWith(_keyRtosMetaPrefix) ||
+          k.startsWith(_keyPassingRtosPrefix) ||
+          k.startsWith(_keyPassingRtosMetaPrefix)) {
+        await prefs.remove(k);
+      }
+    }
+    await prefs.setString(_keyAppBuildStamp, stamp);
   }
 
   static Future<void> hydrateLookups(

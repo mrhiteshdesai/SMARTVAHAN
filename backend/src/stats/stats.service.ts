@@ -393,7 +393,8 @@ export class StatsService {
       row1[code]++;
     });
 
-    const [yesterdayCount, pendingCount, completedTodayCount] = await Promise.all([
+    const [yesterdayCount, pendingCount, completedTodayCount, todayNewCount, todayRenewalCount] =
+      await Promise.all([
       this.prisma.sldCertificate.count({
         where: {
           generatedAt: { gte: yesterday, lt: today },
@@ -410,6 +411,25 @@ export class StatsService {
           ...baseCertWhere,
         },
       }),
+      this.prisma.sldCertificate.count({
+        where: {
+          kind: 'NEW',
+          generatedAt: { gte: today, lt: tomorrow },
+          ...baseCertWhere,
+        },
+      }),
+      this.prisma.sldCertificate.count({
+        where: {
+          kind: 'RENEWAL',
+          generatedAt: { gte: today, lt: tomorrow },
+          ...baseCertWhere,
+        },
+      }),
+    ]);
+
+    const [totalNew, totalRenewal] = await Promise.all([
+      this.prisma.sldCertificate.count({ where: { ...certWhere, kind: 'NEW' } }),
+      this.prisma.sldCertificate.count({ where: { ...certWhere, kind: 'RENEWAL' } }),
     ]);
 
     const row2 = {
@@ -417,6 +437,10 @@ export class StatsService {
       yesterday: yesterdayCount,
       pending: pendingCount,
       completedToday: completedTodayCount,
+      todayNew: todayNewCount,
+      todayRenewal: todayRenewalCount,
+      totalNew,
+      totalRenewal,
     };
 
     const serialWhere: any = {

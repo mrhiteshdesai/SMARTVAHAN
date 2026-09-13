@@ -20,8 +20,23 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function kindBadge(kind?: string) {
+  const isRenewal = kind === "RENEWAL";
+  return (
+    <span
+      className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+        isRenewal ? "bg-violet-100 text-violet-800" : "bg-sky-100 text-sky-800"
+      }`}
+      title={isRenewal ? "Use Vahan SLD Maker: Renewal" : "Use Vahan SLD Maker: New Fitment"}
+    >
+      {isRenewal ? "RENEWAL" : "NEW FITMENT"}
+    </span>
+  );
+}
+
 export default function SldCertificatesPage() {
   const [status, setStatus] = useState<"PENDING" | "COMPLETED" | "">("PENDING");
+  const [kind, setKind] = useState<"NEW" | "RENEWAL" | "">("");
   const [sldOemId, setSldOemId] = useState("");
   const [dealerId, setDealerId] = useState("");
   const [search, setSearch] = useState("");
@@ -41,6 +56,7 @@ export default function SldCertificatesPage() {
 
   const query = useSldCertificates({
     status: status || undefined,
+    kind: kind || undefined,
     sldOemId: sldOemId || undefined,
     dealerId: dealerId || undefined,
     search: search || undefined,
@@ -128,6 +144,18 @@ export default function SldCertificatesPage() {
         </select>
         <select
           className="border rounded-md p-2 text-sm"
+          value={kind}
+          onChange={(e) => {
+            setPage(1);
+            setKind(e.target.value as any);
+          }}
+        >
+          <option value="">All types</option>
+          <option value="NEW">New fitment</option>
+          <option value="RENEWAL">Renewal</option>
+        </select>
+        <select
+          className="border rounded-md p-2 text-sm"
           value={sldOemId}
           onChange={(e) => {
             setPage(1);
@@ -194,6 +222,7 @@ export default function SldCertificatesPage() {
             <thead className="bg-gray-50 text-left">
               <tr>
                 <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Certificate Number</th>
                 <th className="px-4 py-3">Vehicle Reg. No.</th>
                 <th className="px-4 py-3">OEM</th>
@@ -208,13 +237,13 @@ export default function SldCertificatesPage() {
             <tbody>
               {query.isLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
                     Loading…
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
                     No certificates found.
                   </td>
                 </tr>
@@ -224,6 +253,7 @@ export default function SldCertificatesPage() {
                     <td className="px-4 py-3 whitespace-nowrap">
                       {row.generatedAt ? new Date(row.generatedAt).toLocaleDateString() : "—"}
                     </td>
+                    <td className="px-4 py-3">{kindBadge(row.kind)}</td>
                     <td className="px-4 py-3 font-medium">{row.certificateNumber}</td>
                     <td className="px-4 py-3">{row.vehicleNumber}</td>
                     <td className="px-4 py-3">{row.oem?.name || row.oem?.code || "—"}</td>

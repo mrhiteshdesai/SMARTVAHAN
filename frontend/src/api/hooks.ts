@@ -275,6 +275,7 @@ export type Dealer = {
   tradeCertificateNo?: string;
   tradeValidity?: string; // ISO Date string
   gstNo?: string;
+  sldRenewalCredits?: number;
 };
 
 export type DealerRegistrationRequest = {
@@ -341,6 +342,51 @@ export function useUpdateDealer() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dealers"] });
+    },
+  });
+}
+
+export function useTopUpSldRenewalCredits() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      amount,
+      note,
+    }: {
+      id: string;
+      amount: number;
+      note?: string;
+    }) => {
+      const res = await api.post(`/dealers/${id}/sld-renewal-credits`, { amount, note });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dealers"] });
+      queryClient.invalidateQueries({ queryKey: ["sld-renewal-credit-logs"] });
+    },
+  });
+}
+
+export type SldRenewalCreditLog = {
+  id: string;
+  dealerId: string;
+  delta: number;
+  balanceAfter: number;
+  note?: string | null;
+  createdById?: string | null;
+  createdAt: string;
+};
+
+export function useSldRenewalCreditLogs(dealerId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["sld-renewal-credit-logs", dealerId],
+    enabled: Boolean(dealerId) && enabled,
+    queryFn: async () => {
+      const res = await api.get<SldRenewalCreditLog[]>(
+        `/dealers/${dealerId}/sld-renewal-credits/logs`,
+      );
+      return Array.isArray(res.data) ? res.data : [];
     },
   });
 }
@@ -607,6 +653,10 @@ export type SldDashboardStats = {
         yesterday: number;
         pending: number;
         completedToday: number;
+        todayNew?: number;
+        todayRenewal?: number;
+        totalNew?: number;
+        totalRenewal?: number;
     };
     row3: {
         totalCerts: number;
@@ -879,14 +929,17 @@ export function useAssignSldInventoryCsv() {
 export type SldCertificateRow = {
   id: string;
   certificateNumber: string;
+  kind?: "NEW" | "RENEWAL";
   vehicleNumber: string;
   status: "PENDING" | "COMPLETED";
   generatedAt: string;
+  validFrom?: string | null;
+  validTo?: string | null;
   sealNumber?: string;
   ownerName?: string;
   oem?: { id?: string; code: string; name: string };
   model?: { code: string; name: string };
-  dealer?: { id: string; name: string; phone?: string; stateCode?: string };
+  dealer?: { id?: string; name: string; phone?: string; stateCode?: string };
   serialNumber?: string;
   pdfUrl?: string | null;
   smartvahanPdfPath?: string | null;

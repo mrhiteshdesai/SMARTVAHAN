@@ -38,6 +38,13 @@ logs/
 .env
 .env.*
 
+# Android signing (never commit)
+**/android/key.properties
+**/android/*.jks
+**/android/**/*.jks
+**/android/*.keystore
+**/android/**/*.keystore
+
 # Backups
 _backups/
 *.dump

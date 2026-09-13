@@ -228,6 +228,9 @@ export default function SettingsPage() {
     });
   };
 
+  const [apkUploading, setApkUploading] = useState(false);
+  const [apkUploadMsg, setApkUploadMsg] = useState<string | null>(null);
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -248,6 +251,49 @@ export default function SettingsPage() {
         console.error("Failed to upload logo", err);
         alert("Failed to upload logo");
       }
+    }
+  };
+
+  const handleApkUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    target: "default" | number,
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".apk")) {
+      alert("Please select an .apk file");
+      return;
+    }
+    setApkUploading(true);
+    setApkUploadMsg(null);
+    try {
+      const formData = new FormData();
+      formData.append("apk", file);
+      const res = await client.post<{
+        success: boolean;
+        url: string;
+        path: string;
+        filename: string;
+        size: number;
+      }>("/settings/mobile-apk", formData, {
+        timeout: 10 * 60 * 1000,
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const url = res.data.url;
+      if (target === "default") {
+        updateMobile({ defaultStoreUrl: url });
+      } else {
+        updateMobileVersion(target, { storeUrl: url });
+      }
+      setApkUploadMsg(
+        `Uploaded ${res.data.filename} (${Math.round((res.data.size || 0) / (1024 * 1024))} MB). Click Save Settings to persist.`,
+      );
+    } catch (err: any) {
+      console.error("Failed to upload APK", err);
+      alert(err?.response?.data?.message || "Failed to upload APK");
+    } finally {
+      setApkUploading(false);
     }
   };
 
@@ -762,13 +808,32 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Default store URL</label>
-                    <input
-                      value={mobile.defaultStoreUrl}
-                      onChange={(e) => updateMobile({ defaultStoreUrl: e.target.value })}
-                      className="w-full border rounded px-3 py-2"
-                      placeholder="https://play.google.com/store/apps/details?id=..."
-                    />
+                    <label className="block text-sm font-medium mb-1">Default store / APK URL</label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        value={mobile.defaultStoreUrl}
+                        onChange={(e) => updateMobile({ defaultStoreUrl: e.target.value })}
+                        className="flex-1 border rounded px-3 py-2"
+                        placeholder="Upload APK or paste https://…/.apk (Play Store URL later)"
+                      />
+                      <label className="inline-flex items-center justify-center gap-2 px-3 py-2 border rounded text-sm bg-white hover:bg-gray-50 cursor-pointer whitespace-nowrap">
+                        <Upload className="w-4 h-4" />
+                        {apkUploading ? "Uploading…" : "Upload APK"}
+                        <input
+                          type="file"
+                          accept=".apk,application/vnd.android.package-archive"
+                          className="hidden"
+                          disabled={apkUploading}
+                          onChange={(e) => handleApkUpload(e, "default")}
+                        />
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Upload stores the APK on the server and fills this URL. Direct .apk links trigger in-app download + install on Android.
+                    </p>
+                    {apkUploadMsg && (
+                      <p className="text-xs text-emerald-700 mt-1">{apkUploadMsg}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -799,7 +864,7 @@ export default function SettingsPage() {
                         <th className="text-left px-4 py-2">Version</th>
                         <th className="text-left px-4 py-2">Build</th>
                         <th className="text-left px-4 py-2">Status</th>
-                        <th className="text-left px-4 py-2">Store URL</th>
+                        <th className="text-left px-4 py-2">Store / APK URL</th>
                         <th className="text-right px-4 py-2">Remove</th>
                       </tr>
                     </thead>
@@ -854,12 +919,25 @@ export default function SettingsPage() {
                               </select>
                             </td>
                             <td className="px-4 py-2">
-                              <input
-                                value={v.storeUrl || ""}
-                                onChange={(e) => updateMobileVersion(idx, { storeUrl: e.target.value })}
-                                className="border rounded px-2 py-1 w-[360px]"
-                                placeholder={mobile.defaultStoreUrl || "https://..."}
-                              />
+                              <div className="flex items-center gap-2">
+                                <input
+                                  value={v.storeUrl || ""}
+                                  onChange={(e) => updateMobileVersion(idx, { storeUrl: e.target.value })}
+                                  className="border rounded px-2 py-1 w-[280px]"
+                                  placeholder={mobile.defaultStoreUrl || "https://... or upload"}
+                                />
+                                <label className="inline-flex items-center gap-1 px-2 py-1 border rounded text-xs bg-white hover:bg-gray-50 cursor-pointer whitespace-nowrap">
+                                  <Upload className="w-3 h-3" />
+                                  APK
+                                  <input
+                                    type="file"
+                                    accept=".apk,application/vnd.android.package-archive"
+                                    className="hidden"
+                                    disabled={apkUploading}
+                                    onChange={(e) => handleApkUpload(e, idx)}
+                                  />
+                                </label>
+                              </div>
                             </td>
                             <td className="px-4 py-2 text-right">
                               <button

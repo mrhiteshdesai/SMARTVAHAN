@@ -21,6 +21,7 @@ import 'platform/pdf_opener.dart';
 import 'dealer_nav.dart';
 import 'api_holder.dart';
 import 'sld/sld_screens.dart';
+import 'app_updater.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -88,11 +89,16 @@ Future<void> showUpdateRequiredDialog({
           TextButton(
             onPressed: () async {
               final url = (storeUrl ?? '').trim();
-              if (url.isNotEmpty) {
-                await launchUrl(
-                  Uri.parse(url),
-                  mode: LaunchMode.externalApplication,
+              if (url.isEmpty) return;
+              if (isDirectApkUpdateUrl(url)) {
+                Navigator.of(context).pop();
+                await runInAppApkUpdateFlow(
+                  context: rootNavigatorKey.currentContext ?? context,
+                  apkUrl: url,
+                  appLabel: 'SMARTVAHAN',
                 );
+              } else {
+                await openExternalUpdateUrl(url);
               }
             },
             child: const Text('Update App'),
@@ -180,6 +186,7 @@ Future<void> main() async {
   ApiHolder.client = api;
   ApiHolder.userGetter = () => ApiSession.user;
   await AppMeta.init();
+  await LookupService.clearLookupCachesIfAppUpdated();
   runApp(const SmartvahanApp());
 }
 
@@ -191,11 +198,37 @@ class LookupService {
   static const _keyRtosMetaPrefix = 'cache_rtos_meta_';
   static const _keyPassingRtosPrefix = 'cache_passing_rtos_';
   static const _keyPassingRtosMetaPrefix = 'cache_passing_rtos_meta_';
+  static const _keyAppBuildStamp = 'lookup_cache_app_build';
   static const _cacheTtlMs = 24 * 60 * 60 * 1000;
 
   static bool _isExpired(int cachedAtMs) {
     final now = DateTime.now().millisecondsSinceEpoch;
     return (now - cachedAtMs) > _cacheTtlMs;
+  }
+
+  /// Clears RTO / passing-RTO caches when app version or build number changes
+  /// (APK update / reinstall over existing install). Full uninstall already wipes prefs.
+  static Future<void> clearLookupCachesIfAppUpdated() async {
+    final stamp =
+        '${AppMeta.versionName}+${AppMeta.buildNumber}'.trim();
+    if (stamp.isEmpty || stamp == '+') return;
+    final prefs = await SharedPreferences.getInstance();
+    final previous = prefs.getString(_keyAppBuildStamp);
+    if (previous == stamp) return;
+
+    _rtosCache.clear();
+    _passingRtosCache.clear();
+    vehicleCategories = null;
+    final keys = prefs.getKeys().toList();
+    for (final k in keys) {
+      if (k.startsWith(_keyRtosPrefix) ||
+          k.startsWith(_keyRtosMetaPrefix) ||
+          k.startsWith(_keyPassingRtosPrefix) ||
+          k.startsWith(_keyPassingRtosMetaPrefix)) {
+        await prefs.remove(k);
+      }
+    }
+    await prefs.setString(_keyAppBuildStamp, stamp);
   }
 
   static Future<void> hydrateLookups(
@@ -904,6 +937,7 @@ class SmartvahanApp extends StatelessWidget {
         '/success': (_) => const CertificateSuccessScreen(),
         '/sld': (_) => const SldFormScreen(),
         '/sld/form': (_) => const SldFormScreen(),
+        '/sld/renewal': (_) => const SldFormScreen(isRenewal: true),
         '/sld/history': (_) => const SldHistoryScreen(),
         '/sld/success': (_) => const SldSuccessScreen(),
       },
@@ -1815,8 +1849,9 @@ class _HomeContentState extends State<_HomeContent> {
                       onTap: onTap,
                       borderRadius: BorderRadius.circular(14),
                       child: Container(
-                        height: 76,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        height: 112,
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: const Color(0xFFD6E2F0)),
@@ -1828,11 +1863,12 @@ class _HomeContentState extends State<_HomeContent> {
                             ),
                           ],
                         ),
-                        child: Row(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Container(
-                              width: 44,
-                              height: 44,
+                              width: 40,
+                              height: 40,
                               decoration: BoxDecoration(
                                 color: const Color(0xFFEEF4FB),
                                 borderRadius: BorderRadius.circular(12),
@@ -1840,38 +1876,34 @@ class _HomeContentState extends State<_HomeContent> {
                               child: Icon(
                                 icon,
                                 color: const Color(0xFF12314D),
-                                size: 22,
+                                size: 20,
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    title,
-                                    style: const TextStyle(
-                                      color: Color(0xFF12314D),
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  Text(
-                                    subtitle,
-                                    style: const TextStyle(
-                                      color: Color(0xFF6B8299),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
+                            const SizedBox(height: 8),
+                            Text(
+                              title,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF12314D),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                height: 1.15,
                               ),
                             ),
-                            const Icon(
-                              LucideIcons.chevron_right,
-                              color: Color(0xFF91A8BD),
-                              size: 20,
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitle,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF6B8299),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                                height: 1.2,
+                              ),
                             ),
                           ],
                         ),
@@ -1886,11 +1918,17 @@ class _HomeContentState extends State<_HomeContent> {
                   icon: LucideIcons.scan_qr_code,
                   onTap: () => Navigator.of(context).pushNamed('/scan'),
                 );
-                final sldTile = actionTile(
-                  title: 'SLD',
-                  subtitle: 'Speed Limiter',
+                final sldNewTile = actionTile(
+                  title: 'New SLD Fitment',
+                  subtitle: 'For New Device Fitment',
                   icon: LucideIcons.gauge,
                   onTap: () => Navigator.of(context).pushNamed('/sld'),
+                );
+                final sldRenewalTile = actionTile(
+                  title: 'SLD Renewal',
+                  subtitle: 'For Old Device Renewals',
+                  icon: LucideIcons.refresh_cw,
+                  onTap: () => Navigator.of(context).pushNamed('/sld/renewal'),
                 );
 
                 final qrCertTile = certificateTile(
@@ -1906,23 +1944,26 @@ class _HomeContentState extends State<_HomeContent> {
                   onTap: () => Navigator.of(context).pushNamed('/sld/history'),
                 );
 
-                Widget scanSection;
-                if (hasReflective && hasSld) {
-                  scanSection = Row(
-                    children: [
-                      Expanded(child: scanTile),
-                      const SizedBox(width: 12),
-                      Expanded(child: sldTile),
-                    ],
+                final List<Widget> homeBlocks = [];
+                if (hasReflective) {
+                  homeBlocks.add(scanTile);
+                }
+                if (hasSld) {
+                  if (homeBlocks.isNotEmpty) {
+                    homeBlocks.add(const SizedBox(height: 12));
+                  }
+                  homeBlocks.add(
+                    Row(
+                      children: [
+                        Expanded(child: sldNewTile),
+                        const SizedBox(width: 12),
+                        Expanded(child: sldRenewalTile),
+                      ],
+                    ),
                   );
-                } else if (hasSld && !hasReflective) {
-                  scanSection = sldTile;
-                } else if (hasReflective) {
-                  scanSection = scanTile;
-                } else {
-                  scanSection = const SizedBox.shrink();
                 }
 
+                // Certificate buttons: full width if only one auth; both side-by-side if both
                 Widget? certSection;
                 if (hasReflective && hasSld) {
                   certSection = Row(
@@ -1932,7 +1973,7 @@ class _HomeContentState extends State<_HomeContent> {
                       Expanded(child: sldCertTile),
                     ],
                   );
-                } else if (hasSld && !hasReflective) {
+                } else if (hasSld) {
                   certSection = sldCertTile;
                 } else if (hasReflective) {
                   certSection = qrCertTile;
@@ -1941,7 +1982,7 @@ class _HomeContentState extends State<_HomeContent> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    scanSection,
+                    ...homeBlocks,
                     if (certSection != null) ...[
                       const SizedBox(height: 14),
                       certSection,
@@ -4922,6 +4963,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return _stringVal(oems);
   }
 
+  String _sldOemsLabel(dynamic oems) {
+    if (oems is List) {
+      final parts = oems
+          .map((e) {
+            if (e is Map) {
+              final name = _stringVal(e['name']);
+              final code = _stringVal(e['code']);
+              if (code == 'ALL' || name.toLowerCase().contains('all sld')) {
+                return 'All SLD OEMs';
+              }
+              if (name != '-' && code != '-') return '$name ($code)';
+              if (name != '-') return name;
+              return code;
+            }
+            return _stringVal(e);
+          })
+          .where((e) => e != '-')
+          .toSet()
+          .toList();
+      return parts.isEmpty ? '-' : parts.join(', ');
+    }
+    return _stringVal(oems);
+  }
+
   Widget _tile(String label, String value, {IconData? icon}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -4986,6 +5051,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final email = _stringVal(u?['email']);
     final state = _stringVal(u?['stateName'] ?? u?['stateCode']);
     final brands = _oemsLabel(u?['oems']);
+    final sldBrands = _sldOemsLabel(u?['sldOems']);
+    final hasSldAccess = u?['hasSldAccess'] == true ||
+        (u?['sldOems'] is List && (u!['sldOems'] as List).isNotEmpty);
+    final hasReflectiveAccess = u?['hasReflectiveAccess'] == true ||
+        brands != '-';
+    final isAdmin = (() {
+      final role = (u?['role'] ?? '').toString().toUpperCase();
+      return role == 'SUPER_ADMIN' || role == 'ADMIN';
+    })();
     final passingRtosAll = (u?['passingRtosAll'] == true);
     final passingRtoCodes = u?['passingRtoCodes'];
     final passingRtos = passingRtosAll
@@ -5038,8 +5112,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 12),
                     _tile('Authorised State', state, icon: LucideIcons.map_pin),
                     const SizedBox(height: 12),
-                    _tile('Authorised Brand(s)', brands, icon: LucideIcons.car),
-                    const SizedBox(height: 12),
+                    if (hasReflectiveAccess || isAdmin || brands != '-') ...[
+                      _tile(
+                        'Authorised Reflective OEM',
+                        isAdmin && (brands == '-' || brands.isEmpty)
+                            ? 'All Reflective OEMs'
+                            : brands,
+                        icon: LucideIcons.car,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (hasSldAccess || isAdmin || sldBrands != '-') ...[
+                      _tile(
+                        'Authorised SLD OEM',
+                        isAdmin && (sldBrands == '-' || sldBrands.isEmpty)
+                            ? 'All SLD OEMs'
+                            : sldBrands,
+                        icon: LucideIcons.gauge,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     _tile(
                       'Passing RTO',
                       passingRtos,
@@ -5116,6 +5208,7 @@ class SupportScreen extends StatelessWidget {
           foregroundColor: Colors.white,
           title: const Text('Support'),
         ),
+        bottomNavigationBar: const DealerBottomNav(currentRoute: '/support'),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(

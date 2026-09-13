@@ -8,12 +8,17 @@ type SldVerifyResponse =
       status: "PENDING" | "COMPLETED";
       data: {
         certificateNumber: string;
+        kind?: "NEW" | "RENEWAL";
+        validFrom?: string | null;
+        validTo?: string | null;
         vehicleNumber: string;
         vehicleMake?: string;
         vehicleCategory?: string;
         ownerName?: string;
         ownerContact?: string;
         sealNumber?: string;
+        setSpeedKmph?: number | null;
+        testReportNo?: string | null;
         generatedAt: string;
         smartvahanPdfUrl?: string | null;
         vahanPdfUrl?: string | null;
@@ -26,6 +31,15 @@ type SldVerifyResponse =
       };
     }
   | { success: true; status: "NOT_FOUND"; message: string };
+
+function formatDate(d?: string | null) {
+  if (!d) return "—";
+  try {
+    return new Date(d).toLocaleDateString("en-GB");
+  } catch {
+    return "—";
+  }
+}
 
 export default function SldPublicVerifyPage() {
   const location = useLocation();
@@ -66,19 +80,20 @@ export default function SldPublicVerifyPage() {
   }, [location.search]);
 
   const data = result && "data" in result ? result.data : null;
+  const isRenewal = data?.kind === "RENEWAL";
 
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-3xl mx-auto px-4 py-10">
         <h1 className="text-2xl font-bold text-slate-900 mb-2">SLD Certificate Verification</h1>
         <p className="text-sm text-slate-600 mb-6">
-          Enter the SLD fitment certificate number printed on the SmartVahan certificate.
+          Enter the SLD certificate number printed on the SmartVahan certificate.
         </p>
 
         <div className="bg-white rounded-xl border shadow-sm p-4 flex flex-col sm:flex-row gap-3 mb-6">
           <input
             className="flex-1 border rounded-lg px-3 py-2 text-sm"
-            placeholder="e.g. SLDABCMH12AB1234"
+            placeholder="e.g. SLDABCMH12AB1234 or …-R… for renewal"
             value={certInput}
             onChange={(e) => setCertInput(e.target.value.toUpperCase())}
           />
@@ -106,22 +121,39 @@ export default function SldPublicVerifyPage() {
 
         {data && (
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b flex items-center justify-between">
+            <div className="px-5 py-4 border-b flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-500">Certificate</div>
                 <div className="font-bold text-lg text-slate-900">{data.certificateNumber}</div>
               </div>
-              <span
-                className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  result?.status === "COMPLETED"
-                    ? "bg-green-100 text-green-800"
-                    : "bg-amber-100 text-amber-800"
-                }`}
-              >
-                {result?.status}
-              </span>
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    isRenewal ? "bg-violet-100 text-violet-800" : "bg-sky-100 text-sky-800"
+                  }`}
+                >
+                  {isRenewal ? "Renewed" : "New Fitment"}
+                </span>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    result?.status === "COMPLETED"
+                      ? "bg-green-100 text-green-800"
+                      : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {result?.status}
+                </span>
+              </div>
             </div>
             <div className="p-5 grid sm:grid-cols-2 gap-4 text-sm">
+              <div>
+                <div className="text-slate-500">Valid from</div>
+                <div className="font-semibold">{formatDate(data.validFrom || data.generatedAt)}</div>
+              </div>
+              <div>
+                <div className="text-slate-500">Valid to</div>
+                <div className="font-semibold">{formatDate(data.validTo)}</div>
+              </div>
               <div>
                 <div className="text-slate-500">Vehicle</div>
                 <div className="font-semibold">{data.vehicleNumber}</div>
@@ -139,7 +171,19 @@ export default function SldPublicVerifyPage() {
               <div>
                 <div className="text-slate-500">Device</div>
                 <div className="font-semibold">
-                  {[data.deviceModel?.name, data.deviceSerialNumber].filter(Boolean).join(" · ") || "—"}
+                  {[data.deviceModel?.name, data.deviceSerialNumber].filter(Boolean).join(" · ") ||
+                    "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-slate-500">Seal / Set speed</div>
+                <div className="font-semibold">
+                  {[
+                    data.sealNumber ? `Seal ${data.sealNumber}` : null,
+                    data.setSpeedKmph != null ? `${data.setSpeedKmph} km/h` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
                 </div>
               </div>
               <div>
@@ -154,7 +198,7 @@ export default function SldPublicVerifyPage() {
               </div>
               <div>
                 <div className="text-slate-500">Dealer</div>
-                <div className="font-semibold">{data.dealerName || "—"}</div>
+                <div className="font-semibold">{data.dealerName || "Admin (test)"}</div>
                 {data.dealerPhone && <div className="text-slate-600">{data.dealerPhone}</div>}
               </div>
               {data.dealerVerification && (

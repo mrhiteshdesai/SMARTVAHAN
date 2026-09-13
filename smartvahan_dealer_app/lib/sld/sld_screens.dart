@@ -17,7 +17,8 @@ import '../dealer_nav.dart';
 import '../platform/pdf_opener.dart';
 
 class SldFormScreen extends StatefulWidget {
-  const SldFormScreen({super.key});
+  final bool isRenewal;
+  const SldFormScreen({super.key, this.isRenewal = false});
 
   @override
   State<SldFormScreen> createState() => _SldFormScreenState();
@@ -27,6 +28,8 @@ class _SldFormScreenState extends State<SldFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _imagePicker = ImagePicker();
   final _verifyScrollController = ScrollController();
+
+  bool get _isRenewal => widget.isRenewal;
 
   bool _loadingMeta = true;
   bool _loadingLookups = false;
@@ -38,10 +41,14 @@ class _SldFormScreenState extends State<SldFormScreen> {
   String? _locationError;
 
   List<dynamic> _oems = [];
+  int _renewalCredits = 0;
+  bool _adminTestMode = false;
+  String? _prefillNote;
   String? _oemId;
   String? _modelId;
   List<dynamic> _serials = [];
   String? _serialId;
+  final _serialManualCtrl = TextEditingController();
   List<dynamic> _approvedVehicles = [];
   String? _vehicleMake;
   String? _approvedVehicleModelId;
@@ -109,6 +116,10 @@ class _SldFormScreenState extends State<SldFormScreen> {
   }
 
   String get _serialLabel {
+    if (_isRenewal) {
+      final typed = _serialManualCtrl.text.trim().toUpperCase();
+      return typed.isEmpty ? '-' : typed;
+    }
     final serial = _serials.cast<Map>().firstWhere(
       (s) => s['id'] == _serialId,
       orElse: () => <String, dynamic>{},
@@ -170,6 +181,7 @@ class _SldFormScreenState extends State<SldFormScreen> {
     _yearCtrl.dispose();
     _passingRtoCtrl.dispose();
     _locationCtrl.dispose();
+    _serialManualCtrl.dispose();
     super.dispose();
   }
 
@@ -188,13 +200,25 @@ class _SldFormScreenState extends State<SldFormScreen> {
       final res = await ApiHolder.api.get('/sld/dealer/bootstrap');
       final data = Map<String, dynamic>.from(res.data as Map);
       if (!mounted) return;
+      final credit = data['renewalCreditBalance'];
+      final oemsRaw = _isRenewal
+          ? (data['renewalOems'] ?? data['oems'] ?? [])
+          : (data['oems'] ?? []);
       setState(() {
-        _oems = List<dynamic>.from(data['oems'] ?? []);
+        _oems = List<dynamic>.from(oemsRaw as List);
+        _adminTestMode = data['adminTestMode'] == true || dealerIsSystemAdmin();
+        _renewalCredits = credit is int
+            ? credit
+            : int.tryParse('$credit') ?? (_adminTestMode ? 0 : 0);
         _loadingMeta = false;
         if (_oems.isEmpty) {
           _error = dealerIsSystemAdmin()
               ? 'No SLD OEMs configured in the system.'
-              : 'No SLD OEM authorized for this dealer.';
+              : (_isRenewal
+                  ? 'No SLD OEMs available for renewal.'
+                  : 'No SLD OEM authorized for this dealer.');
+        } else if (_isRenewal && !_adminTestMode && _renewalCredits < 1) {
+          _error = 'No renewal credits remaining. Contact platform owner to top up.';
         }
       });
       await Future.wait([_loadLookups(), _ensureLocation()]);
@@ -352,6 +376,73 @@ class _SldFormScreenState extends State<SldFormScreen> {
     }
   }
 
+  /// Prefill vehicle/owner from latest prior SmartVahan cert for OEM+serial (editable).
+  Future<void> _tryPrefillPriorCert() async {
+    if (!_isRenewal || _oemId == null) return;
+    final serial = _serialManualCtrl.text.trim().toUpperCase();
+    if (serial.isEmpty) {
+      setState(() => _prefillNote = null);
+      return;
+    }
+    try {
+      final res = await ApiHolder.api.get(
+        '/sld/dealer/prior-certificate',
+        queryParameters: {'sldOemId': _oemId, 'serialNumber': serial},
+      );
+      final data = Map<String, dynamic>.from(res.data as Map? ?? {});
+      if (!mounted) return;
+      if (data['found'] != true) {
+        setState(() => _prefillNote = 'No prior SmartVahan certificate — enter details manually.');
+        return;
+      }
+
+      final make = (data['vehicleMake'] ?? '').toString().trim();
+      final category = (data['vehicleCategory'] ?? '').toString().trim();
+      final speed = data['setSpeedKmph'];
+      String? approvedId;
+      for (final row in _approvedVehicles.whereType<Map>()) {
+        final rMake = (row['make'] ?? '').toString().trim();
+        final rModel = (row['modelName'] ?? '').toString().trim();
+        final rSpeed = row['setSpeedKmph'];
+        if (rMake == make && rModel == category && '$rSpeed' == '$speed') {
+          approvedId = row['id']?.toString();
+          break;
+        }
+      }
+      if (approvedId == null && make.isNotEmpty) {
+        for (final row in _approvedVehicles.whereType<Map>()) {
+          if ((row['make'] ?? '').toString().trim() == make &&
+              (row['modelName'] ?? '').toString().trim() == category) {
+            approvedId = row['id']?.toString();
+            break;
+          }
+        }
+      }
+
+      setState(() {
+        _regRtoCtrl.text = (data['registrationRto'] ?? '').toString().toUpperCase();
+        _seriesCtrl.text = (data['series'] ?? '').toString().toUpperCase();
+        final vn = (data['vehicleNumber'] ?? '').toString().toUpperCase();
+        if (vn.isNotEmpty) _vehicleNumberCtrl.text = vn;
+        _chassisCtrl.text = (data['chassisNumber'] ?? '').toString().toUpperCase();
+        _engineCtrl.text = (data['engineNumber'] ?? '').toString().toUpperCase();
+        _yearCtrl.text = (data['manufacturingYear'] ?? '').toString();
+        _passingRtoCtrl.text = (data['passingRto'] ?? '').toString().toUpperCase();
+        _ownerNameCtrl.text = (data['ownerName'] ?? '').toString().toUpperCase();
+        _ownerPhoneCtrl.text = (data['ownerContact'] ?? '').toString();
+        _sealCtrl.text = (data['sealNumber'] ?? '').toString();
+        if (make.isNotEmpty) _vehicleMake = make;
+        if (approvedId != null) _approvedVehicleModelId = approvedId;
+        _prefillNote =
+            'Prefilled from ${data['certificateNumber']} (${data['kind'] ?? 'prior'}). Editable.';
+      });
+      _updateVehicleNumber();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _prefillNote = null);
+    }
+  }
+
   Future<void> _capture(String key) async {
     try {
       final file = await _imagePicker.pickImage(source: ImageSource.camera, imageQuality: 70);
@@ -376,9 +467,12 @@ class _SldFormScreenState extends State<SldFormScreen> {
   }
 
   bool get _isFormFilled {
+    final serialOk = _isRenewal
+        ? _serialManualCtrl.text.trim().isNotEmpty
+        : _serialId != null;
     return _oemId != null &&
         _modelId != null &&
-        _serialId != null &&
+        serialOk &&
         _sealCtrl.text.trim().isNotEmpty &&
         _vehicleMake != null &&
         _approvedVehicleModelId != null &&
@@ -492,6 +586,10 @@ class _SldFormScreenState extends State<SldFormScreen> {
 
   Future<void> _submit() async {
     if (!_consentGiven) return;
+    if (_isRenewal && _renewalCredits < 1 && !_adminTestMode) {
+      _showErrorDialog('No renewal credits remaining.');
+      return;
+    }
 
     setState(() {
       _submitting = true;
@@ -499,10 +597,10 @@ class _SldFormScreenState extends State<SldFormScreen> {
     });
 
     try {
-      final body = {
+      final body = <String, dynamic>{
+        'kind': _isRenewal ? 'RENEWAL' : 'NEW',
         'sldOemId': _oemId,
         'modelId': _modelId,
-        'deviceSerialId': _serialId,
         'approvedVehicleModelId': _approvedVehicleModelId,
         'sealNumber': _sealCtrl.text.trim(),
         'locationText': _locationCtrl.text.trim(),
@@ -529,6 +627,11 @@ class _SldFormScreenState extends State<SldFormScreen> {
           'photoSerial': _photos['photoSerial'],
         },
       };
+      if (_isRenewal) {
+        body['serialNumber'] = _serialManualCtrl.text.trim().toUpperCase();
+      } else {
+        body['deviceSerialId'] = _serialId;
+      }
 
       // Cert create uploads 4 photos + builds PDF; allow longer than default 30s.
       final res = await ApiHolder.api.post(
@@ -643,7 +746,11 @@ class _SldFormScreenState extends State<SldFormScreen> {
         appBar: AppBar(
           backgroundColor: const Color(0xFF12314D),
           foregroundColor: Colors.white,
-          title: Text(_isVerifying ? 'Verify Details' : 'Fitment Form'),
+          title: Text(
+            _isVerifying
+                ? 'Verify Details'
+                : (_isRenewal ? 'SLD Renewal' : 'New SLD Fitment'),
+          ),
           leading: IconButton(
             icon: const Icon(LucideIcons.arrow_left),
             onPressed: () {
@@ -706,6 +813,26 @@ class _SldFormScreenState extends State<SldFormScreen> {
               ),
             ),
             const SizedBox(height: 8),
+            if (_isRenewal)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7E6),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE6C56A)),
+                ),
+                child: Text(
+                  _adminTestMode
+                      ? 'RENEWAL — Admin test mode (no credit debit).'
+                      : 'RENEWAL — 1 credit will be used. Credits left: $_renewalCredits',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF7A5B00),
+                    fontSize: 13,
+                  ),
+                ),
+              ),
             const Divider(thickness: 1, color: Colors.grey),
             _buildGradientFormCard(
               title: 'SLD Details',
@@ -728,6 +855,7 @@ class _SldFormScreenState extends State<SldFormScreen> {
                       _oemId = val;
                       _modelId = null;
                       _serialId = null;
+                      _serialManualCtrl.clear();
                       _serials = [];
                       _approvedVehicles = [];
                       _vehicleMake = null;
@@ -752,40 +880,80 @@ class _SldFormScreenState extends State<SldFormScreen> {
                     setState(() {
                       _modelId = val;
                       _serialId = null;
+                      _serialManualCtrl.clear();
                       _vehicleMake = null;
                       _approvedVehicleModelId = null;
                     });
-                    await Future.wait([_loadSerials(), _loadVehicleModels()]);
+                    if (_isRenewal) {
+                      await _loadVehicleModels();
+                    } else {
+                      await Future.wait([_loadSerials(), _loadVehicleModels()]);
+                    }
                   },
                   validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                 ),
-                _buildFormDropdown<String>(
-                  value: _serialId,
-                  items: _serials
-                      .whereType<Map>()
-                      .map(
-                        (s) => DropdownMenuItem(
-                          value: s['id']?.toString(),
-                          child: Text(s['serialNumber']?.toString() ?? ''),
+                if (_isRenewal) ...[
+                  _buildFormInput(
+                    controller: _serialManualCtrl,
+                    label: 'SLD Serial / एस.एल.डी. सीरियल',
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9\-]')),
+                      _upperCaseFormatter,
+                    ],
+                    onEditingComplete: _tryPrefillPriorCert,
+                  ),
+                  if (_prefillNote != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        _prefillNote!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _prefillNote!.startsWith('Prefill')
+                              ? const Color(0xFF166534)
+                              : const Color(0xFF6B7280),
                         ),
-                      )
-                      .toList(),
-                  label: 'SLD Serial / एस.एल.डी. सीरियल',
-                  onChanged: (val) => setState(() => _serialId = val),
-                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                ),
-                if (_modelId != null && _serials.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      'No assigned serials for this model. Contact admin.',
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12.5,
                       ),
                     ),
+                ] else ...[
+                  _buildFormDropdown<String>(
+                    value: _serialId,
+                    items: _serials
+                        .whereType<Map>()
+                        .map(
+                          (s) {
+                            final sn = s['serialNumber']?.toString() ?? '';
+                            final st = s['status']?.toString();
+                            final label = (st != null && st.isNotEmpty && st != 'ASSIGNED')
+                                ? '$sn ($st)'
+                                : sn;
+                            return DropdownMenuItem(
+                              value: s['id']?.toString(),
+                              child: Text(label),
+                            );
+                          },
+                        )
+                        .toList(),
+                    label: _adminTestMode
+                        ? 'SLD Serial (AVAILABLE / ASSIGNED)'
+                        : 'SLD Serial / एस.एल.डी. सीरियल',
+                    onChanged: (val) => setState(() => _serialId = val),
+                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                   ),
+                  if (_modelId != null && _serials.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'No assigned serials for this model. Contact admin.',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                ],
                 _buildFormInput(
                   controller: _sealCtrl,
                   label: 'Seal Number / सील नंबर',
@@ -1418,6 +1586,7 @@ class _SldFormScreenState extends State<SldFormScreen> {
     int? maxLength,
     List<TextInputFormatter>? inputFormatters,
     ValueChanged<String>? onChanged,
+    VoidCallback? onEditingComplete,
     Color? fillColor,
     Color? textColor,
     Color? labelColor,
@@ -1446,6 +1615,9 @@ class _SldFormScreenState extends State<SldFormScreen> {
             maxLength: maxLength,
             inputFormatters: inputFormatters,
             onChanged: onChanged,
+            onEditingComplete: onEditingComplete,
+            textInputAction:
+                onEditingComplete != null ? TextInputAction.done : TextInputAction.next,
             style: TextStyle(fontSize: 14, color: textColor ?? const Color(0xFF12314D)),
             decoration: InputDecoration(
               labelText: label,
@@ -1757,6 +1929,7 @@ class _SldHistoryItem {
   final String id;
   final DateTime generatedAt;
   final String certificateNumber;
+  final String kind;
   final String vehicleNumber;
   final String ownerName;
   final String oem;
@@ -1770,6 +1943,7 @@ class _SldHistoryItem {
     required this.id,
     required this.generatedAt,
     required this.certificateNumber,
+    required this.kind,
     required this.vehicleNumber,
     required this.ownerName,
     required this.oem,
@@ -1779,6 +1953,8 @@ class _SldHistoryItem {
     required this.smartvahanPdfUrl,
     required this.vahanPdfUrl,
   });
+
+  bool get isRenewal => kind.toUpperCase() == 'RENEWAL';
 }
 
 class SldHistoryScreen extends StatefulWidget {
@@ -1907,6 +2083,7 @@ class _SldHistoryScreenState extends State<SldHistoryScreen> {
           id: row['id']?.toString() ?? '',
           generatedAt: date,
           certificateNumber: row['certificateNumber']?.toString() ?? '',
+          kind: row['kind']?.toString().toUpperCase() ?? 'NEW',
           vehicleNumber: row['vehicleNumber']?.toString() ?? '',
           ownerName: row['ownerName']?.toString() ?? '—',
           oem: oem.isEmpty ? '—' : oem,
@@ -2120,6 +2297,29 @@ class _SldHistoryScreenState extends State<SldHistoryScreen> {
                           ),
                           child: Column(
                             children: [
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: item.isRenewal
+                                        ? const Color(0xFFEEE8FF)
+                                        : const Color(0xFFE8F4FC),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    item.isRenewal ? 'RENEWAL' : 'NEW',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: item.isRenewal
+                                          ? const Color(0xFF5B21B6)
+                                          : const Color(0xFF075985),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
                               Row(
                                 children: [
                                   Expanded(

@@ -55,6 +55,23 @@ export class DealersController {
     return this.dealersService.update(id, updateDealerDto);
   }
 
+  @Post(':id/sld-renewal-credits')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  topUpRenewalCredits(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    return this.dealersService.topUpSldRenewalCredits(
+      id,
+      body?.amount,
+      body?.note,
+      req.user?.userId,
+    );
+  }
+
+  @Get(':id/sld-renewal-credits/logs')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  renewalCreditLogs(@Param('id') id: string) {
+    return this.dealersService.listSldRenewalCreditLogs(id);
+  }
+
   @Delete(':id')
   @Roles(UserRole.SUPER_ADMIN)
   remove(@Param('id') id: string) {

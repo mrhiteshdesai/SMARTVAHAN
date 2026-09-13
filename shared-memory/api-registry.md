@@ -21,9 +21,17 @@
 | POST | /api/sld/models/:id/vehicle-models/upload | SLD | CSV upload approved vehicle models | SUPER_ADMIN/ADMIN |
 | DELETE | /api/sld/vehicle-models/:id | SLD | Delete approved vehicle model | SUPER_ADMIN/ADMIN |
 | POST | /api/public/dealer-registration | Dealers | Public registration (+ Reflective/SLD toggles) | Public |
-| GET | /api/sld/dealer/bootstrap | SLD | Dealer SLD OEMs/models + assigned counts | JWT (dealer) |
-| GET | /api/sld/dealer/serials | SLD | Assigned serials for OEM/model | JWT (dealer) |
-| GET | /api/sld/dealer/certificates | SLD | Dealer SLD cert history | JWT (dealer) |
-| POST | /api/sld/certificates | SLD | Create SLD cert + PDF (PENDING) | JWT (dealer/admin) |
+| GET | /api/sld/dealer/bootstrap | SLD | Dealer/admin SLD OEMs/models + renewal credits / adminTestMode | JWT (dealer/admin) |
+| GET | /api/sld/dealer/serials | SLD | Assigned serials (admin: AVAILABLE+ASSIGNED) | JWT (dealer/admin) |
+| GET | /api/sld/dealer/prior-certificate | SLD | Prefill prior cert by OEM+serial | JWT (dealer/admin) |
+| GET | /api/sld/dealer/certificates | SLD | Dealer SLD cert history | JWT (dealer/admin) |
+| GET | /api/sld/certificates | SLD | Admin cert list (status/kind filters) | SUPER_ADMIN/ADMIN/STATE_ADMIN |
+| POST | /api/sld/certificates | SLD | Create NEW or RENEWAL cert (`kind`) | JWT (dealer/admin) |
+| POST | /api/sld/certificates/:id/vahan | SLD | Upload Vahan PDF → COMPLETED | SUPER_ADMIN/ADMIN |
+| POST | /api/sld/certificates/:id/reinstate | SLD | Reinstate cert (+ credit refund if charged) | SUPER_ADMIN/ADMIN |
+| POST | /api/sld/certificates/reinstate-bulk | SLD | Bulk reinstate by cert numbers | SUPER_ADMIN/ADMIN |
+| GET | /api/sld/public-verify | SLD | Public verify (kind, validity, vehicle/device) | Public |
+| POST | /api/settings/mobile-apk | Settings | Upload rollout APK → returns public URL for storeUrl | SUPER_ADMIN/ADMIN |
+| GET | /api/dealers/:id/sld-renewal-credits/logs | Dealers | Renewal credit ledger | SUPER_ADMIN/ADMIN |
 
 Canonical OpenAPI: `docs/04-api/openapi.yaml`

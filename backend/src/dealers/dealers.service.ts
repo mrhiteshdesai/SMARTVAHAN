@@ -542,4 +542,60 @@ export class DealersService {
 
     return { success: true, data: { dealerId: dealer.id } };
   }
+
+  async topUpSldRenewalCredits(
+    dealerId: string,
+    amount: number,
+    note: string | undefined,
+    createdById?: string,
+  ) {
+    const delta = Math.floor(Number(amount));
+    if (!Number.isFinite(delta) || delta === 0) {
+      throw new BadRequestException('amount must be a non-zero integer');
+    }
+    const dealer = await this.prisma.dealer.findUnique({ where: { id: dealerId } });
+    if (!dealer) throw new NotFoundException('Dealer not found');
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (delta < 0 && (dealer.sldRenewalCredits || 0) + delta < 0) {
+        throw new BadRequestException('Insufficient renewal credit balance for debit');
+      }
+      const row = await tx.dealer.update({
+        where: { id: dealerId },
+        data: { sldRenewalCredits: { increment: delta } },
+        include: { state: true, rto: true, oems: true, sldOems: true },
+      });
+      await tx.sldRenewalCreditLog.create({
+        data: {
+          dealerId,
+          delta,
+          balanceAfter: row.sldRenewalCredits,
+          note: note ? String(note).trim() : null,
+          createdById: createdById || null,
+        },
+      });
+      return row;
+    });
+
+    if (createdById) {
+      await this.auditService.logAction(
+        createdById,
+        'TOPUP_SLD_RENEWAL_CREDITS',
+        'DEALER',
+        dealerId,
+        `Renewal credits ${delta > 0 ? '+' : ''}${delta} → balance ${updated.sldRenewalCredits}`,
+      );
+    }
+
+    return updated;
+  }
+
+  async listSldRenewalCreditLogs(dealerId: string) {
+    await this.findOne(dealerId);
+    return this.prisma.sldRenewalCreditLog.findMany({
+      where: { dealerId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+  }
 }

@@ -39,7 +39,7 @@ export class SldInventoryService {
         continue;
       }
       seen.add(key);
-      serials.push(raw);
+      serials.push(key); // always store UPPERCASE
     }
 
     return { serials, duplicatesInFile };
@@ -134,7 +134,11 @@ export class SldInventoryService {
           sldOem: { select: { id: true, code: true, name: true } },
           model: { select: { id: true, code: true, name: true } },
           dealer: { select: { id: true, name: true, phone: true } },
-          certificate: { select: { id: true, certificateNumber: true, generatedAt: true, status: true } },
+          certificates: {
+            select: { id: true, certificateNumber: true, generatedAt: true, status: true, kind: true },
+            orderBy: { generatedAt: 'desc' },
+            take: 1,
+          },
         },
         orderBy: [{ status: 'asc' }, { serialNumber: 'asc' }],
         skip: (page - 1) * limit,
@@ -162,7 +166,17 @@ export class SldInventoryService {
       }
     }
 
-    return { total, page, limit, items, counts };
+    return {
+      total,
+      page,
+      limit,
+      items: items.map((item: any) => ({
+        ...item,
+        certificate: item.certificates?.[0] || null,
+        certificates: undefined,
+      })),
+      counts,
+    };
   }
 
   async listAvailableForAssign(sldOemId: string, modelId: string) {

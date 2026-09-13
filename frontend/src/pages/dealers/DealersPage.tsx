@@ -5,7 +5,7 @@ import Modal from "../../ui/Modal";
 import { 
   useDealers, useCreateDealer, useUpdateDealer, useDeleteDealer,
   useDealerRegistrationRequests, useApproveDealerRegistrationRequest, useRejectDealerRegistrationRequest,
-  useStates, usePassingRTOs, useOEMs, useSldOems,
+  useStates, usePassingRTOs, useOEMs, useSldOems, useTopUpSldRenewalCredits, useSldRenewalCreditLogs,
   Dealer, DealerRegistrationRequest
 } from "../../api/hooks";
 
@@ -23,6 +23,11 @@ export default function DealersPage() {
   const [openAdd, setOpenAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [approvalRequestId, setApprovalRequestId] = useState<string | null>(null);
+  const [topUpDealer, setTopUpDealer] = useState<Dealer | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState("10");
+  const [topUpNote, setTopUpNote] = useState("");
+  const [topUpError, setTopUpError] = useState<string | null>(null);
+  const [ledgerDealer, setLedgerDealer] = useState<Dealer | null>(null);
 
   // Form State
   const [form, setForm] = useState({
@@ -78,6 +83,8 @@ export default function DealersPage() {
   const createDealer = useCreateDealer();
   const updateDealer = useUpdateDealer();
   const deleteDealer = useDeleteDealer();
+  const topUpRenewalCredits = useTopUpSldRenewalCredits();
+  const ledgerQuery = useSldRenewalCreditLogs(ledgerDealer?.id || null, Boolean(ledgerDealer));
   const approveRegistrationRequest = useApproveDealerRegistrationRequest();
   const rejectRegistrationRequest = useRejectDealerRegistrationRequest();
 
@@ -592,6 +599,7 @@ export default function DealersPage() {
               <th className="px-4 py-3">City</th>
               <th className="px-4 py-3">Passing RTO</th>
               <th className="px-4 py-3">OEMs</th>
+              <th className="px-4 py-3">SLD renew credits</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
@@ -599,7 +607,7 @@ export default function DealersPage() {
           <tbody className="divide-y">
             {filteredDealers.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
                   No dealers found matching your criteria.
                 </td>
               </tr>
@@ -621,6 +629,30 @@ export default function DealersPage() {
                   </td>
                   <td className="px-4 py-3 max-w-[200px] truncate" title={d.oems?.map(o => o.name).join(", ")}>
                     {d.oems?.map(o => o.code).join(", ") || "-"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold">{d.sldRenewalCredits ?? 0}</span>
+                      <button
+                        type="button"
+                        className="text-xs px-2 py-0.5 border rounded hover:bg-gray-50"
+                        onClick={() => {
+                          setTopUpDealer(d);
+                          setTopUpAmount("10");
+                          setTopUpNote("");
+                          setTopUpError(null);
+                        }}
+                      >
+                        Top up
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs px-2 py-0.5 border rounded hover:bg-gray-50"
+                        onClick={() => setLedgerDealer(d)}
+                      >
+                        Ledger
+                      </button>
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                       <button 
@@ -1117,6 +1149,164 @@ export default function DealersPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={!!topUpDealer}
+        onClose={() => {
+          setTopUpDealer(null);
+          setTopUpError(null);
+        }}
+        title="Top up SLD renewal credits"
+      >
+        {topUpDealer ? (
+          <form
+            className="space-y-4"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setTopUpError(null);
+              const amount = parseInt(topUpAmount, 10);
+              if (!Number.isFinite(amount) || amount === 0) {
+                setTopUpError("Enter a non-zero integer (negative to debit).");
+                return;
+              }
+              try {
+                await topUpRenewalCredits.mutateAsync({
+                  id: topUpDealer.id,
+                  amount,
+                  note: topUpNote.trim() || undefined,
+                });
+                setTopUpDealer(null);
+                setTopUpAmount("10");
+                setTopUpNote("");
+              } catch (err: any) {
+                setTopUpError(err?.response?.data?.message || "Top-up failed");
+              }
+            }}
+          >
+            <div className="text-sm text-gray-600">
+              <div className="font-medium text-gray-900">{topUpDealer.name}</div>
+              <div>Phone: {topUpDealer.phone}</div>
+              <div>
+                Current balance:{" "}
+                <span className="font-semibold text-gray-900">
+                  {topUpDealer.sldRenewalCredits ?? 0}
+                </span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Amount to add</label>
+              <input
+                type="number"
+                className="w-full border rounded px-3 py-2 text-sm"
+                value={topUpAmount}
+                onChange={(e) => setTopUpAmount(e.target.value)}
+                placeholder="e.g. 10 (use negative to debit)"
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Positive adds credits; negative deducts (cannot go below zero).
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Note / payment ref (optional)</label>
+              <input
+                className="w-full border rounded px-3 py-2 text-sm"
+                value={topUpNote}
+                onChange={(e) => setTopUpNote(e.target.value)}
+                placeholder="Invoice / UTR / remark"
+              />
+            </div>
+            {topUpError ? (
+              <div className="text-sm text-red-600 border border-red-200 bg-red-50 rounded px-3 py-2">
+                {topUpError}
+              </div>
+            ) : null}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                className="px-3 py-2 border rounded text-sm"
+                onClick={() => {
+                  setTopUpDealer(null);
+                  setTopUpError(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-3 py-2 bg-primary text-white rounded text-sm disabled:opacity-60"
+                disabled={topUpRenewalCredits.isPending}
+              >
+                {topUpRenewalCredits.isPending ? "Saving…" : "Confirm top up"}
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={!!ledgerDealer}
+        onClose={() => setLedgerDealer(null)}
+        title="SLD renewal credit ledger"
+        maxWidth="max-w-2xl"
+      >
+        {ledgerDealer ? (
+          <div className="space-y-3">
+            <div className="text-sm text-gray-600">
+              <div className="font-medium text-gray-900">{ledgerDealer.name}</div>
+              <div>
+                Current balance:{" "}
+                <span className="font-semibold">{ledgerDealer.sldRenewalCredits ?? 0}</span>
+              </div>
+            </div>
+            {ledgerQuery.isLoading ? (
+              <div className="text-sm text-gray-500 py-6 text-center">Loading…</div>
+            ) : (ledgerQuery.data || []).length === 0 ? (
+              <div className="text-sm text-gray-500 py-6 text-center">No ledger entries yet.</div>
+            ) : (
+              <div className="max-h-80 overflow-auto border rounded">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="text-left px-3 py-2">Date</th>
+                      <th className="text-right px-3 py-2">Δ</th>
+                      <th className="text-right px-3 py-2">Balance</th>
+                      <th className="text-left px-3 py-2">Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(ledgerQuery.data || []).map((row) => (
+                      <tr key={row.id} className="border-t">
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {new Date(row.createdAt).toLocaleString()}
+                        </td>
+                        <td
+                          className={`px-3 py-2 text-right font-semibold ${
+                            row.delta >= 0 ? "text-emerald-700" : "text-red-700"
+                          }`}
+                        >
+                          {row.delta > 0 ? `+${row.delta}` : row.delta}
+                        </td>
+                        <td className="px-3 py-2 text-right">{row.balanceAfter}</td>
+                        <td className="px-3 py-2 text-gray-600">{row.note || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="px-3 py-2 border rounded text-sm"
+                onClick={() => setLedgerDealer(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

@@ -105,6 +105,8 @@ model Dealer {
   sldOems             SldOem[]       @relation("DealerToSldOem")
   sldDeviceSerials    SldDeviceSerial[]
   sldCertificates     SldCertificate[]
+  sldRenewalCredits   Int              @default(0)
+  sldRenewalCreditLogs SldRenewalCreditLog[]
   registrationRequests DealerRegistrationRequest[] @relation("DealerRegistrationApprovedDealer")
 
   @@map("dealers")
@@ -397,6 +399,11 @@ enum SldCertStatus {
   COMPLETED
 }
 
+enum SldCertKind {
+  NEW
+  RENEWAL
+}
+
 model SldOem {
   id               String            @id @default(uuid())
   name             String
@@ -459,6 +466,8 @@ model SldDeviceSerial {
   modelId        String
   serialNumber   String
   status         SldSerialStatus @default(AVAILABLE)
+  /// Legacy renewal-only row (not inventory); never ASSIGNED into dealer stock
+  isLegacy       Boolean         @default(false)
   dealerId       String?
   assignedAt     DateTime?
   usedAt         DateTime?
@@ -467,7 +476,7 @@ model SldDeviceSerial {
   sldOem         SldOem          @relation(fields: [sldOemId], references: [id])
   model          SldDeviceModel  @relation(fields: [modelId], references: [id])
   dealer         Dealer?         @relation(fields: [dealerId], references: [id])
-  certificate    SldCertificate?
+  certificates   SldCertificate[]
 
   @@unique([sldOemId, serialNumber])
   @@index([status, dealerId])
@@ -475,46 +484,68 @@ model SldDeviceSerial {
   @@map("sld_device_serials")
 }
 
+model SldRenewalCreditLog {
+  id          String   @id @default(uuid())
+  dealerId    String
+  delta       Int
+  balanceAfter Int
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  dealer      Dealer   @relation(fields: [dealerId], references: [id], onDelete: Cascade)
+
+  @@index([dealerId, createdAt])
+  @@map("sld_renewal_credit_logs")
+}
+
 model SldCertificate {
-  id                String           @id @default(uuid())
-  certificateNumber String           @unique
-  deviceSerialId    String           @unique
-  dealerId          String
-  sldOemId          String
-  modelId           String
-  status            SldCertStatus    @default(PENDING)
-  vehicleMake       String?
-  vehicleCategory   String?
-  fuelType          String?
-  passingRto        String?
-  registrationRto   String?
-  series            String?
-  manufacturingYear String?
-  chassisNumber     String?
-  engineNumber      String?
-  ownerName         String?
-  ownerContact      String?
-  vehicleNumber     String?
-  photoInstalled    String?
-  photoSeal         String?
-  photoSerial       String?
-  photoPlate        String?
-  sealNumber        String?
+  id                   String           @id @default(uuid())
+  certificateNumber    String           @unique
+  kind                 SldCertKind      @default(NEW)
+  deviceSerialId       String
+  /// Null when issued by admin in test mode (no owning dealer)
+  dealerId             String?
+  sldOemId             String
+  modelId              String
+  status               SldCertStatus    @default(PENDING)
+  vehicleMake          String?
+  vehicleCategory      String?
+  fuelType             String?
+  passingRto           String?
+  registrationRto      String?
+  series               String?
+  manufacturingYear    String?
+  chassisNumber        String?
+  engineNumber         String?
+  ownerName            String?
+  ownerContact         String?
+  vehicleNumber        String?
+  photoInstalled       String?
+  photoSeal            String?
+  photoSerial          String?
+  photoPlate           String?
+  sealNumber           String?
   /// Snapshot from approved vehicle at generate time
-  setSpeedKmph      Int?
-  testReportNo      String?
-  smartvahanPdfPath String?
-  vahanPdfPath      String?
-  vahanUploadedAt   DateTime?
-  vahanUploadedBy   String?
-  locationText      String?
-  generatedAt       DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  dealer            Dealer           @relation(fields: [dealerId], references: [id])
-  sldOem            SldOem           @relation(fields: [sldOemId], references: [id])
-  model             SldDeviceModel   @relation(fields: [modelId], references: [id])
-  deviceSerial      SldDeviceSerial  @relation(fields: [deviceSerialId], references: [id])
+  setSpeedKmph         Int?
+  testReportNo         String?
+  validFrom            DateTime?
+  validTo              DateTime?
+  /// True when a dealer renewal credit was debited for this cert (for reinstate refund)
+  renewalCreditCharged Boolean          @default(false)
+  smartvahanPdfPath    String?
+  vahanPdfPath         String?
+  vahanUploadedAt      DateTime?
+  vahanUploadedBy      String?
+  locationText         String?
+  generatedAt          DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  dealer               Dealer?          @relation(fields: [dealerId], references: [id])
+  sldOem               SldOem           @relation(fields: [sldOemId], references: [id])
+  model                SldDeviceModel   @relation(fields: [modelId], references: [id])
+  deviceSerial         SldDeviceSerial  @relation(fields: [deviceSerialId], references: [id])
 
   @@index([status, generatedAt])
+  @@index([deviceSerialId, generatedAt])
+  @@index([kind, generatedAt])
   @@map("sld_certificates")
 }

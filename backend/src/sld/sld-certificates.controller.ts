@@ -12,7 +12,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Public } from '../auth/public.decorator';
-import { SldCertStatus, UserRole } from '@prisma/client';
+import { SldCertKind, SldCertStatus, UserRole } from '@prisma/client';
 import { SldCertificatesService } from './sld-certificates.service';
 import { SettingsService } from '../settings/settings.service';
 
@@ -56,6 +56,15 @@ export class SldCertificatesController {
     );
   }
 
+  @Get('dealer/prior-certificate')
+  @Roles(UserRole.DEALER_USER, UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  priorCertificate(
+    @Query('sldOemId') sldOemId: string,
+    @Query('serialNumber') serialNumber: string,
+  ) {
+    return this.sldCertificatesService.lookupPriorCertificate(sldOemId, serialNumber);
+  }
+
   @Get('dealer/certificates')
   @Roles(UserRole.DEALER_USER, UserRole.SUPER_ADMIN, UserRole.ADMIN)
   history(
@@ -76,6 +85,7 @@ export class SldCertificatesController {
   listAdmin(
     @Req() req: any,
     @Query('status') status?: SldCertStatus,
+    @Query('kind') kind?: SldCertKind,
     @Query('sldOemId') sldOemId?: string,
     @Query('dealerId') dealerId?: string,
     @Query('stateCode') stateCode?: string,
@@ -89,6 +99,7 @@ export class SldCertificatesController {
     if (req.user?.role === 'STATE_ADMIN') finalStateCode = req.user.stateCode;
     return this.sldCertificatesService.listAdminCertificates({
       status,
+      kind,
       sldOemId,
       dealerId,
       stateCode: finalStateCode,

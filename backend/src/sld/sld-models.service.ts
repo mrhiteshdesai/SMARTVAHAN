@@ -21,21 +21,39 @@ function normalizeSldType(raw: string | null | undefined): string | null {
   return String(raw).trim() || null;
 }
 
-/** ARAI issues COP; ICAT issues TAC. Single Excel column mapped by agency. */
+/** Split Excel "TAC / COP" cell on first space-slash-space (COP may contain /). */
+export function parseTacCopNumber(raw: string | null | undefined): {
+  tacNumber: string | null;
+  copNumber: string | null;
+} {
+  const s = String(raw || '').trim();
+  if (!s) return { tacNumber: null, copNumber: null };
+  const parts = s.split(/\s+\/\s+/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return { tacNumber: parts[0], copNumber: parts.slice(1).join(' / ') };
+  }
+  // Single value — leave agency mapping to caller if needed
+  return { tacNumber: s, copNumber: null };
+}
+
+/** Prefer explicit TAC/COP split; agency only hints when a single number is present. */
 export function mapApprovalByAgency(
   agency: string | null | undefined,
   approvalNumber: string | null | undefined,
-): { tacNumber: string | null; copNumber: string | null; approvalKind: 'TAC' | 'COP' | 'UNKNOWN' } {
-  const num = approvalNumber ? String(approvalNumber).trim() : null;
+): { tacNumber: string | null; copNumber: string | null; approvalKind: 'TAC' | 'COP' | 'BOTH' | 'UNKNOWN' } {
+  const parsed = parseTacCopNumber(approvalNumber);
+  if (parsed.tacNumber && parsed.copNumber) {
+    return { tacNumber: parsed.tacNumber, copNumber: parsed.copNumber, approvalKind: 'BOTH' };
+  }
+  const num = parsed.tacNumber || parsed.copNumber;
   const a = (agency || '').toUpperCase();
-  if (a.includes('ARAI')) {
+  if (a.includes('ARAI') && num) {
     return { tacNumber: null, copNumber: num, approvalKind: 'COP' };
   }
-  if (a.includes('ICAT')) {
+  if (a.includes('ICAT') && num) {
     return { tacNumber: num, copNumber: null, approvalKind: 'TAC' };
   }
-  // Fallback: keep number in tacNumber field for display
-  return { tacNumber: num, copNumber: null, approvalKind: 'UNKNOWN' };
+  return { tacNumber: num, copNumber: null, approvalKind: num ? 'UNKNOWN' : 'UNKNOWN' };
 }
 
 export function parseSetSpeeds(raw: string | number | null | undefined): number[] {

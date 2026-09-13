@@ -32,9 +32,17 @@ SMARTVAHAN V2 — brownfield + tender FRS.
 
 ## SLD locked decisions
 - Separate tables from Reflective/QR
-- Serial uniqueness per SLD OEM
-- CSV: one column, header optional
-- Reinstate: delete cert + files; serial → ASSIGNED same dealer
-- SLD OEMs state-scoped (`authorizedStates`)
+- Serial uniqueness **per SLD OEM** (always stored UPPERCASE)
+- CSV: one column, header optional; serials normalized UPPERCASE
+- **NEW fitment:** inventory only (AVAILABLE → ASSIGNED → USED). Dealer uses ASSIGNED; admin test may consume AVAILABLE
+- **RENEWAL:** no inventory assign. Only USED (fitted) serials or legacy (not in inventory). AVAILABLE/ASSIGNED cannot be renewed
+- Legacy serials: `isLegacy=true`, print-only; reinstate must NOT ASSIGN into stock
+- Credits: dealer renewal debits 1; admin renewal no debit; reinstate refunds only if `renewalCreditCharged`
+- Cert `dealerId` nullable for admin test certs
+- Validity: validFrom = generatedAt, validTo = +1 year; PDF titles New SLD Fitment / SLD Fitment Renewal
+- Reinstate NEW inventory: serial → ASSIGNED (dealer) or AVAILABLE (admin/no dealer)
+- Public verify: kind badges New Fitment / Renewed + validity dates
+- SLD OEMs state-scoped (`authorizedStates`) for NEW OEM auth
 - New dealer registration: Reflective/SLD toggles
 - Public verify required; WebSocket deferred (polling)
+- Prefill renewal from prior SmartVahan cert (editable); empty if none

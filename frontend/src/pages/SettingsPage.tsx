@@ -270,6 +270,7 @@ export default function SettingsPage() {
     try {
       const formData = new FormData();
       formData.append("apk", file);
+      // Do NOT set Content-Type manually — browser must add multipart boundary
       const res = await client.post<{
         success: boolean;
         url: string;
@@ -278,7 +279,8 @@ export default function SettingsPage() {
         size: number;
       }>("/settings/mobile-apk", formData, {
         timeout: 10 * 60 * 1000,
-        headers: { "Content-Type": "multipart/form-data" },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
       });
       const url = res.data.url;
       if (target === "default") {
@@ -291,7 +293,16 @@ export default function SettingsPage() {
       );
     } catch (err: any) {
       console.error("Failed to upload APK", err);
-      alert(err?.response?.data?.message || "Failed to upload APK");
+      const status = err?.response?.status;
+      const msg =
+        err?.response?.data?.message ||
+        (status === 404
+          ? "Upload endpoint not found (redeploy frontend/backend)."
+          : status === 413
+            ? "File too large for IIS/proxy. Raise maxAllowedContentLength (need ~200MB)."
+            : err?.message) ||
+        "Failed to upload APK";
+      alert(typeof msg === "string" ? msg : JSON.stringify(msg));
     } finally {
       setApkUploading(false);
     }

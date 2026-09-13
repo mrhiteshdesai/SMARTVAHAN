@@ -15,7 +15,16 @@ export type VariantListRow = {
 
 function normalizeSldType(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const u = String(raw).trim().toUpperCase();
+  const u = String(raw).trim().toUpperCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const compact = u.replace(/\s+/g, '');
+  // Fly-by-wire before FUEL/CABLE (avoids accidental substring matches).
+  if (
+    compact === 'FLYBYWIRE' ||
+    compact === 'FBW' ||
+    (u.includes('FLY') && u.includes('WIRE'))
+  ) {
+    return 'FLY_BY_WIRE';
+  }
   if (u.includes('CABLE')) return 'CABLE';
   if (u.includes('FUEL')) return 'FUEL';
   return String(raw).trim() || null;

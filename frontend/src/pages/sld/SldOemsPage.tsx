@@ -30,6 +30,25 @@ const emptyModelForm = {
   testingAgency: "",
 };
 
+const SLD_TYPE_OPTIONS = [
+  { value: "FUEL", label: "FUEL" },
+  { value: "CABLE", label: "CABLE" },
+  { value: "FLY_BY_WIRE", label: "FLY BY WIRE" },
+] as const;
+
+/** Canonical SLD type for selects / API (matches backend normalizeSldType). */
+function normalizeSldTypeUi(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const u = String(raw).trim().toUpperCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  const compact = u.replace(/\s+/g, "");
+  if (compact === "FLYBYWIRE" || compact === "FBW" || (u.includes("FLY") && u.includes("WIRE"))) {
+    return "FLY_BY_WIRE";
+  }
+  if (u.includes("CABLE")) return "CABLE";
+  if (u.includes("FUEL")) return "FUEL";
+  return "";
+}
+
 function approvalLabel(agency?: string | null) {
   const a = (agency || "").toUpperCase();
   if (a.includes("ARAI")) return "COP Number (ARAI)";
@@ -416,7 +435,32 @@ export default function SldOemsPage() {
                             <div className="font-medium">{m.name}</div>
                             <div className="text-xs text-gray-500">{m.code}</div>
                           </td>
-                          <td className="py-2 px-2">{m.sldType || "—"}</td>
+                          <td className="py-2 px-2">
+                            <select
+                              className="border rounded px-2 py-1 text-sm bg-white min-w-[130px]"
+                              title="Change SLD type"
+                              value={normalizeSldTypeUi(m.sldType)}
+                              disabled={updateModel.isPending}
+                              onChange={async (e) => {
+                                const next = e.target.value || null;
+                                try {
+                                  await updateModel.mutateAsync({
+                                    id: m.id,
+                                    data: { sldType: next },
+                                  });
+                                } catch (err: any) {
+                                  alert(err?.response?.data?.message || "Failed to update type");
+                                }
+                              }}
+                            >
+                              <option value="">—</option>
+                              {SLD_TYPE_OPTIONS.map((o) => (
+                                <option key={o.value} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
                           <td className="py-2 px-2">
                             <div>{displayApproval(m)}</div>
                             <div className="text-xs text-gray-500">
@@ -446,7 +490,7 @@ export default function SldOemsPage() {
                                 setModelForm({
                                   name: m.name,
                                   code: m.code,
-                                  sldType: m.sldType || "",
+                                  sldType: normalizeSldTypeUi(m.sldType),
                                   tacOrCop,
                                   copDocument: m.copDocument || "",
                                   copValidity: m.copValidity
@@ -562,13 +606,16 @@ export default function SldOemsPage() {
             <div>
               <label className="block text-sm font-medium mb-1">SLD Type</label>
               <select
-                className="w-full border rounded px-3 py-2 text-sm"
-                value={modelForm.sldType}
+                className="w-full border rounded px-3 py-2 text-sm bg-white"
+                value={normalizeSldTypeUi(modelForm.sldType) || modelForm.sldType || ""}
                 onChange={(e) => setModelForm({ ...modelForm, sldType: e.target.value })}
               >
                 <option value="">—</option>
-                <option value="FUEL">FUEL</option>
-                <option value="CABLE">CABLE</option>
+                {SLD_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div>

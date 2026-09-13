@@ -24,7 +24,7 @@ Source: `backend/prisma/schema.prisma` (SMARTVAHAN V2)
 | AuditLog | Audit | Security | Partial |
 | InventoryLog | Reflective inventory movements | Inventory | No |
 | SldOem | SLD OEMs (state-authorized) | SLD | Partial |
-| SldDeviceModel | SLD device models (type FUEL/CABLE, TAC or COP by agency) | SLD | No |
+| SldDeviceModel | SLD device models (type FUEL/CABLE/FLY_BY_WIRE, TAC or COP by agency) | SLD | No |
 | SldApprovedVehicleModel | Vehicle variants per device model (make, model, **setSpeedKmph**, testReportNo) | SLD | No |
 | SldDeviceSerial | Inventory + legacy renewal rows (`isLegacy`); serial UPPERCASE; statuses AVAILABLE/ASSIGNED/USED | SLD | No |
 | SldCertificate | `kind` NEW\|RENEWAL; nullable `dealerId` (admin test); `validFrom`/`validTo`; `renewalCreditCharged`; QR verify | SLD | Yes |

@@ -937,15 +937,41 @@ function SldOverview({ stats, googlePlacesKey }: { stats: SldDashboardStats; goo
 function DashboardContent() {
   const { user } = useAuth();
   const roleValue = user?.role ? String(user.role) : "";
+  const isDealer = roleValue === "DEALER_USER" || roleValue === "DEALER";
   const isRestricted =
-    roleValue === "OEM_ADMIN" || roleValue === "DEALER_USER" || roleValue === "DEALER";
+    roleValue === "OEM_ADMIN" || isDealer;
   const isGhostMode = localStorage.getItem("isGhostMode") === "true";
+  const hasReflectiveAccess =
+    !isDealer ||
+    user?.hasReflectiveAccess === true ||
+    (typeof user?.oems === "string" && user.oems.trim().length > 0);
+  const hasSldAccess =
+    !isDealer ||
+    user?.hasSldAccess === true ||
+    (Array.isArray(user?.sldOems) && user.sldOems.length > 0);
+  const isSldAdmin = roleValue === "SLD_ADMIN";
   const showSldModule =
-    !isGhostMode && (roleValue === "SUPER_ADMIN" || roleValue === "ADMIN");
+    !isGhostMode &&
+    (roleValue === "SUPER_ADMIN" ||
+      roleValue === "ADMIN" ||
+      isSldAdmin ||
+      (isDealer && hasSldAccess));
+  const showReflectiveModule =
+    !isGhostMode &&
+    !isSldAdmin &&
+    (roleValue !== "DEALER_USER" && roleValue !== "DEALER"
+      ? true
+      : hasReflectiveAccess);
 
   const [draftFilters, setDraftFilters] = useState<DashboardFilterDraft>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<DashboardFilterDraft>(EMPTY_FILTERS);
-  const [tab, setTab] = useState<DashboardTab>(showSldModule ? "combined" : "reflective");
+  const defaultTab: DashboardTab =
+    showSldModule && showReflectiveModule
+      ? "combined"
+      : showSldModule
+        ? "sld"
+        : "reflective";
+  const [tab, setTab] = useState<DashboardTab>(defaultTab);
 
   const reflectiveFilters = {
     stateCode: appliedFilters.stateCode || undefined,
@@ -1121,7 +1147,7 @@ function DashboardContent() {
         </div>
       )}
 
-      {showSldModule && (
+      {showSldModule && showReflectiveModule && (
         <div className="flex flex-wrap gap-2">
           <TabButton active={tab === "combined"} onClick={() => setTab("combined")}>
             Combined Overview
@@ -1135,18 +1161,23 @@ function DashboardContent() {
         </div>
       )}
 
-      {tab === "combined" && showSldModule && sldStats && (
+      {tab === "combined" && showSldModule && showReflectiveModule && sldStats && (
         <CombinedOverview reflective={stats} sld={sldStats} />
       )}
-      {(tab === "reflective" || !showSldModule) && (
+      {showReflectiveModule && (tab === "reflective" || (!showSldModule && tab !== "sld")) && (
         <ReflectiveOverview
           stats={stats}
           isRestricted={isRestricted}
           googlePlacesKey={settings?.googlePlacesKey}
         />
       )}
-      {tab === "sld" && showSldModule && sldStats && (
+      {showSldModule && (tab === "sld" || (!showReflectiveModule && tab !== "reflective")) && sldStats && (
         <SldOverview stats={sldStats} googlePlacesKey={settings?.googlePlacesKey} />
+      )}
+      {!showReflectiveModule && !showSldModule && (
+        <div className="rounded-lg border bg-white p-6 text-sm text-gray-600">
+          No Reflective or SLD OEM access is linked to this dealer account. Contact admin to assign OEMs.
+        </div>
       )}
     </div>
   );

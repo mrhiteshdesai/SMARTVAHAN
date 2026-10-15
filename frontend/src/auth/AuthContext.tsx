@@ -4,8 +4,13 @@ import api from "../api/client";
 type User = {
   id: string;
   name: string;
-  role: "SUPER_ADMIN" | "STATE_ADMIN" | "OEM_ADMIN" | "DEALER_USER" | "ADMIN" | "GHOST_ADMIN";
+  role: "SUPER_ADMIN" | "STATE_ADMIN" | "OEM_ADMIN" | "DEALER_USER" | "ADMIN" | "GHOST_ADMIN" | "SLD_ADMIN";
   phone: string;
+  hasSldAccess?: boolean;
+  hasReflectiveAccess?: boolean;
+  oems?: string;
+  sldOems?: Array<{ id: string; code: string; name: string }>;
+  stateCode?: string;
 };
 
 type AuthContextType = {

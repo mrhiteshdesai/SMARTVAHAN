@@ -38,13 +38,13 @@ export class DealersController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SLD_ADMIN)
   findAll() {
     return this.dealersService.findAll();
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SLD_ADMIN)
   findOne(@Param('id') id: string) {
     return this.dealersService.findOne(id);
   }

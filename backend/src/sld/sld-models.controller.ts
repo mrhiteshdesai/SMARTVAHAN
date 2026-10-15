@@ -23,13 +23,13 @@ export class SldModelsController {
   }
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   create(@Body() body: any, @Req() req: any) {
     return this.sldModelsService.create(body, req.user?.userId);
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   update(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     return this.sldModelsService.update(id, body, req.user?.userId);
   }
@@ -47,13 +47,13 @@ export class SldModelsController {
   }
 
   @Post(':id/vehicle-models/upload')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   uploadVehicleModels(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     return this.sldModelsService.uploadVehicleModels(id, body?.csvText || '', req.user?.userId);
   }
 
   @Post(':id/vehicle-models')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   createVehicleModel(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     return this.sldModelsService.createVehicleModel(id, body, req.user?.userId);
   }
@@ -65,7 +65,7 @@ export class SldVehicleModelsController {
   constructor(private readonly sldModelsService: SldModelsService) {}
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   remove(@Param('id') id: string, @Req() req: any) {
     return this.sldModelsService.deleteVehicleModel(id, req.user?.userId);
   }

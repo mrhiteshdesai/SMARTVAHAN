@@ -84,6 +84,13 @@ export default function Sidebar() {
     const roleValue = role as string;
     const isGhostMode = localStorage.getItem("isGhostMode") === "true";
     const isDealer = roleValue === "DEALER_USER" || roleValue === "DEALER";
+    const isSldAdmin = roleValue === "SLD_ADMIN";
+    const hasReflective =
+      user?.hasReflectiveAccess === true ||
+      (typeof user?.oems === "string" && user.oems.trim().length > 0);
+    const hasSld =
+      user?.hasSldAccess === true ||
+      (Array.isArray(user?.sldOems) && user.sldOems.length > 0);
 
     if (isGhostMode) {
       if (roleValue !== "GHOST_ADMIN") return false;
@@ -103,13 +110,15 @@ export default function Sidebar() {
       case "/inventory":
         return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue);
       case "/certificate":
-        return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue) || isDealer;
+        // Reflective Certificate Generator is admin-only (not for dealers)
+        return ["SUPER_ADMIN", "ADMIN", "GHOST_ADMIN"].includes(roleValue);
       case "/search-qr":
         return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue);
       case "/search-cert":
         return ["SUPER_ADMIN", "ADMIN", "OEM_ADMIN", "SUB_ADMIN", "GHOST_ADMIN"].includes(roleValue);
       case "/download":
-        return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(roleValue) || isDealer;
+        if (["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(roleValue)) return true;
+        return isDealer && hasReflective;
       case "/settings":
         return ["SUPER_ADMIN"].includes(roleValue);
       case "reports-section":
@@ -117,7 +126,19 @@ export default function Sidebar() {
       case "users-section":
         return ["SUPER_ADMIN", "ADMIN"].includes(roleValue);
       case "sld-section":
-        return isGhostMode ? false : ["SUPER_ADMIN", "ADMIN"].includes(roleValue);
+        if (isGhostMode) return false;
+        if (["SUPER_ADMIN", "ADMIN"].includes(roleValue)) return true;
+        if (isSldAdmin) return hasSld;
+        return isDealer && hasSld;
+      case "/sld/oems":
+        return ["SUPER_ADMIN", "ADMIN"].includes(roleValue);
+      case "/sld/inventory":
+        if (["SUPER_ADMIN", "ADMIN"].includes(roleValue)) return true;
+        return isDealer && hasSld;
+      case "/sld/certificates":
+        if (["SUPER_ADMIN", "ADMIN"].includes(roleValue)) return true;
+        if (isSldAdmin) return hasSld;
+        return isDealer && hasSld;
       default:
         return true;
     }
@@ -125,9 +146,11 @@ export default function Sidebar() {
 
   const visibleReflectiveItems = reflectiveMisItems.filter((item) => hasAccess(item.path));
   const showReflectiveSection = visibleReflectiveItems.length > 0;
+  const visibleSldItems = sldMisItems.filter((item) => hasAccess(item.path));
+  const showSldSection = hasAccess("sld-section") && visibleSldItems.length > 0;
 
   const firstReflectivePath = visibleReflectiveItems[0]?.path ?? "/qr-generation";
-  const firstSldPath = sldMisItems[0]?.path ?? "/sld/oems";
+  const firstSldPath = visibleSldItems[0]?.path ?? "/sld/inventory";
 
   const renderCollapsibleSection = (
     title: string,
@@ -208,14 +231,14 @@ export default function Sidebar() {
             )}
 
           {/* 3. SLD MIS */}
-          {hasAccess("sld-section") &&
+          {showSldSection &&
             renderCollapsibleSection(
               "SLD MIS",
               Gauge,
               openSld,
               setOpenSld,
               firstSldPath,
-              sldMisItems.map((item) => {
+              visibleSldItems.map((item) => {
                 const ItemIcon = item.icon;
                 return (
                   <NavLink key={item.path} to={`${basePath}${item.path}`} className={({ isActive }) => ItemClass(isActive)}>

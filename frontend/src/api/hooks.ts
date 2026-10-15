@@ -310,9 +310,10 @@ export type DealerRegistrationRequest = {
   createdAt?: string;
 };
 
-export function useDealers() {
+export function useDealers(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["dealers"],
+    enabled: opts?.enabled !== false,
     queryFn: async () => {
       const res = await api.get<Dealer[]>("/dealers");
       return res.data;
@@ -451,6 +452,7 @@ export type SystemUser = {
   phone: string;
   role: string;
   status: string;
+  authorizedSldOems?: Array<{ id: string; code: string; name: string }>;
 };
 
 export function useSystemUsers() {
@@ -922,6 +924,38 @@ export function useAssignSldInventoryCsv() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sld-inventory"] });
       queryClient.invalidateQueries({ queryKey: ["sld-available"] });
+    },
+  });
+}
+
+export function useSldForwardTargets(sldOemId: string) {
+  return useQuery({
+    queryKey: ["sld-forward-targets", sldOemId],
+    enabled: Boolean(sldOemId),
+    queryFn: async () => {
+      const res = await api.get<Dealer[]>("/sld/inventory/forward-targets", {
+        params: { sldOemId },
+      });
+      return res.data;
+    },
+  });
+}
+
+export function useForwardSldInventory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      toDealerId: string;
+      sldOemId: string;
+      serialIds: string[];
+      fromDealerId?: string;
+    }) => {
+      const res = await api.post("/sld/inventory/forward", data);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sld-inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["sld-forward-targets"] });
     },
   });
 }

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { FileUp, RefreshCcw, RotateCcw } from "lucide-react";
 import Modal from "../../ui/Modal";
+import { useAuth } from "../../auth/AuthContext";
 import {
   useSldOems,
   useSldCertificates,
@@ -35,7 +36,14 @@ function kindBadge(kind?: string) {
 }
 
 export default function SldCertificatesPage() {
-  const [status, setStatus] = useState<"PENDING" | "COMPLETED" | "">("PENDING");
+  const { user } = useAuth();
+  const isDealer = user?.role === "DEALER_USER" || (user?.role as string) === "DEALER";
+  const isSldAdmin = user?.role === "SLD_ADMIN";
+  const isAdmin =
+    user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || isSldAdmin;
+  const canManageCerts = isAdmin;
+
+  const [status, setStatus] = useState<"PENDING" | "COMPLETED" | "">(isDealer ? "" : "PENDING");
   const [kind, setKind] = useState<"NEW" | "RENEWAL" | "">("");
   const [sldOemId, setSldOemId] = useState("");
   const [dealerId, setDealerId] = useState("");
@@ -51,8 +59,14 @@ export default function SldCertificatesPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
 
-  const { data: oems = [] } = useSldOems();
-  const { data: dealers = [] } = useDealers();
+  const { data: allOems = [] } = useSldOems();
+  const oems = useMemo(() => {
+    if (!isSldAdmin) return allOems;
+    const allowed = new Set((user?.sldOems || []).map((o) => o.id).filter(Boolean));
+    if (allowed.size === 0) return allOems;
+    return allOems.filter((o) => allowed.has(o.id));
+  }, [allOems, isSldAdmin, user?.sldOems]);
+  const { data: dealers = [] } = useDealers({ enabled: canManageCerts });
 
   const query = useSldCertificates({
     status: status || undefined,
@@ -76,8 +90,9 @@ export default function SldCertificatesPage() {
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
   const authorizedDealers = useMemo(() => {
-    if (!sldOemId) return dealers;
-    return dealers.filter((d) => (d.sldOems || []).some((o) => o.id === sldOemId));
+    const sldDealers = dealers.filter((d) => (d.sldOems || []).length > 0);
+    if (!sldOemId) return sldDealers;
+    return sldDealers.filter((d) => (d.sldOems || []).some((o) => o.id === sldOemId));
   }, [dealers, sldOemId]);
 
   const openPdf = (url?: string | null) => {
@@ -113,20 +128,24 @@ export default function SldCertificatesPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">SLD Certificates</h1>
           <p className="text-sm text-gray-500">
-            Pending queue, Vahan PDF upload, and certificate reinstate.
+            {isDealer
+              ? "View and download your SLD certificates only."
+              : "Pending queue, Vahan PDF upload, and certificate reinstate."}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setBulkResult(null);
-            setOpenBulk(true);
-          }}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-md border text-sm hover:bg-gray-50"
-        >
-          <RotateCcw className="w-4 h-4" />
-          Bulk Reinstate
-        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => {
+              setBulkResult(null);
+              setOpenBulk(true);
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md border text-sm hover:bg-gray-50"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Bulk Reinstate
+          </button>
+        )}
       </div>
 
       <div className="bg-white border rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -170,21 +189,23 @@ export default function SldCertificatesPage() {
             </option>
           ))}
         </select>
-        <select
-          className="border rounded-md p-2 text-sm"
-          value={dealerId}
-          onChange={(e) => {
-            setPage(1);
-            setDealerId(e.target.value);
-          }}
-        >
-          <option value="">All dealers</option>
-          {authorizedDealers.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
+        {!isDealer && (
+          <select
+            className="border rounded-md p-2 text-sm"
+            value={dealerId}
+            onChange={(e) => {
+              setPage(1);
+              setDealerId(e.target.value);
+            }}
+          >
+            <option value="">All SLD dealers</option>
+            {authorizedDealers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           className="border rounded-md p-2 text-sm"
           placeholder="Search cert / vehicle / owner"
@@ -229,7 +250,7 @@ export default function SldCertificatesPage() {
                 <th className="px-4 py-3">Model</th>
                 <th className="px-4 py-3">Serial Number</th>
                 <th className="px-4 py-3">Seal Number</th>
-                <th className="px-4 py-3">Dealer</th>
+                {!isDealer && <th className="px-4 py-3">Dealer</th>}
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
@@ -260,7 +281,7 @@ export default function SldCertificatesPage() {
                     <td className="px-4 py-3">{row.model?.name || row.model?.code || "—"}</td>
                     <td className="px-4 py-3 font-mono text-xs">{row.serialNumber || "—"}</td>
                     <td className="px-4 py-3">{row.sealNumber || "—"}</td>
-                    <td className="px-4 py-3">{row.dealer?.name || "—"}</td>
+                    {!isDealer && <td className="px-4 py-3">{row.dealer?.name || "—"}</td>}
                     <td className="px-4 py-3">
                       <span
                         className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
@@ -289,7 +310,7 @@ export default function SldCertificatesPage() {
                           >
                             Vahan PDF
                           </button>
-                        ) : (
+                        ) : isAdmin ? (
                           <button
                             type="button"
                             className="text-xs px-2 py-1 border rounded hover:bg-gray-50 inline-flex items-center gap-1"
@@ -301,14 +322,16 @@ export default function SldCertificatesPage() {
                             <FileUp className="w-3 h-3" />
                             Upload Vahan
                           </button>
+                        ) : null}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className="text-xs px-2 py-1 border border-red-200 text-red-700 rounded hover:bg-red-50"
+                            onClick={() => setReinstateTarget(row)}
+                          >
+                            Reinstate
+                          </button>
                         )}
-                        <button
-                          type="button"
-                          className="text-xs px-2 py-1 border border-red-200 text-red-700 rounded hover:bg-red-50"
-                          onClick={() => setReinstateTarget(row)}
-                        >
-                          Reinstate
-                        </button>
                       </div>
                     </td>
                   </tr>

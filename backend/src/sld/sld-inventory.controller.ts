@@ -7,17 +7,19 @@ import { SldInventoryService } from './sld-inventory.service';
 
 @Controller('api/sld/inventory')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
 export class SldInventoryController {
   constructor(private readonly inventoryService: SldInventoryService) {}
 
   @Post('upload')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   upload(@Body() body: any, @Req() req: any) {
     return this.inventoryService.uploadInventory(body, req.user?.userId);
   }
 
   @Get()
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.DEALER_USER)
   list(
+    @Req() req: any,
     @Query('sldOemId') sldOemId?: string,
     @Query('modelId') modelId?: string,
     @Query('status') status?: string,
@@ -26,11 +28,13 @@ export class SldInventoryController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
+    const isDealer = req.user?.role === 'DEALER_USER' || req.user?.role === 'DEALER';
     return this.inventoryService.listInventory({
       sldOemId,
       modelId,
       status,
-      dealerId,
+      // Dealers only see their own assigned inventory
+      dealerId: isDealer ? req.user.userId : dealerId,
       search,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
@@ -38,17 +42,39 @@ export class SldInventoryController {
   }
 
   @Get('available')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   available(@Query('sldOemId') sldOemId: string, @Query('modelId') modelId: string) {
     return this.inventoryService.listAvailableForAssign(sldOemId, modelId);
   }
 
+  @Get('forward-targets')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.DEALER_USER)
+  forwardTargets(@Req() req: any, @Query('sldOemId') sldOemId: string) {
+    const isDealer = req.user?.role === 'DEALER_USER' || req.user?.role === 'DEALER';
+    const exclude = isDealer ? req.user.userId : undefined;
+    return this.inventoryService.listForwardTargets(sldOemId, exclude);
+  }
+
   @Post('assign')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   assign(@Body() body: any, @Req() req: any) {
     return this.inventoryService.assignManual(body, req.user?.userId);
   }
 
   @Post('assign-csv')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   assignCsv(@Body() body: any, @Req() req: any) {
     return this.inventoryService.assignCsv(body, req.user?.userId);
+  }
+
+  /** Dealer → dealer reassignment of ASSIGNED (unused) serials. */
+  @Post('forward')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.DEALER_USER)
+  forward(@Body() body: any, @Req() req: any) {
+    const isDealer = req.user?.role === 'DEALER_USER' || req.user?.role === 'DEALER';
+    const fromDealerId = isDealer
+      ? req.user.userId
+      : String(body?.fromDealerId || '').trim();
+    return this.inventoryService.forwardSerials(body, fromDealerId, req.user?.userId);
   }
 }

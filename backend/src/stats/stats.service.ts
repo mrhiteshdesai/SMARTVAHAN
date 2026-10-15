@@ -7,6 +7,18 @@ export class StatsService {
 
   constructor(private prisma: PrismaService) {}
 
+  async getAuthorizedSldOemIds(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { authorizedSldOems: { select: { id: true, code: true } } },
+    });
+    const oems = user?.authorizedSldOems || [];
+    return {
+      ids: oems.map((o) => o.id),
+      codes: oems.map((o) => o.code),
+    };
+  }
+
   async getDashboardStats(query: { stateCode?: string; oemCode?: string; dealerId?: string; startDate?: string; endDate?: string, isGhost?: boolean }) {
     const { stateCode, oemCode, dealerId, startDate, endDate, isGhost = false } = query;
     
@@ -343,12 +355,21 @@ export class StatsService {
     sldOemCode?: string;
     startDate?: string;
     endDate?: string;
+    dealerId?: string;
+    sldOemIds?: string[];
   }) {
-    const { stateCode, sldOemCode, startDate, endDate } = query;
+    const { stateCode, sldOemCode, startDate, endDate, dealerId, sldOemIds } = query;
 
     const baseCertWhere: any = {
-      ...(sldOemCode && { sldOem: { code: sldOemCode } }),
+      ...(sldOemCode
+        ? { sldOem: { code: sldOemCode } }
+        : sldOemIds?.length
+          ? { sldOemId: { in: sldOemIds } }
+          : sldOemIds && sldOemIds.length === 0
+            ? { sldOemId: '__none__' }
+            : {}),
       ...(stateCode && { dealer: { stateCode } }),
+      ...(dealerId && { dealerId }),
     };
 
     const dateFilter =
@@ -379,7 +400,13 @@ export class StatsService {
     });
 
     const allSldOems = await this.prisma.sldOem.findMany({
-      where: sldOemCode ? { code: sldOemCode } : undefined,
+      where: sldOemCode
+        ? { code: sldOemCode }
+        : sldOemIds?.length
+          ? { id: { in: sldOemIds } }
+          : sldOemIds && sldOemIds.length === 0
+            ? { id: '__none__' }
+            : undefined,
       select: { code: true, name: true },
     });
 
@@ -444,14 +471,29 @@ export class StatsService {
     };
 
     const serialWhere: any = {
-      ...(sldOemCode && { sldOem: { code: sldOemCode } }),
-      ...(stateCode && {
-        OR: [
-          { status: 'AVAILABLE' },
-          { dealer: { stateCode } },
-        ],
-      }),
+      ...(sldOemCode
+        ? { sldOem: { code: sldOemCode } }
+        : sldOemIds?.length
+          ? { sldOemId: { in: sldOemIds } }
+          : sldOemIds && sldOemIds.length === 0
+            ? { sldOemId: '__none__' }
+            : {}),
+      ...(dealerId
+        ? { dealerId }
+        : stateCode
+          ? {
+              OR: [{ status: 'AVAILABLE' }, { dealer: { stateCode } }],
+            }
+          : {}),
     };
+
+    const oemCountWhere = sldOemCode
+      ? { code: sldOemCode }
+      : sldOemIds?.length
+        ? { id: { in: sldOemIds } }
+        : sldOemIds && sldOemIds.length === 0
+          ? { id: '__none__' }
+          : undefined;
 
     const [totalCerts, invAvailable, invAssigned, invUsed, sldOemCount, activeSldDealers] =
       await Promise.all([
@@ -466,12 +508,20 @@ export class StatsService {
           where: { ...serialWhere, status: 'USED' },
         }),
         this.prisma.sldOem.count({
-          where: sldOemCode ? { code: sldOemCode } : undefined,
+          where: oemCountWhere,
         }),
         this.prisma.dealer.count({
           where: {
             status: 'ACTIVE',
-            sldOems: { some: sldOemCode ? { code: sldOemCode } : {} },
+            sldOems: {
+              some: sldOemCode
+                ? { code: sldOemCode }
+                : sldOemIds?.length
+                  ? { id: { in: sldOemIds } }
+                  : sldOemIds && sldOemIds.length === 0
+                    ? { id: '__none__' }
+                    : {},
+            },
             ...(stateCode && { stateCode }),
           },
         }),

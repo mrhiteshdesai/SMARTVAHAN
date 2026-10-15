@@ -1992,35 +1992,34 @@ class _HomeContentState extends State<_HomeContent> {
               },
             ),
             const SizedBox(height: 24),
-            // Today's Overview — hidden for now; may re-enable later.
-            /*
-            const Text(
-              "Today's Overview",
-              style: TextStyle(
-                color: Color(0xFF12314D),
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+            if (dealerHasReflectiveAccess()) ...[
+              const Text(
+                "Today's Overview",
+                style: TextStyle(
+                  color: Color(0xFF12314D),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            GridView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                mainAxisExtent: 110,
+              const SizedBox(height: 12),
+              GridView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  mainAxisExtent: 110,
+                ),
+                children: [
+                  _buildStatCard('CT', _stats['CT']?.toString() ?? '0'),
+                  _buildStatCard('C3', _stats['C3']?.toString() ?? '0'),
+                  _buildStatCard('C4', _stats['C4']?.toString() ?? '0'),
+                  _buildStatCard('CTAUTO', _stats['CTAUTO']?.toString() ?? '0'),
+                ],
               ),
-              children: [
-                _buildStatCard('CT', _stats['CT']?.toString() ?? '0'),
-                _buildStatCard('C3', _stats['C3']?.toString() ?? '0'),
-                _buildStatCard('C4', _stats['C4']?.toString() ?? '0'),
-                _buildStatCard('CTAUTO', _stats['CTAUTO']?.toString() ?? '0'),
-              ],
-            ),
-            const SizedBox(height: 24),
-            */
+              const SizedBox(height: 24),
+            ],
           ],
         ),
       ),

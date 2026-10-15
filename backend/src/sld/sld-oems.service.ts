@@ -44,8 +44,14 @@ export class SldOemsService {
     return oem;
   }
 
-  findAll() {
+  findAll(opts?: { dealerId?: string; userId?: string }) {
+    const where = opts?.dealerId
+      ? { dealers: { some: { id: opts.dealerId } } }
+      : opts?.userId
+        ? { authorizedUsers: { some: { id: opts.userId } } }
+        : undefined;
     return this.prisma.sldOem.findMany({
+      where,
       include: {
         models: {
           orderBy: { name: 'asc' },

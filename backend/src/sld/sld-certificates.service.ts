@@ -7,11 +7,15 @@ import {
 import { PrismaService } from '../prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SldCertKind, SldCertStatus, SldSerialStatus } from '@prisma/client';
-import * as PDFDocument from 'pdfkit';
-import * as QRCode from 'qrcode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { S3Service } from '../s3/s3.service';
+import { renderSldCertificatePdf } from './sld-certificate-pdf';
+import {
+  applyOemScopeToWhere,
+  assertOemInScope,
+  resolveSldOemScope,
+} from './sld-oem-access';
 
 @Injectable()
 export class SldCertificatesService {
@@ -475,7 +479,7 @@ export class SldCertificatesService {
       series,
       sealNumber,
       locationText: String(data.locationText || '').trim(),
-      dealerName: dealer?.name || 'Admin (test)',
+      ...this.dealerPdfFields(dealer),
       companyName: model.sldOem.name,
       deviceModelName: model.name,
       deviceModelCode: model.code,
@@ -775,7 +779,7 @@ export class SldCertificatesService {
       series,
       sealNumber,
       locationText: String(data.locationText || '').trim(),
-      dealerName: dealer?.name || 'Admin (test)',
+      ...this.dealerPdfFields(dealer),
       companyName: model.sldOem.name,
       deviceModelName: model.name,
       deviceModelCode: model.code,
@@ -898,235 +902,22 @@ export class SldCertificatesService {
     };
   }
 
+  private dealerPdfFields(dealer: any | null | undefined) {
+    const tradeValidity =
+      dealer?.tradeValidity != null
+        ? new Date(dealer.tradeValidity).toLocaleDateString('en-GB').replace(/\//g, '-')
+        : 'NA';
+    return {
+      dealerName: dealer?.name || 'Admin (test)',
+      tradeCertificateNo: dealer?.tradeCertificateNo || 'NA',
+      gstNo: dealer?.gstNo || 'NA',
+      aadharNumber: dealer?.aadharNumber || null,
+      tradeValidity,
+    };
+  }
+
   private async generatePdf(outputPath: string, data: any) {
-    const verifyUrl =
-      String(data.verifyUrl || '').trim() || this.sldVerifyUrl(String(data.certificateNumber || ''));
-    let qrBuffer: Buffer | null = null;
-    try {
-      qrBuffer = await QRCode.toBuffer(verifyUrl, {
-        type: 'png',
-        errorCorrectionLevel: 'H',
-        margin: 1,
-        width: 220,
-      });
-    } catch {
-      qrBuffer = null;
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      const dir = path.dirname(outputPath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-      const doc = new PDFDocument({ size: 'A4', margin: 36 });
-      const stream = fs.createWriteStream(outputPath);
-      doc.pipe(stream);
-
-      const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-      let y = doc.page.margins.top;
-      const leftX = doc.page.margins.left;
-      const qrSize = 88;
-      const qrX = leftX + pageWidth - qrSize;
-
-      // Header + QR (scan opens SLD public verify URL)
-      doc.font('Helvetica-Bold').fontSize(18).text(data.vehicleNumber, leftX, y, {
-        width: pageWidth - qrSize - 12,
-        align: 'center',
-      });
-      if (qrBuffer) {
-        try {
-          doc.image(qrBuffer, qrX, y, { fit: [qrSize, qrSize] });
-          doc
-            .font('Helvetica-Oblique')
-            .fontSize(7)
-            .text('Scan to Verify', qrX, y + qrSize + 2, { width: qrSize, align: 'center' });
-        } catch {
-          // ignore QR draw errors
-        }
-      }
-      y = Math.max(doc.y, y + (qrBuffer ? qrSize + 14 : 0)) + 4;
-
-      const title =
-        data.kind === 'RENEWAL' ? 'SLD Fitment Renewal' : 'New SLD Fitment';
-      doc.font('Helvetica-Bold').fontSize(14).text(title, leftX, y, {
-        width: pageWidth,
-        align: 'center',
-      });
-      y = doc.y + 2;
-      doc
-        .font('Helvetica-Oblique')
-        .fontSize(8)
-        .fillColor('#444')
-        .text('(VALID FOR ONE YEAR ONLY)', { align: 'center' });
-      doc.fillColor('#000');
-      y = doc.y + 6;
-      const validFromStr = this.formatDateGb
-        ? this.formatDateGb(data.validFrom)
-        : data.validFrom
-          ? new Date(data.validFrom).toLocaleDateString('en-GB')
-          : '—';
-      const validToStr = this.formatDateGb
-        ? this.formatDateGb(data.validTo)
-        : data.validTo
-          ? new Date(data.validTo).toLocaleDateString('en-GB')
-          : '—';
-      doc
-        .font('Helvetica')
-        .fontSize(8)
-        .text(`Valid From: ${validFromStr}    Valid To: ${validToStr}`, {
-          align: 'center',
-          width: pageWidth,
-        });
-      y = doc.y + 10;
-
-      doc
-        .font('Helvetica')
-        .fontSize(8)
-        .text(
-          'THIS CERTIFICATE IS ONLY ISSUED AFTER FITTING, TESTING & SEALING THE DEVICE ON THE VEHICLE',
-          { align: 'center', width: pageWidth },
-        );
-      y = doc.y + 12;
-
-      const drawRow = (label: string, value: string, x: number, width: number) => {
-        doc.font('Helvetica').fontSize(9).text(label, x, y, { width: width * 0.4, continued: false });
-        doc
-          .font('Helvetica-Bold')
-          .fontSize(9)
-          .text(`: ${value || '—'}`, x + width * 0.4, y, { width: width * 0.6 });
-      };
-
-      doc.font('Helvetica-Bold').fontSize(11).text('VEHICLE DETAILS', leftX, y);
-      y = doc.y + 8;
-
-      const colW = pageWidth / 2;
-      const rightX = leftX + colW;
-      const startY = y;
-
-      const leftFields: Array<[string, string]> = [
-        ['CUSTOMER NAME', data.ownerName],
-        ['MAKE', data.vehicleMake],
-        ['REGISTRATION NUMBER', data.vehicleNumber],
-        ['ENGINE NUMBER', data.engineNumber],
-        ['MANUFACTURING YEAR', data.manufacturingYear],
-        ['INSTALLED BY', data.dealerName],
-      ];
-      const rightFields: Array<[string, string]> = [
-        ['CONTACT NUMBER', data.ownerContact],
-        ['MODEL', data.vehicleModelName],
-        ['CHASSIS NUMBER', data.chassisNumber],
-        ['PASSING RTO', data.passingRto],
-        ['VEHICLE NUMBER', data.vehicleNumber],
-        ['LOCATION', String(data.locationText || '').slice(0, 80)],
-      ];
-
-      for (let i = 0; i < leftFields.length; i++) {
-        y = startY + i * 16;
-        drawRow(leftFields[i][0], leftFields[i][1], leftX, colW);
-        drawRow(rightFields[i][0], rightFields[i][1], rightX, colW);
-      }
-      y = startY + leftFields.length * 16 + 12;
-
-      doc.font('Helvetica-Bold').fontSize(11).text('SLD DETAILS', leftX, y);
-      y = doc.y + 8;
-      const sldStart = y;
-      const sldLeft: Array<[string, string]> = [
-        ['COMPANY', data.companyName],
-        ['MODEL', data.deviceModelCode || data.deviceModelName],
-        ['SERIAL NUMBER', data.deviceSerialNumber],
-        ['SEAL NUMBER', data.sealNumber],
-      ];
-      const approvalIsCop = Boolean(data.copNumber && !data.tacNumber);
-      const sldRight: Array<[string, string]> = [
-        ['TESTING AGENCY', data.testingAgency],
-        [approvalIsCop ? 'COP' : 'TAC', data.tacNumber || data.copNumber || ''],
-        ['TEST REPORT NO', data.testReportNo || ''],
-        ['SET SPEED (KM/H)', data.speedLimit],
-      ];
-      for (let i = 0; i < sldLeft.length; i++) {
-        y = sldStart + i * 16;
-        drawRow(sldLeft[i][0], sldLeft[i][1], leftX, colW);
-        drawRow(sldRight[i][0], sldRight[i][1], rightX, colW);
-      }
-      y = sldStart + sldLeft.length * 16 + 10;
-
-      doc.font('Helvetica').fontSize(9);
-      drawRow('CERTIFICATE NUMBER', data.certificateNumber, leftX, pageWidth);
-      y += 16;
-      drawRow(
-        'CERTIFICATE TYPE',
-        data.kind === 'RENEWAL' ? 'RENEWAL' : 'NEW FITMENT',
-        leftX,
-        pageWidth,
-      );
-      y += 16;
-      drawRow(
-        'DATE OF GENERATION',
-        this.formatDateGb(data.generatedAt),
-        leftX,
-        pageWidth,
-      );
-      y += 14;
-      drawRow('VERIFY URL', verifyUrl, leftX, pageWidth);
-      y += 20;
-
-      const narrative = `This certifies that the vehicle described below has been equipped with an approved ${data.companyName} device, model ${data.deviceModelCode || data.deviceModelName}, bearing seal number ${data.sealNumber}. The device is programmed to limit the vehicle's speed to a maximum of ${data.speedLimit || '—'} and will not exceed this speed unless tampered with or if the seal is broken by an unauthorized technician.`;
-      doc.font('Helvetica').fontSize(8).text(narrative, leftX, y, {
-        width: pageWidth,
-        align: 'justify',
-      });
-      y = doc.y + 8;
-      doc
-        .font('Helvetica-Oblique')
-        .fontSize(7)
-        .text(
-          'We undertake not to raise any dispute or any legal claims against us if the above-mentioned seals are found broken/torn/tampered and more specifically with respect to any variance in the speed limit set at the time of delivery.',
-          leftX,
-          y,
-          { width: pageWidth, align: 'justify' },
-        );
-      y = doc.y + 14;
-
-      doc.font('Helvetica-Bold').fontSize(10).text('PHOTOGRAPHS / DOCUMENTS', leftX, y);
-      y = doc.y + 8;
-
-      const labels = ['NUMBER PLATE', 'DEVICE', 'INSTALLATION', 'DOCUMENT'];
-      const files = [
-        data.photos.photoPlate,
-        data.photos.photoInstalled,
-        data.photos.photoSeal,
-        data.photos.photoSerial,
-      ];
-      const imgW = (pageWidth - 18) / 4;
-      const imgH = 70;
-      for (let i = 0; i < 4; i++) {
-        const x = leftX + i * (imgW + 6);
-        doc.font('Helvetica').fontSize(7).text(labels[i], x, y, { width: imgW, align: 'center' });
-        try {
-          if (files[i] && fs.existsSync(files[i])) {
-            doc.image(files[i], x, y + 12, { fit: [imgW, imgH], align: 'center', valign: 'center' });
-          } else {
-            doc.rect(x, y + 12, imgW, imgH).stroke();
-          }
-        } catch {
-          doc.rect(x, y + 12, imgW, imgH).stroke();
-        }
-      }
-      y += imgH + 28;
-
-      doc.font('Helvetica').fontSize(9).text('Customer Signature', leftX, y);
-      doc.text('Dealer Signature And Seal', leftX + pageWidth / 2, y);
-
-      if (data.passingRto) {
-        doc
-          .font('Helvetica')
-          .fontSize(8)
-          .text(`To,\nThe RTO/ARTO\nPASSING RTO: ${data.passingRto}`, leftX, y + 40);
-      }
-
-      doc.end();
-      stream.on('finish', () => resolve());
-      stream.on('error', reject);
-    });
+    await renderSldCertificatePdf(outputPath, data);
   }
 
   private resolveDiskPath(urlPath: string | null | undefined): string | null {
@@ -1213,18 +1004,21 @@ export class SldCertificatesService {
     return items.map((c) => this.mapCertificateRow(c));
   }
 
-  async listAdminCertificates(filters: {
-    status?: SldCertStatus;
-    kind?: SldCertKind;
-    sldOemId?: string;
-    dealerId?: string;
-    stateCode?: string;
-    search?: string;
-    from?: string;
-    to?: string;
-    page?: number;
-    limit?: number;
-  }) {
+  async listAdminCertificates(
+    filters: {
+      status?: SldCertStatus;
+      kind?: SldCertKind;
+      sldOemId?: string;
+      dealerId?: string;
+      stateCode?: string;
+      search?: string;
+      from?: string;
+      to?: string;
+      page?: number;
+      limit?: number;
+    },
+    user?: { userId?: string; role?: string },
+  ) {
     const page = Math.max(1, Number(filters.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(filters.limit) || 50));
     const where: any = {};
@@ -1245,6 +1039,11 @@ export class SldCertificatesService {
       where.generatedAt = {};
       if (filters.from) where.generatedAt.gte = new Date(filters.from);
       if (filters.to) where.generatedAt.lte = new Date(`${filters.to}T23:59:59.999`);
+    }
+
+    if (user) {
+      const scope = await resolveSldOemScope(this.prisma, user);
+      applyOemScopeToWhere(where, scope);
     }
 
     const [total, items] = await this.prisma.$transaction([
@@ -1271,13 +1070,22 @@ export class SldCertificatesService {
     };
   }
 
-  async uploadVahanPdf(certId: string, pdfBase64: string, userId: string) {
+  async uploadVahanPdf(
+    certId: string,
+    pdfBase64: string,
+    userId: string,
+    user?: { userId?: string; role?: string },
+  ) {
     if (!pdfBase64?.trim()) throw new BadRequestException('PDF data is required');
     const cert = await this.prisma.sldCertificate.findUnique({
       where: { id: certId },
       include: { sldOem: true },
     });
     if (!cert) throw new NotFoundException('Certificate not found');
+    if (user) {
+      const scope = await resolveSldOemScope(this.prisma, user);
+      assertOemInScope(scope, cert.sldOemId);
+    }
 
     const matches = pdfBase64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
     const buffer = matches
@@ -1333,12 +1141,20 @@ export class SldCertificatesService {
     return { success: true, certificate: this.mapCertificateRow(updated) };
   }
 
-  async reinstateCertificate(certId: string, userId: string) {
+  async reinstateCertificate(
+    certId: string,
+    userId: string,
+    user?: { userId?: string; role?: string },
+  ) {
     const cert = await this.prisma.sldCertificate.findUnique({
       where: { id: certId },
       include: { deviceSerial: true },
     });
     if (!cert) throw new NotFoundException('Certificate not found');
+    if (user) {
+      const scope = await resolveSldOemScope(this.prisma, user);
+      assertOemInScope(scope, cert.sldOemId);
+    }
 
     const serialId = cert.deviceSerialId;
     const otherCertCount = await this.prisma.sldCertificate.count({
@@ -1435,7 +1251,11 @@ export class SldCertificatesService {
     };
   }
 
-  async reinstateBulk(csvText: string, userId: string) {
+  async reinstateBulk(
+    csvText: string,
+    userId: string,
+    user?: { userId?: string; role?: string },
+  ) {
     const lines = (csvText || '')
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -1456,7 +1276,7 @@ export class SldCertificatesService {
           results.push({ line, success: false, message: 'Certificate not found' });
           continue;
         }
-        await this.reinstateCertificate(cert.id, userId);
+        await this.reinstateCertificate(cert.id, userId, user);
         results.push({ line, success: true, message: 'Reinstated' });
       } catch (e: any) {
         results.push({ line, success: false, message: e?.message || 'Failed' });

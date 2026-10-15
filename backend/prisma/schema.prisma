@@ -23,6 +23,8 @@ model User {
   reviewedDealerRegistrationRequests DealerRegistrationRequest[] @relation("DealerRegistrationReviewedBy")
   oem       OEM?       @relation(fields: [oemCode], references: [code])
   state     State?     @relation(fields: [stateCode], references: [code])
+  /// SLD OEM authorization for SLD_ADMIN (empty = no cert access)
+  authorizedSldOems SldOem[] @relation("UserToSldOem")
 
   @@map("users")
 }
@@ -375,6 +377,7 @@ enum UserRole {
   ADMIN
   SUB_ADMIN
   GHOST_ADMIN
+  SLD_ADMIN
 }
 
 enum DealerRegistrationStatus {
@@ -416,6 +419,7 @@ model SldOem {
   serials          SldDeviceSerial[]
   certificates     SldCertificate[]
   dealers          Dealer[]          @relation("DealerToSldOem")
+  authorizedUsers  User[]            @relation("UserToSldOem")
 
   @@map("sld_oems")
 }

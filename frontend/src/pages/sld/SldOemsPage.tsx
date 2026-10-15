@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Plus, Search, Edit, Trash2, Upload, Car, FileSpreadsheet } from "lucide-react";
 import * as XLSX from "xlsx";
 import Modal from "../../ui/Modal";
+import { useAuth } from "../../auth/AuthContext";
 import {
   useSldOems,
   useCreateSldOem,
@@ -90,9 +91,29 @@ function parseVariantWorkbook(file: ArrayBuffer) {
     return {
       vehicleMake: String(get("vehiclemake", "make") || "").trim(),
       vehicleModel: String(get("vehiclemodel", "model", "vehiclemodelname") || "").trim(),
-      sldModelName: String(get("sldmodelnamenumber", "sldmodelname", "sldmodel", "modelnamenumber") || "").trim(),
+      sldModelName: String(
+        get(
+          "sldmodelnamenumber",
+          "sldmodelname",
+          "sldmodelnumber",
+          "sldmodel",
+          "modelnamenumber",
+          "modelnumber",
+          "sldnumber",
+        ) || "",
+      ).trim(),
       sldType: String(get("sldtype", "type") || "").trim(),
-      tacOrCop: String(get("taccopnumber", "tacorcop", "tacnumber", "copnumber", "taccop") || "").trim(),
+      tacOrCop: String(
+        get(
+          "taccopnumber",
+          "tacorcop",
+          "tacnumber",
+          "copnumber",
+          "taccop",
+          "tac",
+          "cop",
+        ) || "",
+      ).trim(),
       testingAgency: String(get("testingagency", "agency") || "").trim(),
       testReportNo: String(get("testreportnumber", "testreportno", "testreport") || "").trim(),
       setSpeed: get("setspeedkmph", "setspeed", "speedkmph", "speed"),
@@ -139,6 +160,8 @@ function downloadBlankVariantTemplate() {
 }
 
 export default function SldOemsPage() {
+  const { user } = useAuth();
+  const canManage = user?.role === "SUPER_ADMIN";
   const [query, setQuery] = useState("");
   const [openOem, setOpenOem] = useState(false);
   const [editOemId, setEditOemId] = useState<string | null>(null);
@@ -274,10 +297,30 @@ export default function SldOemsPage() {
         alert("No data rows found in Excel");
         return;
       }
+      const missingModel = rows.filter((r) => !r.sldModelName).length;
+      const missingVehicle = rows.filter((r) => !r.vehicleModel).length;
+      const missingSpeed = rows.filter((r) => {
+        const s = r.setSpeed;
+        if (s === null || s === undefined) return true;
+        return !String(s).trim() || !/\d/.test(String(s));
+      }).length;
+      if (missingModel === rows.length) {
+        alert(
+          "Could not find SLD model column. Expected a header like “SLD Model Name / Number” or “SLD Model Number”.",
+        );
+        return;
+      }
       const res = await importVariantList.mutateAsync({ oemId: importingOemId, rows });
       setImportSummary(res);
+      const hints: string[] = [];
+      if (res.rowsInvalid > 0) {
+        if (missingModel) hints.push(`${missingModel} missing SLD model`);
+        if (missingVehicle) hints.push(`${missingVehicle} missing vehicle model`);
+        if (missingSpeed) hints.push(`${missingSpeed} missing/invalid set speed`);
+      }
       alert(
-        `Import done.\nModels created: ${res.modelsCreated}, updated: ${res.modelsUpdated}\nVariants created: ${res.variantsCreated}, skipped: ${res.variantsSkipped}\nInvalid rows: ${res.rowsInvalid}`,
+        `Import done.\nModels created: ${res.modelsCreated}, updated: ${res.modelsUpdated}\nVariants created: ${res.variantsCreated}, skipped: ${res.variantsSkipped}\nInvalid rows: ${res.rowsInvalid}` +
+          (hints.length ? `\n(${hints.join("; ")})` : ""),
       );
     } catch (err: any) {
       alert(err?.response?.data?.message || "Import failed");
@@ -303,30 +346,36 @@ export default function SldOemsPage() {
         <div>
           <div className="text-xl font-semibold">SLD OEMs</div>
           <div className="text-sm text-gray-600">
-            OEM → Device Model (type, TAC/COP by agency) → Vehicle variants (make, model, set speed, test report)
+            {canManage
+              ? "OEM → Device Model (type, TAC/COP by agency) → Vehicle variants (make, model, set speed, test report)"
+              : "View-only — full SLD OEM management is Super Admin only."}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={downloadBlankVariantTemplate}
-            className="flex items-center gap-2 border px-4 py-2 rounded-md hover:bg-gray-50 text-sm"
-            title="Download SLD STANDARD VARIANT LIST template"
-          >
-            <FileSpreadsheet size={16} />
-            Download template
-          </button>
-          <button
-            onClick={() => {
-              setOemForm({ name: "", code: "", authorizedStates: [] });
-              setEditOemId(null);
-              setOpenOem(true);
-            }}
-            className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/90 text-sm"
-          >
-            <Plus size={16} />
-            Add SLD OEM
-          </button>
+          {canManage && (
+            <>
+              <button
+                type="button"
+                onClick={downloadBlankVariantTemplate}
+                className="flex items-center gap-2 border px-4 py-2 rounded-md hover:bg-gray-50 text-sm"
+                title="Download SLD STANDARD VARIANT LIST template"
+              >
+                <FileSpreadsheet size={16} />
+                Download template
+              </button>
+              <button
+                onClick={() => {
+                  setOemForm({ name: "", code: "", authorizedStates: [] });
+                  setEditOemId(null);
+                  setOpenOem(true);
+                }}
+                className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/90 text-sm"
+              >
+                <Plus size={16} />
+                Add SLD OEM
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -362,6 +411,7 @@ export default function SldOemsPage() {
                     Code: {oem.code} · States: {(oem.authorizedStates || []).join(", ") || "—"}
                   </div>
                 </div>
+                {canManage && (
                 <div className="flex gap-2">
                   <button
                     className="px-3 py-1.5 text-sm border rounded hover:bg-white inline-flex items-center gap-1"
@@ -412,6 +462,7 @@ export default function SldOemsPage() {
                     <Trash2 size={14} />
                   </button>
                 </div>
+                )}
               </div>
               <div className="p-3 overflow-x-auto">
                 {(oem.models || []).length === 0 ? (
@@ -436,30 +487,9 @@ export default function SldOemsPage() {
                             <div className="text-xs text-gray-500">{m.code}</div>
                           </td>
                           <td className="py-2 px-2">
-                            <select
-                              className="border rounded px-2 py-1 text-sm bg-white min-w-[130px]"
-                              title="Change SLD type"
-                              value={normalizeSldTypeUi(m.sldType)}
-                              disabled={updateModel.isPending}
-                              onChange={async (e) => {
-                                const next = e.target.value || null;
-                                try {
-                                  await updateModel.mutateAsync({
-                                    id: m.id,
-                                    data: { sldType: next },
-                                  });
-                                } catch (err: any) {
-                                  alert(err?.response?.data?.message || "Failed to update type");
-                                }
-                              }}
-                            >
-                              <option value="">—</option>
-                              {SLD_TYPE_OPTIONS.map((o) => (
-                                <option key={o.value} value={o.value}>
-                                  {o.label}
-                                </option>
-                              ))}
-                            </select>
+                            {normalizeSldTypeUi(m.sldType) === "FLY_BY_WIRE"
+                              ? "FLY BY WIRE"
+                              : normalizeSldTypeUi(m.sldType) || m.sldType || "—"}
                           </td>
                           <td className="py-2 px-2">
                             <div>{displayApproval(m)}</div>
@@ -477,6 +507,8 @@ export default function SldOemsPage() {
                             >
                               <Car size={12} />
                             </button>
+                            {canManage && (
+                            <>
                             <button
                               className="p-1.5 border rounded mr-1 hover:bg-gray-50"
                               onClick={() => {
@@ -516,6 +548,8 @@ export default function SldOemsPage() {
                             >
                               <Trash2 size={12} />
                             </button>
+                            </>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -675,6 +709,8 @@ export default function SldOemsPage() {
         maxWidth="max-w-4xl"
       >
         <div className="space-y-4">
+          {canManage && (
+          <>
           <div className="text-xs text-gray-500">
             CSV: <code>make,model,setSpeed,testReport</code> — set speed required. Prefer OEM-level Excel import for full lists.
           </div>
@@ -772,6 +808,8 @@ export default function SldOemsPage() {
               </button>
             </div>
           </div>
+          </>
+          )}
 
           <div className="border rounded overflow-hidden max-h-96 overflow-y-auto">
             <table className="w-full text-sm">
@@ -805,6 +843,7 @@ export default function SldOemsPage() {
                       <td className="px-3 py-2">{v.setSpeedKmph} km/h</td>
                       <td className="px-3 py-2 text-xs">{v.testReportNo || "—"}</td>
                       <td className="px-3 py-2 text-right">
+                        {canManage && (
                         <button
                           className="p-1.5 border rounded hover:bg-red-50 text-red-600"
                           onClick={async () => {
@@ -818,6 +857,7 @@ export default function SldOemsPage() {
                         >
                           <Trash2 size={12} />
                         </button>
+                        )}
                       </td>
                     </tr>
                   ))

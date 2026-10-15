@@ -1,10 +1,21 @@
 import { useMemo, useState } from "react";
 import { Plus, Search, Edit, Trash2 } from "lucide-react";
 import Modal from "../../ui/Modal";
-import { useSystemUsers, useCreateSystemUser, useUpdateSystemUser, useDeleteSystemUser, SystemUser } from "../../api/hooks";
+import {
+  useSystemUsers,
+  useCreateSystemUser,
+  useUpdateSystemUser,
+  useDeleteSystemUser,
+  useSldOems,
+  SystemUser,
+} from "../../api/hooks";
 
-type UserRole = "SUPER_ADMIN" | "STATE_ADMIN" | "OEM_ADMIN" | "ADMIN" | "SUB_ADMIN";
+type UserRole = "SUPER_ADMIN" | "STATE_ADMIN" | "OEM_ADMIN" | "ADMIN" | "SUB_ADMIN" | "SLD_ADMIN";
 type UserStatus = "ACTIVE" | "INACTIVE";
+
+type SystemUserRow = SystemUser & {
+  authorizedSldOems?: Array<{ id: string; code: string; name: string }>;
+};
 
 export default function SystemUsersPage() {
   const [query, setQuery] = useState("");
@@ -21,27 +32,30 @@ export default function SystemUsersPage() {
     password: string;
     role: UserRole;
     status: UserStatus;
+    sldOemIds: string[];
   }>({
     name: "",
     email: "",
     phone: "",
     password: "",
     role: "STATE_ADMIN",
-    status: "ACTIVE"
+    status: "ACTIVE",
+    sldOemIds: [],
   });
 
   const { data: users = [], isLoading, error } = useSystemUsers();
+  const { data: sldOems = [] } = useSldOems();
   const createUser = useCreateSystemUser();
   const updateUser = useUpdateSystemUser();
   const deleteUser = useDeleteSystemUser();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(
+    if (!q) return users as SystemUserRow[];
+    return (users as SystemUserRow[]).filter(
       (u) =>
         u.name.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
+        (u.email || "").toLowerCase().includes(q) ||
         u.phone.toLowerCase().includes(q) ||
         u.role.toLowerCase().includes(q)
     );
@@ -54,7 +68,8 @@ export default function SystemUsersPage() {
       phone: "",
       password: "",
       role: "STATE_ADMIN",
-      status: "ACTIVE"
+      status: "ACTIVE",
+      sldOemIds: [],
     });
     setEditId(null);
   };
@@ -64,29 +79,67 @@ export default function SystemUsersPage() {
     setOpenAdd(true);
   };
 
-  const openEdit = (user: SystemUser) => {
+  const openEdit = (user: SystemUserRow) => {
     setForm({
       name: user.name,
-      email: user.email,
+      email: user.email || "",
       phone: user.phone,
-      password: "", // Don't populate password
+      password: "",
       role: user.role as UserRole,
-      status: user.status as UserStatus
+      status: user.status as UserStatus,
+      sldOemIds: (user.authorizedSldOems || []).map((o) => o.id),
     });
     setEditId(user.id);
     setOpenAdd(true);
   };
 
+  const toggleOem = (oemId: string) => {
+    setForm((prev) => {
+      const has = prev.sldOemIds.includes(oemId);
+      return {
+        ...prev,
+        sldOemIds: has
+          ? prev.sldOemIds.filter((id) => id !== oemId)
+          : [...prev.sldOemIds, oemId],
+      };
+    });
+  };
+
+  const selectAllOems = () => {
+    setForm((prev) => ({
+      ...prev,
+      sldOemIds: sldOems.map((o) => o.id),
+    }));
+  };
+
+  const clearAllOems = () => {
+    setForm((prev) => ({ ...prev, sldOemIds: [] }));
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = { ...form };
-      // Remove empty password if editing
-      if (editId && !payload.password) {
-        delete (payload as any).password;
+      if (form.role === "SLD_ADMIN" && form.sldOemIds.length === 0) {
+        alert("SLD Admin requires at least one authorized SLD OEM.");
+        return;
+      }
+
+      const payload: any = {
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        role: form.role,
+        status: form.status,
+      };
+      if (form.password) payload.password = form.password;
+      if (form.role === "SLD_ADMIN") {
+        payload.sldOemIds = form.sldOemIds;
+      } else if (editId) {
+        payload.sldOemIds = [];
       }
 
       if (editId) {
+        if (!payload.password) delete payload.password;
         await updateUser.mutateAsync({ id: editId, data: payload });
       } else {
         await createUser.mutateAsync(payload);
@@ -111,7 +164,7 @@ export default function SystemUsersPage() {
     }
   };
 
-  const toggleStatus = async (user: SystemUser) => {
+  const toggleStatus = async (user: SystemUserRow) => {
     try {
       const newStatus = user.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
       await updateUser.mutateAsync({ id: user.id, data: { status: newStatus } });
@@ -141,7 +194,6 @@ export default function SystemUsersPage() {
           </button>
         </div>
 
-        {/* Search */}
         <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-2 top-2.5 text-gray-400" />
@@ -155,7 +207,6 @@ export default function SystemUsersPage() {
         </div>
       </div>
 
-      {/* Table */}
       <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-50 text-gray-700 font-medium border-b">
@@ -163,6 +214,7 @@ export default function SystemUsersPage() {
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Phone / Email</th>
               <th className="px-4 py-3">Role</th>
+              <th className="px-4 py-3">SLD OEMs</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
@@ -170,7 +222,7 @@ export default function SystemUsersPage() {
           <tbody className="divide-y">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                   No system users found.
                 </td>
               </tr>
@@ -186,10 +238,16 @@ export default function SystemUsersPage() {
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       u.role === 'SUPER_ADMIN' ? 'bg-purple-100 text-purple-700' : 
                       u.role === 'STATE_ADMIN' ? 'bg-blue-100 text-blue-700' :
+                      u.role === 'SLD_ADMIN' ? 'bg-emerald-100 text-emerald-700' :
                       'bg-gray-100 text-gray-700'
                     }`}>
-                      {u.role.replace('_', ' ')}
+                      {u.role.replace(/_/g, ' ')}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-600 max-w-[220px]">
+                    {u.role === "SLD_ADMIN"
+                      ? (u.authorizedSldOems || []).map((o) => o.code).join(", ") || "—"
+                      : "—"}
                   </td>
                   <td className="px-4 py-3">
                     <button 
@@ -216,7 +274,6 @@ export default function SystemUsersPage() {
         </table>
       </div>
 
-      {/* Modal */}
       <Modal
         open={openAdd}
         onClose={() => setOpenAdd(false)}
@@ -260,16 +317,59 @@ export default function SystemUsersPage() {
             <label className="block text-sm font-medium mb-1">Role</label>
             <select
               value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  role: e.target.value as UserRole,
+                  sldOemIds: e.target.value === "SLD_ADMIN" ? form.sldOemIds : [],
+                })
+              }
               className="w-full border rounded px-3 py-2"
             >
               <option value="SUPER_ADMIN">Super Admin</option>
               <option value="ADMIN">Admin</option>
+              <option value="SLD_ADMIN">SLD Admin</option>
               <option value="SUB_ADMIN">Sub Admin</option>
               <option value="STATE_ADMIN">State Admin</option>
               <option value="OEM_ADMIN">OEM Admin</option>
             </select>
           </div>
+
+          {form.role === "SLD_ADMIN" && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium">Authorized SLD OEMs</label>
+                <div className="flex gap-2 text-xs">
+                  <button type="button" className="text-primary hover:underline" onClick={selectAllOems}>
+                    Select all
+                  </button>
+                  <button type="button" className="text-gray-500 hover:underline" onClick={clearAllOems}>
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="border rounded-md max-h-40 overflow-y-auto p-2 space-y-1">
+                {sldOems.length === 0 ? (
+                  <div className="text-xs text-gray-500 px-1 py-2">No SLD OEMs configured</div>
+                ) : (
+                  sldOems.map((oem) => (
+                    <label key={oem.id} className="flex items-center gap-2 text-sm px-1 py-1 hover:bg-gray-50 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.sldOemIds.includes(oem.id)}
+                        onChange={() => toggleOem(oem.id)}
+                      />
+                      <span>{oem.name}</span>
+                      <span className="text-xs text-gray-400">({oem.code})</span>
+                    </label>
+                  ))
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Cert view/download, Vahan upload, and reinstate are limited to these OEMs.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium mb-1">Password {editId && "(Leave blank to keep current)"}</label>

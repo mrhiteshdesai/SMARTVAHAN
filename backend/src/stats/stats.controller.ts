@@ -51,24 +51,44 @@ export class StatsController {
 
   @Get('dashboard/sld')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'SLD_ADMIN', 'DEALER_USER')
   async getSldDashboardStats(
+    @Req() req: any,
     @Query('stateCode') stateCode?: string,
     @Query('sldOemCode') sldOemCode?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
     try {
+      const dealerId =
+        req.user?.role === 'DEALER_USER' || req.user?.role === 'DEALER'
+          ? req.user.userId
+          : undefined;
+      let sldOemIds: string[] | undefined;
+      let finalSldOemCode = sldOemCode;
+      if (req.user?.role === 'SLD_ADMIN') {
+        const u = await this.statsService.getAuthorizedSldOemIds(req.user.userId);
+        sldOemIds = u.ids;
+        if (sldOemCode && !u.codes.includes(sldOemCode)) {
+          throw new ForbiddenException('Not authorized for this SLD OEM');
+        }
+        if (!sldOemCode && u.codes.length === 1) {
+          finalSldOemCode = u.codes[0];
+        }
+      }
       this.logger.log(
-        `SLD dashboard stats requested: ${JSON.stringify({ stateCode, sldOemCode, startDate, endDate })}`,
+        `SLD dashboard stats requested: ${JSON.stringify({ stateCode, sldOemCode: finalSldOemCode, startDate, endDate, dealerId, sldOemIds })}`,
       );
       return await this.statsService.getSldDashboardStats({
         stateCode,
-        sldOemCode,
+        sldOemCode: finalSldOemCode,
         startDate,
         endDate,
+        dealerId,
+        sldOemIds,
       });
     } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
       this.logger.error('Failed to get SLD dashboard stats', error.stack);
       throw new InternalServerErrorException(error.message);
     }

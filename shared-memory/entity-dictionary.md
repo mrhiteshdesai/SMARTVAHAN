@@ -4,7 +4,7 @@ Source: `backend/prisma/schema.prisma` (SMARTVAHAN V2)
 
 | Entity | Description | Module | PII |
 |--------|-------------|--------|-----|
-| User | System users | Auth | Yes |
+| User | System users; `SLD_ADMIN` has M2M `authorizedSldOems` | Auth | Yes |
 | State | States | Master data | No |
 | RTO | RTO offices | Master data | No |
 | OEM | Reflective tape OEMs | OEM | Partial |
@@ -23,7 +23,7 @@ Source: `backend/prisma/schema.prisma` (SMARTVAHAN V2)
 | ContactSubmission | Contact form | Public | Yes |
 | AuditLog | Audit | Security | Partial |
 | InventoryLog | Reflective inventory movements | Inventory | No |
-| SldOem | SLD OEMs (state-authorized) | SLD | Partial |
+| SldOem | SLD OEMs (state-authorized); also linked to `SLD_ADMIN` users | SLD | Partial |
 | SldDeviceModel | SLD device models (type FUEL/CABLE/FLY_BY_WIRE, TAC or COP by agency) | SLD | No |
 | SldApprovedVehicleModel | Vehicle variants per device model (make, model, **setSpeedKmph**, testReportNo) | SLD | No |
 | SldDeviceSerial | Inventory + legacy renewal rows (`isLegacy`); serial UPPERCASE; statuses AVAILABLE/ASSIGNED/USED | SLD | No |

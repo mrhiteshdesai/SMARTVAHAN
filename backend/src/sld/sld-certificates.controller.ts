@@ -81,7 +81,13 @@ export class SldCertificatesController {
   }
 
   @Get('certificates')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STATE_ADMIN)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.SLD_ADMIN,
+    UserRole.STATE_ADMIN,
+    UserRole.DEALER_USER,
+  )
   listAdmin(
     @Req() req: any,
     @Query('status') status?: SldCertStatus,
@@ -95,42 +101,51 @@ export class SldCertificatesController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
+    const isDealer = req.user?.role === 'DEALER_USER' || req.user?.role === 'DEALER';
     let finalStateCode = stateCode;
     if (req.user?.role === 'STATE_ADMIN') finalStateCode = req.user.stateCode;
-    return this.sldCertificatesService.listAdminCertificates({
-      status,
-      kind,
-      sldOemId,
-      dealerId,
-      stateCode: finalStateCode,
-      search,
-      from,
-      to,
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 50,
-    });
+    return this.sldCertificatesService.listAdminCertificates(
+      {
+        status,
+        kind,
+        sldOemId,
+        dealerId: isDealer ? req.user.userId : dealerId,
+        stateCode: finalStateCode,
+        search,
+        from,
+        to,
+        page: page ? Number(page) : 1,
+        limit: limit ? Number(limit) : 50,
+      },
+      req.user,
+    );
   }
 
   @Post('certificates/reinstate-bulk')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SLD_ADMIN)
   reinstateBulk(@Body() body: { csvText: string }, @Req() req: any) {
-    return this.sldCertificatesService.reinstateBulk(body.csvText, req.user.userId);
+    return this.sldCertificatesService.reinstateBulk(body.csvText, req.user.userId, req.user);
   }
 
   @Post('certificates/:id/vahan')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SLD_ADMIN)
   uploadVahan(
     @Param('id') id: string,
     @Body() body: { pdfBase64: string },
     @Req() req: any,
   ) {
-    return this.sldCertificatesService.uploadVahanPdf(id, body.pdfBase64, req.user.userId);
+    return this.sldCertificatesService.uploadVahanPdf(
+      id,
+      body.pdfBase64,
+      req.user.userId,
+      req.user,
+    );
   }
 
   @Post('certificates/:id/reinstate')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SLD_ADMIN)
   reinstate(@Param('id') id: string, @Req() req: any) {
-    return this.sldCertificatesService.reinstateCertificate(id, req.user.userId);
+    return this.sldCertificatesService.reinstateCertificate(id, req.user.userId, req.user);
   }
 
   @Post('certificates')

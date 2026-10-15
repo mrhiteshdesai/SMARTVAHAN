@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Navigate } from "react-router-dom";
 import { Html5Qrcode } from "html5-qrcode";
 import api from "../api/client";
 import { Upload, CheckCircle, AlertCircle, Loader2, Camera, MapPin, ChevronRight, ChevronLeft, FileText, ExternalLink, Download } from "lucide-react";
@@ -58,6 +59,7 @@ const YEARS = Array.from({ length: 15 }, (_, i) => (new Date().getFullYear() - i
 
 export function CertificateGeneratorPage() {
   const { user } = useAuth();
+  const isDealerUser = user?.role === "DEALER_USER" || (user?.role as string) === "DEALER";
   const [step, setStep] = useState(1);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -377,6 +379,11 @@ export function CertificateGeneratorPage() {
          setIsSubmitting(false);
       }
   };
+
+  if (isDealerUser) {
+    const base = localStorage.getItem("isGhostMode") === "true" ? "/control/rp" : "/control";
+    return <Navigate to={base} replace />;
+  }
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-20">

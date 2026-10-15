@@ -13,13 +13,26 @@ export class AuthService {
   async validateUser(phone: string, pass: string): Promise<any> {
     try {
         // Check System Users
-        const user = await this.prisma.user.findUnique({ where: { phone } });
+        const user = await this.prisma.user.findUnique({
+          where: { phone },
+          include: {
+            authorizedSldOems: { select: { id: true, code: true, name: true } },
+          },
+        });
         if (user) {
             const isValid = await bcrypt.compare(pass, user.password);
             if (isValid && user.status === 'ACTIVE') {
-                const { password, ...result } = user;
+                const { password, authorizedSldOems, ...result } = user;
                 const isFullAdmin =
                   result.role === 'SUPER_ADMIN' || result.role === 'ADMIN';
+                if (result.role === 'SLD_ADMIN') {
+                  return {
+                    ...result,
+                    hasSldAccess: authorizedSldOems.length > 0,
+                    hasReflectiveAccess: false,
+                    sldOems: authorizedSldOems,
+                  };
+                }
                 return {
                   ...result,
                   hasSldAccess: isFullAdmin ? true : undefined,
@@ -117,11 +130,24 @@ export class AuthService {
         };
       }
     } else {
-       const user = await this.prisma.user.findUnique({ where: { id: userId } });
+       const user = await this.prisma.user.findUnique({
+         where: { id: userId },
+         include: {
+           authorizedSldOems: { select: { id: true, code: true, name: true } },
+         },
+       });
        if (user) {
-          const { password, ...result } = user;
+          const { password, authorizedSldOems, ...result } = user;
           const isFullAdmin =
             result.role === 'SUPER_ADMIN' || result.role === 'ADMIN';
+          if (result.role === 'SLD_ADMIN') {
+            return {
+              ...result,
+              hasSldAccess: authorizedSldOems.length > 0,
+              hasReflectiveAccess: false,
+              sldOems: authorizedSldOems,
+            };
+          }
           return {
             ...result,
             hasSldAccess: isFullAdmin ? true : undefined,

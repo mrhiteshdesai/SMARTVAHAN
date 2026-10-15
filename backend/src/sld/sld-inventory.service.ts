@@ -396,4 +396,144 @@ export class SldInventoryService {
       duplicates: duplicatesInFile,
     };
   }
+
+  /** Active dealers authorised for a given SLD OEM (excludes `excludeDealerId`). */
+  async listForwardTargets(sldOemId: string, excludeDealerId?: string) {
+    const oemId = String(sldOemId || '').trim();
+    if (!oemId) throw new BadRequestException('sldOemId is required');
+
+    const oem = await this.prisma.sldOem.findUnique({ where: { id: oemId } });
+    if (!oem) throw new NotFoundException('SLD OEM not found');
+
+    const dealers = await this.prisma.dealer.findMany({
+      where: {
+        status: 'ACTIVE',
+        sldOems: { some: { id: oemId } },
+        ...(excludeDealerId ? { id: { not: excludeDealerId } } : {}),
+        stateCode: { in: oem.authorizedStates },
+      },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        stateCode: true,
+        sldOems: { select: { id: true, code: true, name: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return dealers;
+  }
+
+  private async assertDealerHasOem(dealerId: string, sldOemId: string) {
+    const dealer = await this.prisma.dealer.findUnique({
+      where: { id: dealerId },
+      include: { sldOems: true },
+    });
+    if (!dealer) throw new NotFoundException('Dealer not found');
+    if (dealer.status !== 'ACTIVE') {
+      throw new BadRequestException('Dealer account is inactive');
+    }
+    if (!dealer.sldOems.some((o) => o.id === sldOemId)) {
+      throw new BadRequestException('Dealer is not authorized for this SLD OEM');
+    }
+    const oem = await this.prisma.sldOem.findUnique({ where: { id: sldOemId } });
+    if (!oem) throw new BadRequestException('SLD OEM not found');
+    if (!oem.authorizedStates.includes(dealer.stateCode)) {
+      throw new BadRequestException(
+        `SLD OEM ${oem.code} is not authorized for dealer state ${dealer.stateCode}`,
+      );
+    }
+    return { dealer, oem };
+  }
+
+  /**
+   * Forward ASSIGNED (unused) serials from one dealer to another
+   * who is authorised for the same SLD OEM.
+   */
+  async forwardSerials(
+    data: {
+      toDealerId: string;
+      sldOemId: string;
+      serialIds?: string[];
+      serialNumbers?: string[];
+    },
+    fromDealerId: string,
+    userId?: string,
+  ) {
+    const toDealerId = String(data?.toDealerId || '').trim();
+    const sldOemId = String(data?.sldOemId || '').trim();
+    const sourceDealerId = String(fromDealerId || '').trim();
+    if (!toDealerId || !sldOemId) {
+      throw new BadRequestException('toDealerId and sldOemId are required');
+    }
+    if (!sourceDealerId) {
+      throw new BadRequestException('fromDealerId is required');
+    }
+    if (toDealerId === sourceDealerId) {
+      throw new BadRequestException('Cannot forward inventory to yourself');
+    }
+
+    await this.assertDealerHasOem(sourceDealerId, sldOemId);
+    await this.assertDealerHasOem(toDealerId, sldOemId);
+
+    const serialIds = Array.isArray(data?.serialIds)
+      ? data.serialIds.map((id) => String(id).trim()).filter(Boolean)
+      : [];
+    const serialNumbers = Array.isArray(data?.serialNumbers)
+      ? data.serialNumbers.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
+      : [];
+
+    if (serialIds.length === 0 && serialNumbers.length === 0) {
+      throw new BadRequestException('Select at least one serial to forward');
+    }
+
+    const orFilters: any[] = [];
+    if (serialIds.length) orFilters.push({ id: { in: serialIds } });
+    if (serialNumbers.length) orFilters.push({ serialNumber: { in: serialNumbers } });
+
+    const rows = await this.prisma.sldDeviceSerial.findMany({
+      where: {
+        sldOemId,
+        dealerId: sourceDealerId,
+        status: SldSerialStatus.ASSIGNED,
+        OR: orFilters,
+      },
+    });
+
+    const foundIds = new Set(rows.map((r) => r.id));
+    const foundSerials = new Set(rows.map((r) => r.serialNumber.toUpperCase()));
+    const notFound = [
+      ...serialIds.filter((id) => !foundIds.has(id)),
+      ...serialNumbers.filter((s) => !foundSerials.has(s)),
+    ];
+
+    const forwarded: string[] = [];
+    if (rows.length > 0) {
+      await this.prisma.sldDeviceSerial.updateMany({
+        where: {
+          id: { in: rows.map((r) => r.id) },
+          dealerId: sourceDealerId,
+          status: SldSerialStatus.ASSIGNED,
+        },
+        data: {
+          dealerId: toDealerId,
+          assignedAt: new Date(),
+        },
+      });
+      forwarded.push(...rows.map((r) => r.serialNumber));
+    }
+
+    if (userId) {
+      await this.auditService.logAction(
+        userId,
+        'FORWARD_SLD_SERIAL',
+        'SLD_INVENTORY',
+        toDealerId,
+        `Forwarded ${forwarded.length} serial(s) from ${sourceDealerId} to ${toDealerId} (OEM ${sldOemId})`,
+      );
+    }
+
+    return { forwarded, notFound, notEligible: [] as string[] };
+  }
 }

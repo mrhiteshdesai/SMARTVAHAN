@@ -4,7 +4,7 @@ SMARTVAHAN V2 — brownfield + tender FRS.
 
 | Module ID | Name | Status | Apps |
 |-----------|------|--------|------|
-| M01 | Auth & RBAC | Planned | backend, frontend |
+| M01 | Auth & RBAC (`SLD_ADMIN` + OEM auth) | In Progress | backend, frontend |
 | M02 | States & RTOs | Planned | frontend, backend |
 | M03 | OEM management | Planned | frontend, backend |
 | M04 | Dealers & registration | Planned | frontend, backend, **Flutter dealer** |
@@ -46,3 +46,5 @@ SMARTVAHAN V2 — brownfield + tender FRS.
 - New dealer registration: Reflective/SLD toggles
 - Public verify required; WebSocket deferred (polling)
 - Prefill renewal from prior SmartVahan cert (editable); empty if none
+- **ADMIN** SLD OEMs page is view-only; full SLD OEM CRUD = **SUPER_ADMIN** only
+- **SLD_ADMIN** role: SLD dashboard + SLD Certificates (Vahan/reinstate) scoped to assigned SLD OEMs (`User.authorizedSldOems`)

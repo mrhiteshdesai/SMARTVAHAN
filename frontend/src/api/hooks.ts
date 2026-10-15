@@ -149,13 +149,14 @@ export type OEM = {
   showOnHomepage?: boolean;
 };
 
-export function useOEMs() {
+export function useOEMs(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["oems"],
     queryFn: async () => {
       const res = await api.get<OEM[]>("/oems");
       return res.data;
     },
+    enabled: opts?.enabled !== false,
   });
 }
 
@@ -638,13 +639,17 @@ export type DashboardStats = {
     heatmapData: Array<{ lat: number; lng: number; weight: number }>;
 };
 
-export function useDashboardStats(filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string }) {
+export function useDashboardStats(
+    filters: { stateCode?: string; oemCode?: string; startDate?: string; endDate?: string },
+    enabled = true,
+) {
     return useQuery({
         queryKey: ["dashboardStats", filters],
         queryFn: async () => {
             const res = await api.get<DashboardStats>("/stats/dashboard", { params: filters });
             return res.data;
-        }
+        },
+        enabled,
     });
 }
 
@@ -700,13 +705,14 @@ export function useSldDashboardStats(
     });
 }
 
-export function useSystemSettings() {
+export function useSystemSettings(opts?: { enabled?: boolean }) {
     return useQuery({
         queryKey: ["systemSettings"],
         queryFn: async () => {
             const res = await api.get("/settings");
             return res.data;
-        }
+        },
+        enabled: opts?.enabled !== false,
     });
 }
 

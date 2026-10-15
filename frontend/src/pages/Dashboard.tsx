@@ -992,7 +992,7 @@ function DashboardContent() {
     isLoading,
     isFetching,
     error: apiError,
-  } = useDashboardStats(reflectiveFilters);
+  } = useDashboardStats(reflectiveFilters, showReflectiveModule);
 
   const {
     data: sldStats,
@@ -1002,9 +1002,11 @@ function DashboardContent() {
   } = useSldDashboardStats(sldFilters, showSldModule);
 
   const { data: states } = useStates();
-  const { data: oems } = useOEMs();
+  const { data: oems } = useOEMs({ enabled: showReflectiveModule });
   const { data: sldOems } = useSldOems();
-  const { data: settings } = useSystemSettings();
+  const { data: settings } = useSystemSettings({
+    enabled: showReflectiveModule && roleValue === "SUPER_ADMIN",
+  });
 
   const applyFilters = () => setAppliedFilters({ ...draftFilters });
   const resetFilters = () => {
@@ -1013,19 +1015,20 @@ function DashboardContent() {
   };
 
   const initialLoading =
-    isLoading || (showSldModule && (tab === "combined" || tab === "sld") && sldLoading && !sldStats);
+    (showReflectiveModule && isLoading) ||
+    (showSldModule && (tab === "combined" || tab === "sld") && sldLoading && !sldStats);
   const refreshing =
-    (isFetching && !isLoading) ||
+    (showReflectiveModule && isFetching && !isLoading) ||
     (showSldModule && (tab === "combined" || tab === "sld") && sldFetching && !sldLoading);
 
   if (initialLoading) return <div className="p-6">Loading dashboard data...</div>;
-  if (apiError)
+  if (showReflectiveModule && apiError)
     return (
       <div className="p-6 text-red-500">
         Failed to load dashboard data: {(apiError as Error).message}
       </div>
     );
-  if (!stats) return <div className="p-6">No dashboard data available</div>;
+  if (showReflectiveModule && !stats) return <div className="p-6">No dashboard data available</div>;
   if (showSldModule && sldError && (tab === "combined" || tab === "sld") && !sldStats)
     return (
       <div className="p-6 text-red-500">
@@ -1036,9 +1039,15 @@ function DashboardContent() {
     return <div className="p-6">Loading SLD dashboard data...</div>;
 
   const showReflectiveOemFilter =
-    roleValue !== "OEM_ADMIN" && roleValue !== "DEALER_USER" && roleValue !== "DEALER";
+    showReflectiveModule &&
+    roleValue !== "OEM_ADMIN" &&
+    roleValue !== "DEALER_USER" &&
+    roleValue !== "DEALER";
   const showStateFilter =
-    roleValue !== "STATE_ADMIN" && roleValue !== "DEALER_USER" && roleValue !== "DEALER";
+    roleValue !== "STATE_ADMIN" &&
+    roleValue !== "DEALER_USER" &&
+    roleValue !== "DEALER" &&
+    roleValue !== "SLD_ADMIN";
   const showSldOemFilter = showSldModule && (tab === "sld" || tab === "combined");
 
   return (

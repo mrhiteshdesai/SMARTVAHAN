@@ -983,6 +983,45 @@ export function useForwardSldInventory() {
   });
 }
 
+export function useBulkDeleteSldInventory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      sldOemId?: string;
+      serialIds?: string[];
+      csvText?: string;
+    }) => {
+      const res = await api.post("/sld/inventory/bulk-delete", data);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sld-inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["sld-available"] });
+      queryClient.invalidateQueries({ queryKey: ["sld-assigned-for-forward"] });
+    },
+  });
+}
+
+export function useChangeSldSerialModel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      targetModelId: string;
+      sldOemId?: string;
+      serialIds?: string[];
+      csvText?: string;
+    }) => {
+      const res = await api.post("/sld/inventory/change-model", data);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sld-inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["sld-available"] });
+      queryClient.invalidateQueries({ queryKey: ["sld-assigned-for-forward"] });
+    },
+  });
+}
+
 export type SldCertificateRow = {
   id: string;
   certificateNumber: string;

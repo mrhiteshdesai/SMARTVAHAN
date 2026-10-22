@@ -632,4 +632,206 @@ export class SldInventoryService {
 
     return { forwarded, notFound, notEligible };
   }
+
+  private resolveSerialSelection(data: {
+    sldOemId?: string;
+    serialIds?: string[];
+    serialNumbers?: string[];
+    csvText?: string;
+  }) {
+    const sldOemId = String(data?.sldOemId || '').trim();
+    const serialIds = Array.isArray(data?.serialIds)
+      ? data.serialIds.map((id) => String(id).trim()).filter(Boolean)
+      : [];
+    let serialNumbers = Array.isArray(data?.serialNumbers)
+      ? data.serialNumbers.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
+      : [];
+    if (data?.csvText?.trim()) {
+      const { serials } = this.parseSerialCsv(data.csvText);
+      serialNumbers = [...serialNumbers, ...serials];
+    }
+    serialNumbers = [...new Set(serialNumbers)];
+
+    if (serialIds.length === 0 && serialNumbers.length === 0) {
+      throw new BadRequestException('Provide serialIds or CSV / serial numbers');
+    }
+
+    const orFilters: any[] = [];
+    if (serialIds.length) orFilters.push({ id: { in: serialIds } });
+    if (serialNumbers.length) orFilters.push({ serialNumber: { in: serialNumbers } });
+
+    return { sldOemId, serialIds, serialNumbers, orFilters };
+  }
+
+  /**
+   * SUPER_ADMIN: permanently remove AVAILABLE/ASSIGNED serials with no certificates
+   * so they can be uploaded again under the correct model.
+   */
+  async bulkDeleteSerials(
+    data: {
+      sldOemId?: string;
+      serialIds?: string[];
+      serialNumbers?: string[];
+      csvText?: string;
+    },
+    userId?: string,
+  ) {
+    const { sldOemId, serialIds, serialNumbers, orFilters } = this.resolveSerialSelection(data);
+
+    const rows = await this.prisma.sldDeviceSerial.findMany({
+      where: {
+        ...(sldOemId ? { sldOemId } : {}),
+        OR: orFilters,
+      },
+      include: {
+        _count: { select: { certificates: true } },
+      },
+    });
+
+    const foundIds = new Set(rows.map((r) => r.id));
+    const foundSerials = new Set(rows.map((r) => r.serialNumber.toUpperCase()));
+    const notFound = [
+      ...serialIds.filter((id) => !foundIds.has(id)),
+      ...serialNumbers.filter((s) => !foundSerials.has(s)),
+    ];
+
+    const deleted: string[] = [];
+    const blockedUsed: string[] = [];
+    const blockedWithCert: string[] = [];
+    const eligibleIds: string[] = [];
+
+    for (const row of rows) {
+      if (row._count.certificates > 0 || row.status === SldSerialStatus.USED) {
+        if (row.status === SldSerialStatus.USED) blockedUsed.push(row.serialNumber);
+        else blockedWithCert.push(row.serialNumber);
+        continue;
+      }
+      if (row.status !== SldSerialStatus.AVAILABLE && row.status !== SldSerialStatus.ASSIGNED) {
+        blockedUsed.push(row.serialNumber);
+        continue;
+      }
+      eligibleIds.push(row.id);
+      deleted.push(row.serialNumber);
+    }
+
+    if (eligibleIds.length > 0) {
+      await this.prisma.sldDeviceSerial.deleteMany({
+        where: {
+          id: { in: eligibleIds },
+          status: { in: [SldSerialStatus.AVAILABLE, SldSerialStatus.ASSIGNED] },
+        },
+      });
+    }
+
+    if (userId) {
+      await this.auditService.logAction(
+        userId,
+        'DELETE_SLD_SERIALS',
+        'SLD_INVENTORY',
+        sldOemId || eligibleIds[0] || 'bulk',
+        `Deleted ${deleted.length} serial(s); blocked used=${blockedUsed.length} cert=${blockedWithCert.length}`,
+      );
+    }
+
+    return { deleted, blockedUsed, blockedWithCert, notFound };
+  }
+
+  /**
+   * SUPER_ADMIN: move AVAILABLE/ASSIGNED serials (no certificates) to another model
+   * under the same OEM. Dealer assignment is preserved.
+   */
+  async changeModel(
+    data: {
+      targetModelId: string;
+      sldOemId?: string;
+      serialIds?: string[];
+      serialNumbers?: string[];
+      csvText?: string;
+    },
+    userId?: string,
+  ) {
+    const targetModelId = String(data?.targetModelId || '').trim();
+    if (!targetModelId) throw new BadRequestException('targetModelId is required');
+
+    const targetModel = await this.prisma.sldDeviceModel.findUnique({
+      where: { id: targetModelId },
+    });
+    if (!targetModel) throw new NotFoundException('Target model not found');
+
+    const { sldOemId, serialIds, serialNumbers, orFilters } = this.resolveSerialSelection(data);
+    if (sldOemId && sldOemId !== targetModel.sldOemId) {
+      throw new BadRequestException('Target model belongs to a different SLD OEM');
+    }
+
+    const rows = await this.prisma.sldDeviceSerial.findMany({
+      where: {
+        sldOemId: targetModel.sldOemId,
+        OR: orFilters,
+      },
+      include: {
+        _count: { select: { certificates: true } },
+      },
+    });
+
+    const foundIds = new Set(rows.map((r) => r.id));
+    const foundSerials = new Set(rows.map((r) => r.serialNumber.toUpperCase()));
+    const notFound = [
+      ...serialIds.filter((id) => !foundIds.has(id)),
+      ...serialNumbers.filter((s) => !foundSerials.has(s)),
+    ];
+
+    const updated: string[] = [];
+    const blockedUsed: string[] = [];
+    const blockedWithCert: string[] = [];
+    const alreadyOnTarget: string[] = [];
+    const eligibleIds: string[] = [];
+
+    for (const row of rows) {
+      if (row.modelId === targetModelId) {
+        alreadyOnTarget.push(row.serialNumber);
+        continue;
+      }
+      if (row._count.certificates > 0 || row.status === SldSerialStatus.USED) {
+        if (row.status === SldSerialStatus.USED) blockedUsed.push(row.serialNumber);
+        else blockedWithCert.push(row.serialNumber);
+        continue;
+      }
+      if (row.status !== SldSerialStatus.AVAILABLE && row.status !== SldSerialStatus.ASSIGNED) {
+        blockedUsed.push(row.serialNumber);
+        continue;
+      }
+      eligibleIds.push(row.id);
+      updated.push(row.serialNumber);
+    }
+
+    if (eligibleIds.length > 0) {
+      await this.prisma.sldDeviceSerial.updateMany({
+        where: {
+          id: { in: eligibleIds },
+          sldOemId: targetModel.sldOemId,
+          status: { in: [SldSerialStatus.AVAILABLE, SldSerialStatus.ASSIGNED] },
+        },
+        data: { modelId: targetModelId },
+      });
+    }
+
+    if (userId) {
+      await this.auditService.logAction(
+        userId,
+        'CHANGE_SLD_SERIAL_MODEL',
+        'SLD_INVENTORY',
+        targetModelId,
+        `Moved ${updated.length} serial(s) to model ${targetModel.code}`,
+      );
+    }
+
+    return {
+      updated,
+      alreadyOnTarget,
+      blockedUsed,
+      blockedWithCert,
+      notFound,
+      targetModel: { id: targetModel.id, code: targetModel.code, name: targetModel.name },
+    };
+  }
 }

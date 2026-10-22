@@ -91,4 +91,18 @@ export class SldInventoryController {
       : String(body?.fromDealerId || '').trim() || undefined;
     return this.inventoryService.forwardSerials(body, fromDealerId, req.user?.userId);
   }
+
+  /** SUPER_ADMIN: delete AVAILABLE/ASSIGNED serials (no certificates) for re-upload. */
+  @Post('bulk-delete')
+  @Roles(UserRole.SUPER_ADMIN)
+  bulkDelete(@Body() body: any, @Req() req: any) {
+    return this.inventoryService.bulkDeleteSerials(body, req.user?.userId);
+  }
+
+  /** SUPER_ADMIN: move serials to another model on the same OEM (no certificates). */
+  @Post('change-model')
+  @Roles(UserRole.SUPER_ADMIN)
+  changeModel(@Body() body: any, @Req() req: any) {
+    return this.inventoryService.changeModel(body, req.user?.userId);
+  }
 }

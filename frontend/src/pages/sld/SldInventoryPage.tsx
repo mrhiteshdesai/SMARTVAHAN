@@ -13,6 +13,8 @@ import {
   useSldForwardTargets,
   useSldAssignedForForward,
   useForwardSldInventory,
+  useBulkDeleteSldInventory,
+  useChangeSldSerialModel,
 } from "../../api/hooks";
 
 function summaryBlock(title: string, rows: string[]) {
@@ -54,6 +56,7 @@ export default function SldInventoryPage() {
   const { user } = useAuth();
   const isDealer = user?.role === "DEALER_USER" || (user?.role as string) === "DEALER";
   const isAdmin = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
 
   const [sldOemId, setSldOemId] = useState("");
   const [modelId, setModelId] = useState("");
@@ -66,10 +69,15 @@ export default function SldInventoryPage() {
   const [openUpload, setOpenUpload] = useState(false);
   const [openAssign, setOpenAssign] = useState(false);
   const [openForward, setOpenForward] = useState(false);
+  const [openBulkDelete, setOpenBulkDelete] = useState(false);
+  const [openChangeModel, setOpenChangeModel] = useState(false);
   const [assignMode, setAssignMode] = useState<"manual" | "csv">("manual");
   const [uploadCsv, setUploadCsv] = useState("");
   const [assignCsv, setAssignCsv] = useState("");
+  const [bulkCsv, setBulkCsv] = useState("");
+  const [bulkTargetModelId, setBulkTargetModelId] = useState("");
   const [selectedSerialIds, setSelectedSerialIds] = useState<string[]>([]);
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
   const [lastSummary, setLastSummary] = useState<any>(null);
 
   // Assign modal: dealer first → OEM cascade
@@ -141,12 +149,37 @@ export default function SldInventoryPage() {
   const assignMutation = useAssignSldInventory();
   const assignCsvMutation = useAssignSldInventoryCsv();
   const forwardMutation = useForwardSldInventory();
+  const bulkDeleteMutation = useBulkDeleteSldInventory();
+  const changeModelMutation = useChangeSldSerialModel();
 
   const items = inventoryQuery.data?.items || [];
   const total = inventoryQuery.data?.total || 0;
   const limit = inventoryQuery.data?.limit || pageSize;
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const counts = inventoryQuery.data?.counts || { AVAILABLE: 0, ASSIGNED: 0, USED: 0 };
+
+  const pageSelectableIds = useMemo(
+    () => items.filter((r) => r.status === "AVAILABLE" || r.status === "ASSIGNED").map((r) => r.id),
+    [items],
+  );
+  const allPageSelected =
+    pageSelectableIds.length > 0 && pageSelectableIds.every((id) => bulkSelectedIds.includes(id));
+
+  const bulkSelectedRows = useMemo(
+    () => items.filter((r) => bulkSelectedIds.includes(r.id)),
+    [items, bulkSelectedIds],
+  );
+
+  const changeModelOemId = useMemo(() => {
+    if (sldOemId) return sldOemId;
+    const oemsInSelection = [...new Set(bulkSelectedRows.map((r) => r.sldOem?.id).filter(Boolean))];
+    return oemsInSelection.length === 1 ? (oemsInSelection[0] as string) : "";
+  }, [sldOemId, bulkSelectedRows]);
+
+  const changeModelOptions = useMemo(() => {
+    const oem = oems.find((o) => o.id === changeModelOemId);
+    return oem?.models || [];
+  }, [oems, changeModelOemId]);
 
   const onUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -241,6 +274,82 @@ export default function SldInventoryPage() {
     }
   };
 
+  const onBulkDelete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const useCsv = bulkCsv.trim().length > 0;
+    if (!useCsv && bulkSelectedIds.length === 0) {
+      alert("Select rows or paste serial numbers");
+      return;
+    }
+    if (useCsv && !sldOemId) {
+      alert("Select SLD OEM filter (or in the form) when deleting by CSV");
+      return;
+    }
+    if (
+      !confirm(
+        useCsv
+          ? "Permanently delete these serials (AVAILABLE/ASSIGNED only, no certificates)?"
+          : `Permanently delete ${bulkSelectedIds.length} selected serial(s)? They can be re-uploaded afterwards.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await bulkDeleteMutation.mutateAsync({
+        sldOemId: sldOemId || undefined,
+        ...(useCsv ? { csvText: bulkCsv } : { serialIds: bulkSelectedIds }),
+      });
+      setLastSummary({
+        deleted: res.deleted,
+        blockedUsed: res.blockedUsed,
+        blockedWithCert: res.blockedWithCert,
+        notFound: res.notFound,
+      });
+      setOpenBulkDelete(false);
+      setBulkCsv("");
+      setBulkSelectedIds([]);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || "Bulk delete failed");
+    }
+  };
+
+  const onChangeModel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bulkTargetModelId) {
+      alert("Select the target model");
+      return;
+    }
+    const useCsv = bulkCsv.trim().length > 0;
+    if (!useCsv && bulkSelectedIds.length === 0) {
+      alert("Select rows or paste serial numbers");
+      return;
+    }
+    if (useCsv && !changeModelOemId) {
+      alert("Filter by SLD OEM first when changing model by CSV");
+      return;
+    }
+    try {
+      const res = await changeModelMutation.mutateAsync({
+        targetModelId: bulkTargetModelId,
+        sldOemId: changeModelOemId || undefined,
+        ...(useCsv ? { csvText: bulkCsv } : { serialIds: bulkSelectedIds }),
+      });
+      setLastSummary({
+        updated: res.updated,
+        alreadyOnTarget: res.alreadyOnTarget,
+        blockedUsed: res.blockedUsed,
+        blockedWithCert: res.blockedWithCert,
+        notFound: res.notFound,
+      });
+      setOpenChangeModel(false);
+      setBulkCsv("");
+      setBulkTargetModelId("");
+      setBulkSelectedIds([]);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || "Change model failed");
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -302,6 +411,29 @@ export default function SldInventoryPage() {
             >
               <Forward size={16} /> Forward / Reassign
             </button>
+          )}
+          {isSuperAdmin && (
+            <>
+              <button
+                className="flex items-center gap-2 border border-red-200 text-red-700 px-4 py-2 rounded-md text-sm hover:bg-red-50"
+                onClick={() => {
+                  setBulkCsv("");
+                  setOpenBulkDelete(true);
+                }}
+              >
+                Bulk delete
+              </button>
+              <button
+                className="flex items-center gap-2 border px-4 py-2 rounded-md text-sm hover:bg-gray-50"
+                onClick={() => {
+                  setBulkCsv("");
+                  setBulkTargetModelId("");
+                  setOpenChangeModel(true);
+                }}
+              >
+                Change model
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -387,9 +519,14 @@ export default function SldInventoryPage() {
             <div className="text-sm">Created: {lastSummary.created}</div>
           ) : null}
           {summaryBlock("Assigned / Forwarded", lastSummary.assigned || lastSummary.forwarded || [])}
+          {summaryBlock("Deleted", lastSummary.deleted || [])}
+          {summaryBlock("Model updated", lastSummary.updated || [])}
+          {summaryBlock("Already on target model", lastSummary.alreadyOnTarget || [])}
           {summaryBlock("Already exists", lastSummary.alreadyExists || [])}
           {summaryBlock("Already assigned", lastSummary.alreadyAssigned || [])}
           {summaryBlock("Already used", lastSummary.alreadyUsed || [])}
+          {summaryBlock("Blocked (USED)", lastSummary.blockedUsed || [])}
+          {summaryBlock("Blocked (has certificate)", lastSummary.blockedWithCert || [])}
           {summaryBlock("Not found", lastSummary.notFound || [])}
           {summaryBlock("Not eligible (already target / not assigned)", lastSummary.notEligible || [])}
           {summaryBlock("Wrong OEM/Model", lastSummary.wrongOemOrModel || [])}
@@ -400,10 +537,56 @@ export default function SldInventoryPage() {
         </div>
       ) : null}
 
+      {isSuperAdmin && bulkSelectedIds.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 border rounded-lg px-3 py-2 bg-amber-50 border-amber-200 text-sm">
+          <span className="font-medium">{bulkSelectedIds.length} selected</span>
+          <button
+            type="button"
+            className="px-3 py-1 border border-red-200 text-red-700 rounded bg-white hover:bg-red-50"
+            onClick={() => {
+              setBulkCsv("");
+              setOpenBulkDelete(true);
+            }}
+          >
+            Delete selected
+          </button>
+          <button
+            type="button"
+            className="px-3 py-1 border rounded bg-white hover:bg-gray-50"
+            onClick={() => {
+              setBulkCsv("");
+              setBulkTargetModelId("");
+              setOpenChangeModel(true);
+            }}
+          >
+            Change model
+          </button>
+          <button type="button" className="text-xs text-gray-500 underline ml-auto" onClick={() => setBulkSelectedIds([])}>
+            Clear selection
+          </button>
+        </div>
+      ) : null}
+
       <div className="bg-white border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-left text-xs uppercase text-gray-500">
             <tr>
+              {isSuperAdmin && (
+                <th className="px-3 py-2 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setBulkSelectedIds((prev) => [...new Set([...prev, ...pageSelectableIds])]);
+                      } else {
+                        setBulkSelectedIds((prev) => prev.filter((id) => !pageSelectableIds.includes(id)));
+                      }
+                    }}
+                    title="Select AVAILABLE/ASSIGNED on this page"
+                  />
+                </th>
+              )}
               <th className="px-3 py-2">Serial</th>
               <th className="px-3 py-2">OEM</th>
               <th className="px-3 py-2">Model</th>
@@ -416,36 +599,53 @@ export default function SldInventoryPage() {
           <tbody className="divide-y">
             {inventoryQuery.isLoading ? (
               <tr>
-                <td colSpan={isDealer ? 6 : 7} className="px-3 py-6 text-center text-gray-500">
+                <td colSpan={isDealer ? (isSuperAdmin ? 7 : 6) : isSuperAdmin ? 8 : 7} className="px-3 py-6 text-center text-gray-500">
                   Loading...
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={isDealer ? 6 : 7} className="px-3 py-6 text-center text-gray-500">
+                <td colSpan={isDealer ? (isSuperAdmin ? 7 : 6) : isSuperAdmin ? 8 : 7} className="px-3 py-6 text-center text-gray-500">
                   No inventory records
                 </td>
               </tr>
             ) : (
-              items.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 font-medium">{row.serialNumber}</td>
-                  <td className="px-3 py-2">{row.sldOem?.code || "—"}</td>
-                  <td className="px-3 py-2">{row.model?.code || "—"}</td>
-                  <td className="px-3 py-2">
-                    <StatusPill status={row.status} />
-                  </td>
-                  {!isDealer && <td className="px-3 py-2">{row.dealer?.name || "—"}</td>}
-                  <td className="px-3 py-2">{row.createdAt ? new Date(row.createdAt).toLocaleString() : "—"}</td>
-                  <td className="px-3 py-2">
-                    {row.certificate
-                      ? `${row.certificate.certificateNumber} (${new Date(row.certificate.generatedAt).toLocaleDateString()})`
-                      : row.usedAt
-                        ? new Date(row.usedAt).toLocaleString()
-                        : "—"}
-                  </td>
-                </tr>
-              ))
+              items.map((row) => {
+                const canSelect = isSuperAdmin && (row.status === "AVAILABLE" || row.status === "ASSIGNED");
+                return (
+                  <tr key={row.id} className="hover:bg-gray-50">
+                    {isSuperAdmin && (
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          disabled={!canSelect}
+                          checked={bulkSelectedIds.includes(row.id)}
+                          onChange={(e) => {
+                            setBulkSelectedIds((prev) =>
+                              e.target.checked ? [...prev, row.id] : prev.filter((id) => id !== row.id),
+                            );
+                          }}
+                        />
+                      </td>
+                    )}
+                    <td className="px-3 py-2 font-medium">{row.serialNumber}</td>
+                    <td className="px-3 py-2">{row.sldOem?.code || "—"}</td>
+                    <td className="px-3 py-2">{row.model?.code || "—"}</td>
+                    <td className="px-3 py-2">
+                      <StatusPill status={row.status} />
+                    </td>
+                    {!isDealer && <td className="px-3 py-2">{row.dealer?.name || "—"}</td>}
+                    <td className="px-3 py-2">{row.createdAt ? new Date(row.createdAt).toLocaleString() : "—"}</td>
+                    <td className="px-3 py-2">
+                      {row.certificate
+                        ? `${row.certificate.certificateNumber} (${new Date(row.certificate.generatedAt).toLocaleDateString()})`
+                        : row.usedAt
+                          ? new Date(row.usedAt).toLocaleString()
+                          : "—"}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -810,6 +1010,97 @@ export default function SldInventoryPage() {
           </div>
         </form>
       </Modal>
+
+      {isSuperAdmin && (
+        <Modal open={openBulkDelete} onClose={() => setOpenBulkDelete(false)} title="Bulk delete serials" maxWidth="max-w-xl">
+          <form onSubmit={onBulkDelete} className="space-y-4">
+            <div className="text-xs text-gray-500">
+              SUPER_ADMIN only. Deletes AVAILABLE or ASSIGNED serials with no certificates (including dealer-assigned stock).
+              USED / certificated rows are skipped. After delete you can upload the same serials under the correct model.
+            </div>
+            {bulkSelectedIds.length > 0 && !bulkCsv.trim() ? (
+              <div className="text-sm border rounded p-2 bg-gray-50">
+                Will delete <strong>{bulkSelectedIds.length}</strong> selected row(s). Optionally paste a CSV below to use that list instead.
+              </div>
+            ) : null}
+            <div>
+              <label className="block text-sm font-medium mb-1">Or paste serial numbers (one per line)</label>
+              <p className="text-xs text-gray-500 mb-1">When pasting, set the page OEM filter first.</p>
+              <textarea
+                className="w-full border rounded px-3 py-2 text-sm font-mono min-h-[120px]"
+                value={bulkCsv}
+                onChange={(e) => setBulkCsv(e.target.value)}
+                placeholder="One serial per line"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="px-4 py-2 border rounded" onClick={() => setOpenBulkDelete(false)}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-red-600 text-white rounded"
+                disabled={bulkDeleteMutation.isPending}
+              >
+                {bulkDeleteMutation.isPending ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {isSuperAdmin && (
+        <Modal open={openChangeModel} onClose={() => setOpenChangeModel(false)} title="Change model" maxWidth="max-w-xl">
+          <form onSubmit={onChangeModel} className="space-y-4">
+            <div className="text-xs text-gray-500">
+              SUPER_ADMIN only. Moves AVAILABLE/ASSIGNED serials (no certificates) to another model on the same OEM.
+              Dealer assignment is kept. Filter by OEM if using CSV paste.
+            </div>
+            {bulkSelectedIds.length > 0 && !bulkCsv.trim() ? (
+              <div className="text-sm border rounded p-2 bg-gray-50">
+                Applying to <strong>{bulkSelectedIds.length}</strong> selected row(s).
+              </div>
+            ) : null}
+            <select
+              className="w-full border rounded px-3 py-2 text-sm"
+              value={bulkTargetModelId}
+              onChange={(e) => setBulkTargetModelId(e.target.value)}
+              required
+              disabled={!changeModelOemId}
+            >
+              <option value="">
+                {changeModelOemId ? "Select target model" : "Set OEM filter (or select rows from one OEM)"}
+              </option>
+              {changeModelOptions.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.code})
+                </option>
+              ))}
+            </select>
+            <div>
+              <label className="block text-sm font-medium mb-1">Or paste serial numbers (one per line)</label>
+              <textarea
+                className="w-full border rounded px-3 py-2 text-sm font-mono min-h-[120px]"
+                value={bulkCsv}
+                onChange={(e) => setBulkCsv(e.target.value)}
+                placeholder="One serial per line"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="px-4 py-2 border rounded" onClick={() => setOpenChangeModel(false)}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-primary text-white rounded"
+                disabled={changeModelMutation.isPending}
+              >
+                {changeModelMutation.isPending ? "Updating…" : "Change model"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }

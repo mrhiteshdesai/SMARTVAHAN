@@ -19,6 +19,8 @@
 | POST | /api/sld/inventory/assign | SLD | Manual assign to dealer | SUPER_ADMIN/ADMIN |
 | POST | /api/sld/inventory/assign-csv | SLD | CSV assign to dealer | SUPER_ADMIN/ADMIN |
 | POST | /api/sld/inventory/forward | SLD | Forward ASSIGNED serials (serialIds / serialNumbers / csvText) | SUPER_ADMIN/ADMIN/DEALER_USER |
+| POST | /api/sld/inventory/bulk-delete | SLD | Delete AVAILABLE/ASSIGNED serials (no certs) for re-upload | SUPER_ADMIN |
+| POST | /api/sld/inventory/change-model | SLD | Move serials to another model (same OEM, no certs) | SUPER_ADMIN |
 | GET | /api/sld/models/:id/vehicle-models | SLD | List approved vehicle models | JWT |
 | POST | /api/sld/models/:id/vehicle-models | SLD | Add one approved vehicle model | SUPER_ADMIN |
 | POST | /api/sld/models/:id/vehicle-models/upload | SLD | CSV upload approved vehicle models | SUPER_ADMIN |

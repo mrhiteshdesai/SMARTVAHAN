@@ -11,6 +11,7 @@ import {
   useAssignSldInventoryCsv,
   useDealers,
   useSldForwardTargets,
+  useSldAssignedForForward,
   useForwardSldInventory,
 } from "../../api/hooks";
 
@@ -60,6 +61,7 @@ export default function SldInventoryPage() {
   const [filterDealerId, setFilterDealerId] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
   const [openUpload, setOpenUpload] = useState(false);
   const [openAssign, setOpenAssign] = useState(false);
@@ -79,9 +81,12 @@ export default function SldInventoryPage() {
   const [forwardOemId, setForwardOemId] = useState("");
   const [forwardToDealerId, setForwardToDealerId] = useState("");
   const [forwardSerialIds, setForwardSerialIds] = useState<string[]>([]);
+  const [forwardMode, setForwardMode] = useState<"manual" | "csv">("manual");
+  const [forwardCsv, setForwardCsv] = useState("");
 
   const uploadFileRef = useRef<HTMLInputElement>(null);
   const assignFileRef = useRef<HTMLInputElement>(null);
+  const forwardFileRef = useRef<HTMLInputElement>(null);
 
   const { data: oems = [] } = useSldOems();
   const { data: dealers = [] } = useDealers({ enabled: isAdmin });
@@ -119,7 +124,7 @@ export default function SldInventoryPage() {
     dealerId: isDealer ? undefined : filterDealerId || undefined,
     search: search || undefined,
     page,
-    limit: 50,
+    limit: pageSize,
   });
 
   const availableQuery = useSldAvailableSerials(
@@ -128,12 +133,9 @@ export default function SldInventoryPage() {
   );
 
   const forwardTargetsQuery = useSldForwardTargets(openForward ? forwardOemId : "");
-  const forwardAssignable = useMemo(() => {
-    if (!forwardOemId) return [];
-    return (inventoryQuery.data?.items || []).filter(
-      (r) => r.status === "ASSIGNED" && r.sldOem?.id === forwardOemId,
-    );
-  }, [inventoryQuery.data?.items, forwardOemId]);
+  const assignedForForwardQuery = useSldAssignedForForward(
+    openForward && forwardMode === "manual" ? forwardOemId : "",
+  );
 
   const uploadMutation = useUploadSldInventory();
   const assignMutation = useAssignSldInventory();
@@ -142,7 +144,7 @@ export default function SldInventoryPage() {
 
   const items = inventoryQuery.data?.items || [];
   const total = inventoryQuery.data?.total || 0;
-  const limit = inventoryQuery.data?.limit || 50;
+  const limit = inventoryQuery.data?.limit || pageSize;
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const counts = inventoryQuery.data?.counts || { AVAILABLE: 0, ASSIGNED: 0, USED: 0 };
 
@@ -204,31 +206,36 @@ export default function SldInventoryPage() {
 
   const onForward = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!forwardOemId || !forwardToDealerId || forwardSerialIds.length === 0) {
-      alert("Select OEM, target dealer, and at least one assigned serial");
+    if (!forwardOemId || !forwardToDealerId) {
+      alert("Select OEM and target dealer");
+      return;
+    }
+    if (forwardMode === "manual" && forwardSerialIds.length === 0) {
+      alert("Select at least one assigned serial");
+      return;
+    }
+    if (forwardMode === "csv" && !forwardCsv.trim()) {
+      alert("Provide CSV serials (file or paste one per line)");
       return;
     }
     try {
-      const sourceDealerId = isDealer
-        ? undefined
-        : items.find((r) => forwardSerialIds.includes(r.id))?.dealer?.id;
-      if (isAdmin && !sourceDealerId) {
-        alert("Selected serials must belong to a dealer");
-        return;
-      }
       const res = await forwardMutation.mutateAsync({
         toDealerId: forwardToDealerId,
         sldOemId: forwardOemId,
-        serialIds: forwardSerialIds,
-        ...(sourceDealerId ? { fromDealerId: sourceDealerId } : {}),
+        ...(forwardMode === "manual"
+          ? { serialIds: forwardSerialIds }
+          : { csvText: forwardCsv }),
       });
       setLastSummary({
         assigned: res.forwarded,
         notFound: res.notFound,
+        notEligible: res.notEligible,
       });
       setOpenForward(false);
       setForwardSerialIds([]);
       setForwardToDealerId("");
+      setForwardCsv("");
+      setForwardMode("manual");
     } catch (err: any) {
       alert(err?.response?.data?.message || "Forward failed");
     }
@@ -288,6 +295,8 @@ export default function SldInventoryPage() {
                 setForwardOemId(sldOemId || oems[0]?.id || "");
                 setForwardToDealerId("");
                 setForwardSerialIds([]);
+                setForwardCsv("");
+                setForwardMode("manual");
                 setOpenForward(true);
               }}
             >
@@ -382,6 +391,7 @@ export default function SldInventoryPage() {
           {summaryBlock("Already assigned", lastSummary.alreadyAssigned || [])}
           {summaryBlock("Already used", lastSummary.alreadyUsed || [])}
           {summaryBlock("Not found", lastSummary.notFound || [])}
+          {summaryBlock("Not eligible (already target / not assigned)", lastSummary.notEligible || [])}
           {summaryBlock("Wrong OEM/Model", lastSummary.wrongOemOrModel || [])}
           {summaryBlock("Duplicates in file", lastSummary.duplicates || lastSummary.duplicatesInFile || [])}
           <button className="text-xs text-gray-500 underline" onClick={() => setLastSummary(null)}>
@@ -441,11 +451,28 @@ export default function SldInventoryPage() {
         </table>
       </div>
 
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center justify-between gap-3 text-sm flex-wrap">
         <div className="text-gray-600">
           {total} total · page {page}/{totalPages}
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="flex items-center gap-2 text-gray-600">
+            Rows
+            <select
+              className="border rounded px-2 py-1.5 bg-white text-sm"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+            >
+              {[25, 50, 100, 200].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             className="px-3 py-1.5 border rounded disabled:opacity-50"
             disabled={page <= 1}
@@ -668,6 +695,23 @@ export default function SldInventoryPage() {
         <form onSubmit={onForward} className="space-y-4">
           <div className="text-xs text-gray-500">
             Forward unused (ASSIGNED) serials to another dealer who is authorised for the same SLD OEM.
+            Use Manual to pick from stock, or CSV / paste one serial per line.
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className={`px-3 py-1.5 rounded text-sm border ${forwardMode === "manual" ? "bg-primary text-white" : ""}`}
+              onClick={() => setForwardMode("manual")}
+            >
+              Manual
+            </button>
+            <button
+              type="button"
+              className={`px-3 py-1.5 rounded text-sm border ${forwardMode === "csv" ? "bg-primary text-white" : ""}`}
+              onClick={() => setForwardMode("csv")}
+            >
+              CSV
+            </button>
           </div>
           <select
             className="w-full border rounded px-3 py-2 text-sm"
@@ -700,27 +744,62 @@ export default function SldInventoryPage() {
               </option>
             ))}
           </select>
-          <div className="max-h-48 overflow-auto border rounded p-2 space-y-1">
-            {forwardAssignable.map((s) => (
-              <label key={s.id} className="flex items-center gap-2 text-sm">
+
+          {forwardMode === "manual" ? (
+            <div className="max-h-48 overflow-auto border rounded p-2 space-y-1">
+              {(assignedForForwardQuery.data || []).map((s) => (
+                <label key={s.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={forwardSerialIds.includes(s.id)}
+                    onChange={(e) => {
+                      setForwardSerialIds((prev) =>
+                        e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
+                      );
+                    }}
+                  />
+                  {s.serialNumber} · {s.model?.code || "—"}
+                  {!isDealer && s.dealer?.name ? ` · ${s.dealer.name}` : ""}
+                </label>
+              ))}
+              {assignedForForwardQuery.isLoading ? (
+                <div className="text-sm text-gray-500">Loading assigned serials…</div>
+              ) : null}
+              {!assignedForForwardQuery.isLoading &&
+              forwardOemId &&
+              (assignedForForwardQuery.data || []).length === 0 ? (
+                <div className="text-sm text-gray-500">
+                  No ASSIGNED (unused) serials for this OEM{isDealer ? " in your stock" : ""}.
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium mb-1">Import CSV file</label>
                 <input
-                  type="checkbox"
-                  checked={forwardSerialIds.includes(s.id)}
-                  onChange={(e) => {
-                    setForwardSerialIds((prev) =>
-                      e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
-                    );
+                  ref={forwardFileRef}
+                  type="file"
+                  accept=".csv,.txt,text/csv,text/plain"
+                  className="block w-full text-sm"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setForwardCsv(await readCsvFile(file));
                   }}
                 />
-                {s.serialNumber} · {s.model?.code || "—"}
-              </label>
-            ))}
-            {forwardOemId && forwardAssignable.length === 0 ? (
-              <div className="text-sm text-gray-500">
-                No ASSIGNED serials for this OEM on the current page/filter. Clear filters or choose OEM with stock.
               </div>
-            ) : null}
-          </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Or paste serial numbers (one per line)</label>
+                <textarea
+                  className="w-full border rounded px-3 py-2 text-sm font-mono min-h-[120px]"
+                  value={forwardCsv}
+                  onChange={(e) => setForwardCsv(e.target.value)}
+                  placeholder="One serial per line"
+                />
+              </div>
+            </>
+          )}
+
           <div className="flex justify-end gap-2">
             <button type="button" className="px-4 py-2 border rounded" onClick={() => setOpenForward(false)}>
               Cancel

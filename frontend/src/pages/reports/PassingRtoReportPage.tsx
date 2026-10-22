@@ -4,6 +4,7 @@ import ReportTable from "./ReportTable";
 import ReportFiltersComponent, { FilterState } from "./ReportFilters";
 import ReportCharts from "./ReportCharts";
 import * as XLSX from "xlsx";
+import ReportsBackLink from "./ReportsBackLink";
 
 export default function PassingRtoReportPage() {
   const [appliedFilters, setAppliedFilters] = useState<ReportFilters>({});
@@ -32,6 +33,7 @@ export default function PassingRtoReportPage() {
 
   return (
     <div className="p-6">
+      <ReportsBackLink />
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">
           Passing RTO Wise Report

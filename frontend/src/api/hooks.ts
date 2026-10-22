@@ -947,13 +947,29 @@ export function useSldForwardTargets(sldOemId: string) {
   });
 }
 
+/** ASSIGNED serials eligible to forward (not limited to current inventory page). */
+export function useSldAssignedForForward(sldOemId: string, dealerId?: string) {
+  return useQuery({
+    queryKey: ["sld-assigned-for-forward", sldOemId, dealerId || ""],
+    enabled: Boolean(sldOemId),
+    queryFn: async () => {
+      const res = await api.get<SldDeviceSerial[]>("/sld/inventory/assigned-for-forward", {
+        params: { sldOemId, ...(dealerId ? { dealerId } : {}) },
+      });
+      return res.data;
+    },
+  });
+}
+
 export function useForwardSldInventory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: {
       toDealerId: string;
       sldOemId: string;
-      serialIds: string[];
+      serialIds?: string[];
+      serialNumbers?: string[];
+      csvText?: string;
       fromDealerId?: string;
     }) => {
       const res = await api.post("/sld/inventory/forward", data);
@@ -962,6 +978,7 @@ export function useForwardSldInventory() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sld-inventory"] });
       queryClient.invalidateQueries({ queryKey: ["sld-forward-targets"] });
+      queryClient.invalidateQueries({ queryKey: ["sld-assigned-for-forward"] });
     },
   });
 }

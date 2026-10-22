@@ -45,7 +45,6 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [openReflective, setOpenReflective] = useState(false);
   const [openSld, setOpenSld] = useState(false);
-  const [openReports, setOpenReports] = useState(false);
   const [openUsers, setOpenUsers] = useState(false);
   const basePath = localStorage.getItem("isGhostMode") === "true" ? "/control/rp" : "/control";
 
@@ -64,9 +63,6 @@ export default function Sidebar() {
     }
     if (p.includes("/sld/")) {
       setOpenSld(true);
-    }
-    if (p.includes("/reports/")) {
-      setOpenReports(true);
     }
     if (p.includes("/users/")) {
       setOpenUsers(true);
@@ -122,6 +118,8 @@ export default function Sidebar() {
       case "/settings":
         return ["SUPER_ADMIN"].includes(roleValue);
       case "reports-section":
+      case "/reports":
+        // Hub + reports: not for SLD_ADMIN / dealers
         return ["SUPER_ADMIN", "ADMIN", "STATE_ADMIN", "OEM_ADMIN", "GHOST_ADMIN"].includes(roleValue);
       case "users-section":
         return ["SUPER_ADMIN", "ADMIN"].includes(roleValue);
@@ -249,63 +247,17 @@ export default function Sidebar() {
               }),
             )}
 
-          {/* 4. Reports */}
-          {hasAccess("reports-section") &&
-            renderCollapsibleSection(
-              "Reports",
-              FileBarChart2,
-              openReports,
-              setOpenReports,
-              "/reports/state",
-              <>
-                <div className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                  Ref. Reports
-                </div>
-                {user?.role !== "OEM_ADMIN" && (
-                  <>
-                    <NavLink to={`${basePath}/reports/state`} className={({ isActive }) => ItemClass(isActive)}>
-                      <Map className="w-4 h-4" />
-                      <span>Ref. State Report</span>
-                    </NavLink>
-                    <NavLink to={`${basePath}/reports/oem`} className={({ isActive }) => ItemClass(isActive)}>
-                      <Building2 className="w-4 h-4" />
-                      <span>Ref. OEM Report</span>
-                    </NavLink>
-                  </>
-                )}
-                <NavLink to={`${basePath}/reports/rto`} className={({ isActive }) => ItemClass(isActive)}>
-                  <FileBarChart2 className="w-4 h-4" />
-                  <span>Ref. Reg. RTO Report</span>
-                </NavLink>
-                <NavLink to={`${basePath}/reports/passing-rto`} className={({ isActive }) => ItemClass(isActive)}>
-                  <FileBarChart2 className="w-4 h-4" />
-                  <span>Ref. Passing RTO Report</span>
-                </NavLink>
-                <NavLink to={`${basePath}/reports/dealer`} className={({ isActive }) => ItemClass(isActive)}>
-                  <Users className="w-4 h-4" />
-                  <span>Ref. Dealer Report</span>
-                </NavLink>
-                {hasAccess("sld-section") && (
-                  <>
-                    <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                      SLD Reports
-                    </div>
-                    <NavLink to={`${basePath}/reports/sld/state`} className={({ isActive }) => ItemClass(isActive)}>
-                      <FileBarChart2 className="w-4 h-4" />
-                      <span>SLD State Report</span>
-                    </NavLink>
-                    <NavLink to={`${basePath}/reports/sld/oem`} className={({ isActive }) => ItemClass(isActive)}>
-                      <FileBarChart2 className="w-4 h-4" />
-                      <span>SLD OEM Report</span>
-                    </NavLink>
-                    <NavLink to={`${basePath}/reports/sld/dealer`} className={({ isActive }) => ItemClass(isActive)}>
-                      <Users className="w-4 h-4" />
-                      <span>SLD Dealer Report</span>
-                    </NavLink>
-                  </>
-                )}
-              </>,
-            )}
+          {/* 4. Reports hub */}
+          {hasAccess("/reports") && (
+            <NavLink
+              to={`${basePath}/reports`}
+              end={false}
+              className={() => ItemClass(location.pathname.includes("/reports"))}
+            >
+              <FileBarChart2 className="w-5 h-5" />
+              {!collapsed && <span>Reports</span>}
+            </NavLink>
+          )}
 
           {/* 5. User Management */}
           {hasAccess("users-section") &&

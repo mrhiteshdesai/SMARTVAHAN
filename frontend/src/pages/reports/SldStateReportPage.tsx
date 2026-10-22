@@ -3,6 +3,7 @@ import { useSldStateReport, SldReportFilters } from "../../api/reportsHooks";
 import ReportTable from "./ReportTable";
 import ReportCharts from "./ReportCharts";
 import * as XLSX from "xlsx";
+import ReportsBackLink from "./ReportsBackLink";
 
 export default function SldStateReportPage() {
   const [appliedFilters, setAppliedFilters] = useState<SldReportFilters>({});
@@ -26,6 +27,7 @@ export default function SldStateReportPage() {
 
   return (
     <div className="p-6">
+      <ReportsBackLink />
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">SLD State Report</h1>
         <p className="text-sm text-gray-500">SLD fitment certificates grouped by state.</p>

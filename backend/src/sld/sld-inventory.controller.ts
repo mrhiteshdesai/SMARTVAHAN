@@ -55,6 +55,20 @@ export class SldInventoryController {
     return this.inventoryService.listForwardTargets(sldOemId, exclude);
   }
 
+  @Get('assigned-for-forward')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.DEALER_USER)
+  assignedForForward(
+    @Req() req: any,
+    @Query('sldOemId') sldOemId: string,
+    @Query('dealerId') dealerId?: string,
+  ) {
+    const isDealer = req.user?.role === 'DEALER_USER' || req.user?.role === 'DEALER';
+    return this.inventoryService.listAssignedForForward(
+      sldOemId,
+      isDealer ? req.user.userId : dealerId || undefined,
+    );
+  }
+
   @Post('assign')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   assign(@Body() body: any, @Req() req: any) {
@@ -67,14 +81,14 @@ export class SldInventoryController {
     return this.inventoryService.assignCsv(body, req.user?.userId);
   }
 
-  /** Dealer → dealer reassignment of ASSIGNED (unused) serials. */
+  /** Dealer → dealer reassignment of ASSIGNED (unused) serials (manual IDs or CSV). */
   @Post('forward')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.DEALER_USER)
   forward(@Body() body: any, @Req() req: any) {
     const isDealer = req.user?.role === 'DEALER_USER' || req.user?.role === 'DEALER';
     const fromDealerId = isDealer
       ? req.user.userId
-      : String(body?.fromDealerId || '').trim();
+      : String(body?.fromDealerId || '').trim() || undefined;
     return this.inventoryService.forwardSerials(body, fromDealerId, req.user?.userId);
   }
 }

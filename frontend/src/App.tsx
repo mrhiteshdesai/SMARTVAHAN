@@ -26,6 +26,7 @@ import DealerReportPage from "./pages/reports/DealerReportPage";
 import SldStateReportPage from "./pages/reports/SldStateReportPage";
 import SldOemReportPage from "./pages/reports/SldOemReportPage";
 import SldDealerReportPage from "./pages/reports/SldDealerReportPage";
+import ReportsHubPage from "./pages/reports/ReportsHubPage";
 import AuditLogPage from "./pages/AuditLogPage";
 import InventoryPage from "./pages/inventory/InventoryPage";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
@@ -111,6 +112,7 @@ export default function App() {
 
         <Route path="/control" element={<DashboardLayout />}>
           <Route index element={<Dashboard />} />
+          <Route path="reports" element={<ReportsHubPage />} />
           <Route path="reports/state" element={<StateReportPage />} />
           <Route path="reports/rto" element={<RtoReportPage />} />
           <Route path="reports/passing-rto" element={<PassingRtoReportPage />} />
@@ -195,6 +197,7 @@ export default function App() {
 
         <Route path="/control/rp" element={<DashboardLayout />}>
           <Route index element={<Dashboard />} />
+          <Route path="reports" element={<ReportsHubPage />} />
           <Route path="reports/state" element={<StateReportPage />} />
           <Route path="reports/rto" element={<RtoReportPage />} />
           <Route path="reports/passing-rto" element={<PassingRtoReportPage />} />

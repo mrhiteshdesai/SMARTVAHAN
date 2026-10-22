@@ -14,8 +14,11 @@
 | POST | /api/sld/inventory/upload | SLD | CSV inventory upload | SUPER_ADMIN/ADMIN |
 | GET | /api/sld/inventory | SLD | Search/filter inventory | SUPER_ADMIN/ADMIN |
 | GET | /api/sld/inventory/available | SLD | Available serials for assign | SUPER_ADMIN/ADMIN |
+| GET | /api/sld/inventory/forward-targets | SLD | Dealers authorised for OEM (forward target) | SUPER_ADMIN/ADMIN/DEALER_USER |
+| GET | /api/sld/inventory/assigned-for-forward | SLD | ASSIGNED serials eligible to forward (dealer-scoped for dealers) | SUPER_ADMIN/ADMIN/DEALER_USER |
 | POST | /api/sld/inventory/assign | SLD | Manual assign to dealer | SUPER_ADMIN/ADMIN |
 | POST | /api/sld/inventory/assign-csv | SLD | CSV assign to dealer | SUPER_ADMIN/ADMIN |
+| POST | /api/sld/inventory/forward | SLD | Forward ASSIGNED serials (serialIds / serialNumbers / csvText) | SUPER_ADMIN/ADMIN/DEALER_USER |
 | GET | /api/sld/models/:id/vehicle-models | SLD | List approved vehicle models | JWT |
 | POST | /api/sld/models/:id/vehicle-models | SLD | Add one approved vehicle model | SUPER_ADMIN |
 | POST | /api/sld/models/:id/vehicle-models/upload | SLD | CSV upload approved vehicle models | SUPER_ADMIN |

@@ -200,6 +200,31 @@ export class SldInventoryService {
     });
   }
 
+  /** ASSIGNED (unused) serials eligible to forward — optional dealer scope. */
+  async listAssignedForForward(sldOemId: string, dealerId?: string) {
+    const oemId = String(sldOemId || '').trim();
+    if (!oemId) throw new BadRequestException('sldOemId is required');
+
+    return this.prisma.sldDeviceSerial.findMany({
+      where: {
+        sldOemId: oemId,
+        status: SldSerialStatus.ASSIGNED,
+        dealerId: dealerId ? dealerId : { not: null },
+      },
+      orderBy: { serialNumber: 'asc' },
+      take: 1000,
+      select: {
+        id: true,
+        serialNumber: true,
+        status: true,
+        dealerId: true,
+        assignedAt: true,
+        model: { select: { id: true, code: true, name: true } },
+        dealer: { select: { id: true, name: true, phone: true } },
+      },
+    });
+  }
+
   private async validateAssignContext(dealerId: string, sldOemId: string, modelId: string) {
     const dealer = await this.prisma.dealer.findUnique({
       where: { id: dealerId },
@@ -450,6 +475,7 @@ export class SldInventoryService {
   /**
    * Forward ASSIGNED (unused) serials from one dealer to another
    * who is authorised for the same SLD OEM.
+   * Admin may omit fromDealerId — source is resolved per serial (CSV / multi-dealer).
    */
   async forwardSerials(
     data: {
@@ -457,8 +483,9 @@ export class SldInventoryService {
       sldOemId: string;
       serialIds?: string[];
       serialNumbers?: string[];
+      csvText?: string;
     },
-    fromDealerId: string,
+    fromDealerId: string | undefined,
     userId?: string,
   ) {
     const toDealerId = String(data?.toDealerId || '').trim();
@@ -467,36 +494,88 @@ export class SldInventoryService {
     if (!toDealerId || !sldOemId) {
       throw new BadRequestException('toDealerId and sldOemId are required');
     }
-    if (!sourceDealerId) {
-      throw new BadRequestException('fromDealerId is required');
-    }
-    if (toDealerId === sourceDealerId) {
-      throw new BadRequestException('Cannot forward inventory to yourself');
-    }
 
-    await this.assertDealerHasOem(sourceDealerId, sldOemId);
     await this.assertDealerHasOem(toDealerId, sldOemId);
 
     const serialIds = Array.isArray(data?.serialIds)
       ? data.serialIds.map((id) => String(id).trim()).filter(Boolean)
       : [];
-    const serialNumbers = Array.isArray(data?.serialNumbers)
+    let serialNumbers = Array.isArray(data?.serialNumbers)
       ? data.serialNumbers.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
       : [];
 
+    if (data?.csvText?.trim()) {
+      const { serials } = this.parseSerialCsv(data.csvText);
+      serialNumbers = [...serialNumbers, ...serials];
+    }
+    serialNumbers = [...new Set(serialNumbers)];
+
     if (serialIds.length === 0 && serialNumbers.length === 0) {
-      throw new BadRequestException('Select at least one serial to forward');
+      throw new BadRequestException('Select at least one serial to forward (or provide CSV)');
     }
 
     const orFilters: any[] = [];
     if (serialIds.length) orFilters.push({ id: { in: serialIds } });
     if (serialNumbers.length) orFilters.push({ serialNumber: { in: serialNumbers } });
 
+    // Single known source dealer (dealer login, or admin with fromDealerId)
+    if (sourceDealerId) {
+      if (toDealerId === sourceDealerId) {
+        throw new BadRequestException('Cannot forward inventory to yourself');
+      }
+      await this.assertDealerHasOem(sourceDealerId, sldOemId);
+
+      const rows = await this.prisma.sldDeviceSerial.findMany({
+        where: {
+          sldOemId,
+          dealerId: sourceDealerId,
+          status: SldSerialStatus.ASSIGNED,
+          OR: orFilters,
+        },
+      });
+
+      const foundIds = new Set(rows.map((r) => r.id));
+      const foundSerials = new Set(rows.map((r) => r.serialNumber.toUpperCase()));
+      const notFound = [
+        ...serialIds.filter((id) => !foundIds.has(id)),
+        ...serialNumbers.filter((s) => !foundSerials.has(s)),
+      ];
+
+      const forwarded: string[] = [];
+      if (rows.length > 0) {
+        await this.prisma.sldDeviceSerial.updateMany({
+          where: {
+            id: { in: rows.map((r) => r.id) },
+            dealerId: sourceDealerId,
+            status: SldSerialStatus.ASSIGNED,
+          },
+          data: {
+            dealerId: toDealerId,
+            assignedAt: new Date(),
+          },
+        });
+        forwarded.push(...rows.map((r) => r.serialNumber));
+      }
+
+      if (userId) {
+        await this.auditService.logAction(
+          userId,
+          'FORWARD_SLD_SERIAL',
+          'SLD_INVENTORY',
+          toDealerId,
+          `Forwarded ${forwarded.length} serial(s) from ${sourceDealerId} to ${toDealerId} (OEM ${sldOemId})`,
+        );
+      }
+
+      return { forwarded, notFound, notEligible: [] as string[] };
+    }
+
+    // Admin: resolve source dealer per serial among ASSIGNED stock for this OEM
     const rows = await this.prisma.sldDeviceSerial.findMany({
       where: {
         sldOemId,
-        dealerId: sourceDealerId,
         status: SldSerialStatus.ASSIGNED,
+        dealerId: { not: null },
         OR: orFilters,
       },
     });
@@ -508,12 +587,29 @@ export class SldInventoryService {
       ...serialNumbers.filter((s) => !foundSerials.has(s)),
     ];
 
+    const byDealer = new Map<string, typeof rows>();
+    const notEligible: string[] = [];
+    for (const row of rows) {
+      if (!row.dealerId) {
+        notEligible.push(row.serialNumber);
+        continue;
+      }
+      if (row.dealerId === toDealerId) {
+        notEligible.push(row.serialNumber);
+        continue;
+      }
+      const list = byDealer.get(row.dealerId) || [];
+      list.push(row);
+      byDealer.set(row.dealerId, list);
+    }
+
     const forwarded: string[] = [];
-    if (rows.length > 0) {
+    for (const [dealerId, group] of byDealer) {
+      await this.assertDealerHasOem(dealerId, sldOemId);
       await this.prisma.sldDeviceSerial.updateMany({
         where: {
-          id: { in: rows.map((r) => r.id) },
-          dealerId: sourceDealerId,
+          id: { in: group.map((r) => r.id) },
+          dealerId,
           status: SldSerialStatus.ASSIGNED,
         },
         data: {
@@ -521,7 +617,7 @@ export class SldInventoryService {
           assignedAt: new Date(),
         },
       });
-      forwarded.push(...rows.map((r) => r.serialNumber));
+      forwarded.push(...group.map((r) => r.serialNumber));
     }
 
     if (userId) {
@@ -530,10 +626,10 @@ export class SldInventoryService {
         'FORWARD_SLD_SERIAL',
         'SLD_INVENTORY',
         toDealerId,
-        `Forwarded ${forwarded.length} serial(s) from ${sourceDealerId} to ${toDealerId} (OEM ${sldOemId})`,
+        `Forwarded ${forwarded.length} serial(s) to ${toDealerId} (OEM ${sldOemId}, multi-source)`,
       );
     }
 
-    return { forwarded, notFound, notEligible: [] as string[] };
+    return { forwarded, notFound, notEligible };
   }
 }
